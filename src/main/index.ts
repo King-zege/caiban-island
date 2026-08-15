@@ -8,6 +8,7 @@ import { AppService } from './appService';
 import { SettingsService } from './settingsService';
 import { startMcpServer } from './mcpServer';
 import { FeishuService } from './feishuService';
+import { FullscreenDetector } from './fullscreenDetector';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 app.setPath('userData', path.join(app.getPath('appData'), 'caiban-island'));
@@ -18,6 +19,7 @@ let controller: IslandWindowController | null = null;
 let reminderTimer: NodeJS.Timeout | null = null;
 let feishuTimer: NodeJS.Timeout | null = null;
 let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
+let fullscreenDetector: FullscreenDetector | null = null;
 
 {
   const gotLock = app.requestSingleInstanceLock();
@@ -114,6 +116,9 @@ let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
       await controller.init();
       registerIpc(controller, appSvc, feishu);
       createTray(controller);
+      // P7：真正全屏前台应用出现时自动暂停岛（FR-018）
+      fullscreenDetector = new FullscreenDetector(controller);
+      fullscreenDetector.start();
       startReminderScheduler(appSvc);
     }
 
@@ -122,6 +127,7 @@ let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
     app.on('window-all-closed', () => {});
     app.on('before-quit', () => {
       if (controller) controller.dispose();
+      if (fullscreenDetector) fullscreenDetector.stop();
       if (reminderTimer) clearInterval(reminderTimer);
       if (feishuTimer) clearTimeout(feishuTimer);
       if (mcpRuntime) mcpRuntime.close();

@@ -1,0 +1,23 @@
+appId: com.caiban.island
+productName: 采办岛
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+  - resources/**
+  - scripts/caiban-stdio.mjs
+  - package.json
+win:
+  target:
+    - target: portable
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  icon: resources/icon.png
+portable:
+  artifactName: 采办岛-便携版-${version}.${ext}
+artifactName: 采办岛-${version}-${arch}.${ext}
+electronLanguages:
+  - zh-CN
+  - en-US

@@ -10,7 +10,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "package": "electron-builder --win"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
@@ -36,5 +38,6 @@
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true,
     "electron@43.4.0": true
-  }
+  },
+  "author": "采办岛"
 }
