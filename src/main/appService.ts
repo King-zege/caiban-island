@@ -16,6 +16,17 @@ export class AppService {
   readonly drafts: DraftService;
   readonly llm: LlmService;
 
+  private listeners: Array<() => void> = [];
+
+  // 任务数据变化通知（P6 自动同步钩子）
+  onChange(fn: () => void): void {
+    this.listeners.push(fn);
+  }
+
+  private emitChanged(): void {
+    for (const fn of this.listeners) fn();
+  }
+
   constructor(
     db: DatabaseSync,
     private readonly dataDir: string
@@ -33,12 +44,14 @@ export class AppService {
     // FR-060：设置中配置了全局默认提前量时自动添加提醒
     const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
     if (t.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(t.id, defaults);
+    this.emitChanged();
     return t;
   }
 
   updateTask(id: string, input: TaskInput): Task {
     const t = this.tasks.updateTask(id, input);
     this.reminders.recomputeForTask(id);
+    this.emitChanged();
     return t;
   }
 
@@ -46,6 +59,7 @@ export class AppService {
     const t = this.tasks.setArchived(id, 'completed');
     this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
     this.reminders.disableForTask(id);
+    this.emitChanged();
     return t;
   }
 
@@ -53,12 +67,14 @@ export class AppService {
     const t = this.tasks.setArchived(id, 'cancelled');
     this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
     this.reminders.disableForTask(id);
+    this.emitChanged();
     return t;
   }
 
   restoreTask(id: string): Task {
     this.archive.restoreTask(id);
     this.reminders.recomputeForTask(id);
+    this.emitChanged();
     return this.tasks.getTask(id) as Task;
   }
 

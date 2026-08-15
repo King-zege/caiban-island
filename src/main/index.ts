@@ -7,6 +7,7 @@ import { openDatabase } from './db';
 import { AppService } from './appService';
 import { SettingsService } from './settingsService';
 import { startMcpServer } from './mcpServer';
+import { FeishuService } from './feishuService';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 app.setPath('userData', path.join(app.getPath('appData'), 'caiban-island'));
@@ -15,6 +16,7 @@ app.setAppUserModelId('caiban-island');
 
 let controller: IslandWindowController | null = null;
 let reminderTimer: NodeJS.Timeout | null = null;
+let feishuTimer: NodeJS.Timeout | null = null;
 let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
 
 {
@@ -84,6 +86,18 @@ let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
       const db = openDatabase(path.join(app.getPath('userData'), 'island.db'));
       const appSvc = new AppService(db, app.getPath('userData'));
 
+      // P6：飞书同步（手动按钮 + 变更后自动同步，防抖 3s）
+      const feishu = new FeishuService(appSvc.tasks, appSvc.settings);
+      const scheduleFeishu = () => {
+        if (!feishu.autoSyncEnabled()) return;
+        if (feishuTimer) clearTimeout(feishuTimer);
+        feishuTimer = setTimeout(() => {
+          feishuTimer = null;
+          void feishu.sync().catch(() => { /* 自动同步失败不打断使用，状态在设置页可见 */ });
+        }, 3000);
+      };
+      appSvc.onChange(scheduleFeishu);
+
       const settings = new SettingsService(db);
       app.setLoginItemSettings({ openAtLogin: settings.get('autostart') === '1' });
 
@@ -98,7 +112,7 @@ let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
 
       controller = new IslandWindowController(win);
       await controller.init();
-      registerIpc(controller, appSvc);
+      registerIpc(controller, appSvc, feishu);
       createTray(controller);
       startReminderScheduler(appSvc);
     }
@@ -109,6 +123,7 @@ let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
     app.on('before-quit', () => {
       if (controller) controller.dispose();
       if (reminderTimer) clearInterval(reminderTimer);
+      if (feishuTimer) clearTimeout(feishuTimer);
       if (mcpRuntime) mcpRuntime.close();
     });
   }

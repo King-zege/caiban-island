@@ -182,9 +182,9 @@
 
 ## 12. 飞书多维表格同步
 
-- **通道 1（主）**：内置直连飞书多维表格 Open API（bitable v1），凭据为 PersonalBaseToken 个人令牌（用户在多维表格开发者入口自助生成，企业免管理员审批）；未配置令牌时功能入口提示引导。
-- **通道 2（兜底）**：CSV / Markdown 导出文件，飞书多维表格"导入"；始终可用，不依赖任何凭据。
-- 字段映射：见 SPEC FR-092；同步为单向导出，以岛内数据为准；按"采办岛任务ID"字段 upsert，重复同步幂等更新。
-- 流程：feishu:test（测试连接）→ feishu:sync（建 app/表/字段 → 检索 → 批量新增/更新）；限流时指数退避重试（最多 3 次）。
-- 安全：令牌 safeStorage 加密；请求日志只记录操作与耗时；令牌失效返回可操作错误。
-- 自动同步：renderer 变更事件经 main 防抖 3s 触发全量 upsert；退出前保证最后一次同步完成，否则下次启动重试。
+- **通道 1（主）**：内置直连飞书多维表格 Open API（bitable v1，https://open.feishu.cn/open-apis），凭据为 PersonalBaseToken 个人令牌（用户在多维表格开发者入口自助生成，企业免管理员审批）；令牌经 safeStorage 加密保存（feishu_token_enc），与 API Key 同级待遇。
+- **通道 2（兜底）**：CSV（UTF-8 BOM）/ Markdown 导出到 %APPDATA%\caiban-island\export\，可导入飞书多维表格；始终可用，不依赖任何凭据。
+- **自动建表**：首次同步自动创建多维表格"采办岛任务"与数据表（13 个字段：采办岛任务ID/任务名称/类型/紧急程度/截止时间/状态/进度/下一节点/时间轴节点/网页链接/文件链接/备注/最后同步时间），app_token 与 table_id 存 settings。
+- **同步语义**：按"采办岛任务ID"字段检索（records/search，operator is）→ 存在则 batch_update、否则 batch_create（每批 ≤50）；重复同步幂等；仅同步活跃任务；自动同步（设置开关）在任务变更后防抖 3s 触发。
+- **错误处理**：令牌失效（99991668 等）给出可操作错误；限流自动失败不阻塞本地使用。
+- **开发钩子**：ISLAND_DEBUG=1 时 settings 键 feishu_base_url 可覆盖 API 基址（对接本地 mock 测试）。

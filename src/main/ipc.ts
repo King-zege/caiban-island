@@ -3,11 +3,13 @@ import path from 'node:path';
 import { app, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { IslandWindowController } from './windowController';
+import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
+import type { FeishuService } from './feishuService';
 import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
 
-export function registerIpc(c: IslandWindowController, appSvc: AppService): void {
+export function registerIpc(c: IslandWindowController, appSvc: AppService, feishu: FeishuService): void {
   const mcpConfig = () => {
     const port = Number(appSvc.settings.get('mcp_port') ?? 0);
     const token = appSvc.settings.get('mcp_token') ?? '';
@@ -147,6 +149,65 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService): void
     try {
       const draft = await appSvc.llm.breakdown(description);
       return { ok: true, data: draft };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // —— 飞书同步（P6） ——
+  const feishuStatus = () => ({
+    configured: feishu.tokenConfigured(),
+    autoSync: feishu.autoSyncEnabled(),
+    target: feishu.getTarget()
+  });
+  ipcMain.handle('feishu:status', () => wrap(() => feishuStatus()));
+  ipcMain.handle('feishu:saveToken', (_e: IpcMainInvokeEvent, token: string) => {
+    try {
+      feishu.saveToken(token);
+      return { ok: true, data: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:test', async () => {
+    try {
+      const msg = await feishu.testConnection();
+      return { ok: true, data: msg };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:sync', async () => {
+    try {
+      const r = await feishu.sync();
+      return { ok: true, data: r };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:setAutoSync', (_e: IpcMainInvokeEvent, v: boolean) => {
+    appSvc.settings.set('feishu_auto_sync', v ? '1' : '0');
+    return { ok: true, data: true };
+  });
+  // 快速导出（写入数据目录 export\，免对话框，便于自动化与随手导出）
+  ipcMain.handle('feishu:exportCsv', () => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'export');
+      mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, 'caiban-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.csv');
+      feishu.exportCsv(p);
+      return { ok: true, data: p };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:exportMarkdown', () => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'export');
+      mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, 'caiban-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.md');
+      feishu.exportMarkdown(p);
+      return { ok: true, data: p };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

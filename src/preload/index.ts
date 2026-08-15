@@ -62,6 +62,15 @@ const api = {
   setSetting: (key: string, value: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('settings:set', key, value),
   openDataDir: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('app:openDataDir'),
 
+  getFeishuStatus: (): Promise<IpcResult<{ configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }>> =>
+    ipcRenderer.invoke('feishu:status'),
+  saveFeishuToken: (token: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('feishu:saveToken', token),
+  testFeishu: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:test'),
+  syncFeishu: (): Promise<IpcResult<{ created: number; updated: number }>> => ipcRenderer.invoke('feishu:sync'),
+  setFeishuAutoSync: (v: boolean): Promise<IpcResult<boolean>> => ipcRenderer.invoke('feishu:setAutoSync', v),
+  exportCsv: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportCsv'),
+  exportMarkdown: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportMarkdown'),
+
   openUrl: (url: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openUrl', url),
   openPath: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openPath', p),
   showInFolder: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:showInFolder', p),

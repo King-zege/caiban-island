@@ -19,6 +19,11 @@ export default function SettingsView(): React.JSX.Element {
   const [aiKey, setAiKey] = useState('');
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
+  const [fsToken, setFsToken] = useState('');
+  const [fsStatus, setFsStatus] = useState<{ configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null } | null>(null);
+  const [fsMsg, setFsMsg] = useState<string | null>(null);
+  const [fsErr, setFsErr] = useState<string | null>(null);
+  const [fsBusy, setFsBusy] = useState(false);
 
   useEffect(() => {
     void window.api.getSettings().then((r) => {
@@ -29,6 +34,7 @@ export default function SettingsView(): React.JSX.Element {
       setAcrylic(s.acrylic_disabled !== true);
     });
     void window.api.getMcpConfig().then((r) => r.ok && setMcpConfig(r.data as { url: string; stdioCommand: string }));
+    void window.api.getFeishuStatus().then((r) => r.ok && setFsStatus(r.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }));
     void window.api.getAiStatus().then((r) => {
       if (!r.ok) return;
       const s = r.data as { configured: boolean; baseUrl: string; model: string };
@@ -156,6 +162,99 @@ export default function SettingsView(): React.JSX.Element {
         </div>
         {aiMsg && <p className="note-saved">{aiMsg}</p>}
         {aiErr && <p className="form-error">{aiErr}</p>}
+      </section>
+
+      <section className="editor-section">
+        <h3 className="section-title">飞书多维表格同步</h3>
+        <p className="detail-empty">
+          {fsStatus?.configured ? '已配置令牌' : '未配置'} · 目标：{fsStatus?.target ? fsStatus.target.appToken.slice(0, 8) + '…' : '（首次同步自动创建）'}
+        </p>
+        <input
+          className="text-input"
+          type="password"
+          value={fsToken}
+          placeholder="飞书多维表格个人令牌 PersonalBaseToken（加密保存）"
+          onChange={(e) => setFsToken(e.target.value)}
+        />
+        <div className="setting-row">
+          <button
+            className="btn small"
+            onClick={() => {
+              setFsErr(null);
+              setFsMsg(null);
+              void window.api.saveFeishuToken(fsToken).then((r) => {
+                if (r.ok) {
+                  setFsToken('');
+                  setFsMsg('令牌已保存');
+                  void window.api.getFeishuStatus().then((s) => s.ok && setFsStatus(s.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }));
+                } else setFsErr(r.error);
+              });
+            }}
+            disabled={fsToken.trim().length === 0}
+          >
+            保存令牌
+          </button>
+          <button
+            className="btn small"
+            onClick={() => {
+              setFsErr(null);
+              setFsMsg(null);
+              void window.api.testFeishu().then((r) => {
+                if (r.ok) setFsMsg(r.data as string);
+                else setFsErr(r.error);
+              });
+            }}
+          >
+            测试连接
+          </button>
+          <button
+            className="btn small primary"
+            disabled={fsBusy}
+            onClick={() => {
+              setFsErr(null);
+              setFsMsg(null);
+              setFsBusy(true);
+              void window.api.syncFeishu().then((r) => {
+                setFsBusy(false);
+                if (r.ok) setFsMsg('同步完成：新增 ' + r.data.created + ' 条，更新 ' + r.data.updated + ' 条');
+                else setFsErr(r.error);
+              });
+            }}
+          >
+            {fsBusy ? '同步中…' : '同步到飞书'}
+          </button>
+        </div>
+        <label className="setting-row">
+          <span>任务变更后自动同步（防抖 3 秒）</span>
+          <input
+            type="checkbox"
+            checked={fsStatus?.autoSync ?? false}
+            onChange={(e) =>
+              void window.api.setFeishuAutoSync(e.target.checked).then(() =>
+                window.api.getFeishuStatus().then((r) => r.ok && setFsStatus(r.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }))
+              )
+            }
+          />
+        </label>
+        <div className="setting-row">
+          <span>导出兜底（CSV / Markdown，可导入多维表格）</span>
+          <div className="l2-actions">
+            <button
+              className="btn small"
+              onClick={() => void window.api.exportCsv().then((r) => (r.ok ? setFsMsg('已导出：' + r.data) : setFsErr(r.error)))}
+            >
+              导出 CSV
+            </button>
+            <button
+              className="btn small"
+              onClick={() => void window.api.exportMarkdown().then((r) => (r.ok ? setFsMsg('已导出：' + r.data) : setFsErr(r.error)))}
+            >
+              导出 Markdown
+            </button>
+          </div>
+        </div>
+        {fsMsg && <p className="note-saved fs-msg">{fsMsg}</p>}
+        {fsErr && <p className="form-error">{fsErr}</p>}
       </section>
 
       <section className="editor-section">
