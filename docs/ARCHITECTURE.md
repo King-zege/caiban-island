@@ -17,6 +17,7 @@
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
 | MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
 | 内置 LLM | Node fetch（OpenAI-compatible） | function call 结构化输出 |
+| 飞书同步 | Node fetch（飞书多维表格 bitable v1 Open API）+ PersonalBaseToken | 个人令牌免管理员审批；无 CLI 依赖 |
 | Markdown | markdown-it（禁用 HTML）+ 自渲染 | 禁止原始 HTML 与脚本 |
 | 打包 | electron-builder（portable zip，可选 NSIS） | 免证书绿色分发 |
 | 测试 | Vitest（单测/集成） | 见 TEST_PLAN.md |
@@ -38,6 +39,7 @@
 | links:add / update / remove / relocate | renderer→main | 链接管理 |
 | archive:list / search / get / restore | renderer→main | 归档查询与恢复 |
 | settings:get / set / testApi | renderer→main | 设置与连接测试 |
+| feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出 |
 | mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置 |
 | system:openUrl / openPath / showInFolder / openDataDir | renderer→main | 系统打开动作 |
 | window:setLevel / moveTo / getState | renderer→main | 窗口三级控制 |
@@ -138,6 +140,7 @@
 ## 8. 安全
 
 - API Key 仅经 safeStorage 加密保存；禁止写入日志、快照、备份、测试夹具与源代码。
+- PersonalBaseToken 与 API Key 同级待遇（safeStorage、日志脱敏、不进快照/备份/测试夹具）。
 - MCP 仅 127.0.0.1 + token；重置 token 使旧连接立即失效。
 - 草稿原则：任何 AI 输出不得直接落正式数据；确认走单事务。
 - Markdown 渲染禁用原始 HTML/脚本；打开外部链接前显示实际目标。
@@ -172,3 +175,12 @@
       package.json
       electron.vite.config.ts
       electron-builder.yml
+
+## 12. 飞书多维表格同步
+
+- **通道 1（主）**：内置直连飞书多维表格 Open API（bitable v1），凭据为 PersonalBaseToken 个人令牌（用户在多维表格开发者入口自助生成，企业免管理员审批）；未配置令牌时功能入口提示引导。
+- **通道 2（兜底）**：CSV / Markdown 导出文件，飞书多维表格"导入"；始终可用，不依赖任何凭据。
+- 字段映射：见 SPEC FR-092；同步为单向导出，以岛内数据为准；按"采办岛任务ID"字段 upsert，重复同步幂等更新。
+- 流程：feishu:test（测试连接）→ feishu:sync（建 app/表/字段 → 检索 → 批量新增/更新）；限流时指数退避重试（最多 3 次）。
+- 安全：令牌 safeStorage 加密；请求日志只记录操作与耗时；令牌失效返回可操作错误。
+- 自动同步：renderer 变更事件经 main 防抖 3s 触发全量 upsert；退出前保证最后一次同步完成，否则下次启动重试。

@@ -2,7 +2,7 @@
 
 ## 1. 背景
 
-旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书绿色分发、灵动岛三级面板、Qoder MCP 智能拆解节点。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
+旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书绿色分发、灵动岛三级面板、Qoder MCP 智能拆解节点、飞书多维表格同步。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
 
 ## 2. 决策记录
 
@@ -20,6 +20,7 @@
 | 提醒 | Windows Toast（无需证书）+ 岛内轻弹降级 | 用户确认条件：无证书则用 Toast |
 | 存储 | SQLite 主库 + Markdown/JSON 快照归档 | 查询可靠 + 快照可读可迁移 |
 | 工程纪律 | 每个节点：测试机制 → 全部通过 → 一次 git commit | 用户要求 |
+| 飞书同步 | 内置 bitable v1 Open API + PersonalBaseToken；CSV/Markdown 导出兜底 | 企业飞书免管理员审批的最低成本沉淀；无 CLI 依赖 |
 
 ## 3. 里程碑（节点完成 = 测试通过 + git commit）
 
@@ -31,7 +32,8 @@
 | P3 | 速览详情；时间轴；节点三态；链接；备注 | 单测：状态流转/安全渲染 | 全部通过 | P3: 详情与时间轴 — 测试与验收通过 |
 | P4 | Toast+轻弹；归档；快照；归档页；设置 | 集成：快照往返/提醒调度 | 全部通过 | P4: 提醒与归档 — 测试与验收通过 |
 | P5 | MCP SSE+STDIO；内置 API；草稿审核 | 集成：mock MCP/LLM；Qoder 联调 | 全工具可用；草稿原则 | P5: AI 通道 — 测试与验收通过 |
-| P6 | 动效打磨；无障碍回退；全屏检测；打包 | 打包冒烟 + 真机矩阵 | 矩阵全通过 | P6: 打磨发布 — 测试与验收通过 |
+| P6 | 飞书同步：个人令牌连接、建表/字段映射、手动+自动同步、CSV/Markdown 导出兜底 | 集成：mock bitable server + 真机联调 | 全部通过 | P6: 飞书同步 — 测试与验收通过 |
+| P7 | 动效打磨；无障碍回退；全屏检测；打包 | 打包冒烟 + 真机矩阵 | 矩阵全通过 | P7: 打磨发布 — 测试与验收通过 |
 
 ## 4. 风险
 
@@ -50,4 +52,5 @@
 - 多显示器多岛；
 - 节点依赖关系与子节点；
 - 附件托管（复制文件本体）；
-- 数据加密与导出密码保护。
+- 数据加密与导出密码保护；
+- 飞书双向同步；OAuth 自建应用通道（需企业管理员审批）。

@@ -14,7 +14,7 @@
 
 ## 2. 节点完成门禁（Definition of Done）
 
-- 开发按 docs/PLAN.md 里程碑（节点 P0–P6）推进；
+- 开发按 docs/PLAN.md 里程碑（节点 P0–P7）推进；
 - 每个节点完成后必须：
   1. 执行该节点的测试机制（docs/TEST_PLAN.md 第 1 节映射表：自动化测试 + 手工验收清单）；
   2. 全部通过后，执行一次 git commit，提交信息格式为 "P{n}: <节点名> — 测试与验收通过"，内容仅含本节点变更；
@@ -29,6 +29,7 @@
 - 任何 AI 输出（Qoder MCP 或内置 API）永远是草稿；只有用户确认后的应用服务事务能创建/修改正式数据。
 - SQLite schema 变更必须使用版本化迁移；禁止启动时执行未版本化 DDL。
 - 行为或公共契约变化必须在同一改动中更新对应文档与测试。
+- 飞书同步仅单向导出（岛 → 多维表格），以岛内数据为准；禁止从表格回写本地正式数据。
 
 ## 4. 安全与隐私底线
 
@@ -36,7 +37,8 @@
 - MCP 服务只绑定 127.0.0.1 并校验 token；日志只记录工具名、耗时、成功/失败类别，禁止完整请求正文与 Authorization header。
 - Markdown 渲染禁用原始 HTML/脚本；外部链接打开前显示实际目标。
 - 禁止记录用户文件内容与敏感绝对路径（日志脱敏为类别）。
-- 测试不得使用真实 API Key、真实 MCP token 或私人文件。
+- PersonalBaseToken 与 API Key 同级待遇：safeStorage 加密保存，禁止进入日志、快照、备份、测试夹具与源代码。
+- 测试不得使用真实 API Key、真实 MCP token、PersonalBaseToken 或私人文件。
 
 ## 5. 编码与依赖规则
 
@@ -50,7 +52,7 @@
 
 ## 6. Windows 特有注意事项（必读）
 
-- 透明窗口：BrowserWindow(frame:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, hasShadow:false)；置顶层级用 screen-saver 级别，但不得挡住真正全屏应用（P6 检测）。
+- 透明窗口：BrowserWindow(frame:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, hasShadow:false)；置顶层级用 screen-saver 级别，但不得挡住真正全屏应用（P7 检测）。
 - 点击穿透：折叠态用 setIgnoreMouseEvents(true, {forward:true}) 配合屏幕坐标轮询热区；禁止大范围透明覆盖窗口吞掉下层点击。
 - 磨砂：koffi 调用 SetWindowCompositionAttribute（ACCENT_ENABLE_ACRYLICBLURBEHIND）；失败回退纯色 #111216；高对比度/减少动画时关闭。
 - DPI：per-monitor 感知；所有窗口尺寸用逻辑像素并做显示器换算。
@@ -66,7 +68,7 @@
     pnpm build         # 成功
     pnpm package       # P6 起
 
-P0 阶段以上命令随 P1 建立；P0 的门禁是文档一致性检查（相对链接可达、标题结构、术语一致、SPEC 覆盖 8 条需求）。提交前检查 git diff，确认无凭据、无私人路径、无无关改动。
+P0 阶段以上命令随 P1 建立；P0 的门禁是文档一致性检查（相对链接可达、标题结构、术语一致、SPEC 覆盖全部需求）。提交前检查 git diff，确认无凭据、无私人路径、无无关改动。
 
 ## 8. 推荐实现顺序
 
