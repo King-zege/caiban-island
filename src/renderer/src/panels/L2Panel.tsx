@@ -4,6 +4,7 @@ import TaskCard from '../components/TaskCard';
 import Carousel from '../components/Carousel';
 import NewTaskForm from '../components/NewTaskForm';
 import TaskDetailView from '../components/TaskDetailView';
+import WelcomeView from '../components/WelcomeView';
 
 export default function L2Panel(): React.JSX.Element {
   const tasks = useTaskStore((s) => s.tasks);
@@ -14,9 +15,13 @@ export default function L2Panel(): React.JSX.Element {
   const openDetail = useTaskStore((s) => s.openDetail);
   const closeDetail = useTaskStore((s) => s.closeDetail);
   const [showForm, setShowForm] = useState(false);
+  const [onboarded, setOnboarded] = useState(true);
 
   useEffect(() => {
     void load();
+    void window.api.getSettings().then((r) => {
+      if (r.ok) setOnboarded((r.data as { onboarded: boolean }).onboarded === true);
+    });
   }, [load]);
 
   // 表单/速览打开时面板加高（速览态），关闭后还原
@@ -51,6 +56,8 @@ export default function L2Panel(): React.JSX.Element {
           <TaskDetailView detail={detail} onBack={closeDetail} />
         ) : loading ? (
           <span className="placeholder">加载中…</span>
+        ) : !onboarded ? (
+          <WelcomeView onDone={() => setOnboarded(true)} />
         ) : tasks.length === 0 ? (
           <span className="placeholder">暂无任务，点「新建」开始</span>
         ) : (

@@ -97,7 +97,8 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
     wrap(() => ({
       reminder_default_offsets: settings.getJson<number[]>('reminder_default_offsets', []),
       autostart: settings.get('autostart') === '1',
-      acrylic_disabled: settings.get('acrylic_disabled') === '1'
+      acrylic_disabled: settings.get('acrylic_disabled') === '1',
+      onboarded: settings.get('onboarded') === '1'
     }))
   );
   ipcMain.handle('settings:set', (_e: IpcMainInvokeEvent, key: string, value: string) => {
