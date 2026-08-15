@@ -159,7 +159,8 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
   const feishuStatus = () => ({
     configured: feishu.tokenConfigured(),
     autoSync: feishu.autoSyncEnabled(),
-    target: feishu.getTarget()
+    target: feishu.getTarget(),
+    lastSync: feishu.lastSyncStatus()
   });
   ipcMain.handle('feishu:status', () => wrap(() => feishuStatus()));
   ipcMain.handle('feishu:saveToken', (_e: IpcMainInvokeEvent, token: string) => {
@@ -197,6 +198,28 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
       mkdirSync(dir, { recursive: true });
       const p = path.join(dir, 'caiban-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.csv');
       feishu.exportCsv(p);
+      return { ok: true, data: p };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:exportTaskCsv', (_e: IpcMainInvokeEvent, taskId: string) => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'export');
+      mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, 'task-' + taskId.slice(0, 8) + '-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.csv');
+      feishu.exportTaskCsv(p, taskId);
+      return { ok: true, data: p };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('feishu:exportArchivedCsv', () => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'export');
+      mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, 'archive-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.csv');
+      feishu.exportArchivedCsv(p);
       return { ok: true, data: p };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };

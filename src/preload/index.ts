@@ -69,6 +69,8 @@ const api = {
   syncFeishu: (): Promise<IpcResult<{ created: number; updated: number }>> => ipcRenderer.invoke('feishu:sync'),
   setFeishuAutoSync: (v: boolean): Promise<IpcResult<boolean>> => ipcRenderer.invoke('feishu:setAutoSync', v),
   exportCsv: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportCsv'),
+  exportTaskCsv: (taskId: string): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportTaskCsv', taskId),
+  exportArchivedCsv: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportArchivedCsv'),
   exportMarkdown: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportMarkdown'),
 
   openUrl: (url: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openUrl', url),

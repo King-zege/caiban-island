@@ -184,6 +184,38 @@ describe('飞书多维表格同步（FR-090~097）', () => {
     expect(content).toContain('"含,逗号""引号"');
   });
 
+  it('单任务导出（FR-096）：CSV 含节点/链接/备注', () => {
+    const { app, feishu } = fresh();
+    const t = app.createTask({ name: '单任务', description: '', kind: 'task', urgency: 'critical', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    app.tasks.addNode(t.id, { title: '节点A', description: '', startUtc: null, endUtc: null });
+    app.tasks.addLink(t.id, { kind: 'url', title: 'x', target: 'https://example.com/a' });
+    app.tasks.saveNote(t.id, '备注');
+    const dir = mkdtempSync(path.join(tmpdir(), 'caiban-taskcsv-'));
+    dirs.push(dir);
+    const p = path.join(dir, 't.csv');
+    feishu.exportTaskCsv(p, t.id);
+    const content = readFileSync(p, 'utf8');
+    expect(content.charCodeAt(0)).toBe(0xfeff);
+    expect(content).toContain('单任务');
+    expect(content).toContain('[待完成] 节点A');
+    expect(content).toContain('https://example.com/a');
+    expect(content).toContain('备注');
+  });
+
+  it('归档导出（FR-096）：含结果与归档时间', () => {
+    const { app, feishu } = fresh();
+    const t = app.createTask({ name: '归档任务', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    app.completeTask(t.id);
+    const dir = mkdtempSync(path.join(tmpdir(), 'caiban-archcsv-'));
+    dirs.push(dir);
+    const p = path.join(dir, 'a.csv');
+    feishu.exportArchivedCsv(p);
+    const content = readFileSync(p, 'utf8');
+    expect(content).toContain('归档任务');
+    expect(content).toContain('已完成');
+    expect(content).toContain('结果,归档时间');
+  });
+
   it('Markdown 导出：结构与内容完整', () => {
     const { app, feishu } = fresh();
     app.createTask({ name: 'MD任务', description: '', kind: 'task', urgency: 'high', deadlineUtc: null, tzId: 'Asia/Shanghai' });

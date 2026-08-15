@@ -150,6 +150,12 @@ export class TaskService {
     return this.getTask(id) as Task;
   }
 
+  listArchived(): Array<{ id: string; name: string; kind: string; urgency: string; deadlineUtc: string | null; outcome: string; archivedAt: string }> {
+    return this.db
+      .prepare("SELECT id, name, kind, urgency, deadline_utc AS deadlineUtc, archive_outcome AS outcome, archived_at AS archivedAt FROM tasks WHERE status = 'archived' ORDER BY archived_at DESC")
+      .all() as unknown as Array<{ id: string; name: string; kind: string; urgency: string; deadlineUtc: string | null; outcome: string; archivedAt: string }>;
+  }
+
   setArchived(id: string, outcome: 'completed' | 'cancelled'): Task {
     const existing = this.getTask(id);
     if (!existing) throw new TaskError('任务不存在');

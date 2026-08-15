@@ -20,7 +20,12 @@ export default function SettingsView(): React.JSX.Element {
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
   const [fsToken, setFsToken] = useState('');
-  const [fsStatus, setFsStatus] = useState<{ configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null } | null>(null);
+  const [fsStatus, setFsStatus] = useState<{
+    configured: boolean;
+    autoSync: boolean;
+    target: { appToken: string; tableId: string } | null;
+    lastSync: { at: string; ok: boolean; created: number; updated: number; error?: string } | null;
+  } | null>(null);
   const [fsMsg, setFsMsg] = useState<string | null>(null);
   const [fsErr, setFsErr] = useState<string | null>(null);
   const [fsBusy, setFsBusy] = useState(false);
@@ -34,7 +39,17 @@ export default function SettingsView(): React.JSX.Element {
       setAcrylic(s.acrylic_disabled !== true);
     });
     void window.api.getMcpConfig().then((r) => r.ok && setMcpConfig(r.data as { url: string; stdioCommand: string }));
-    void window.api.getFeishuStatus().then((r) => r.ok && setFsStatus(r.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }));
+    void window.api.getFeishuStatus().then((r) =>
+      r.ok &&
+      setFsStatus(
+        r.data as {
+          configured: boolean;
+          autoSync: boolean;
+          target: { appToken: string; tableId: string } | null;
+          lastSync: { at: string; ok: boolean; created: number; updated: number; error?: string } | null;
+        }
+      )
+    );
     void window.api.getAiStatus().then((r) => {
       if (!r.ok) return;
       const s = r.data as { configured: boolean; baseUrl: string; model: string };
@@ -169,6 +184,14 @@ export default function SettingsView(): React.JSX.Element {
         <p className="detail-empty">
           {fsStatus?.configured ? '已配置令牌' : '未配置'} · 目标：{fsStatus?.target ? fsStatus.target.appToken.slice(0, 8) + '…' : '（首次同步自动创建）'}
         </p>
+        {fsStatus?.lastSync && (
+          <p className="note-saved">
+            最近同步：{fsStatus.lastSync.at.slice(5, 16).replace('T', ' ')} ·{' '}
+            {fsStatus.lastSync.ok
+              ? '成功（新增 ' + fsStatus.lastSync.created + '，更新 ' + fsStatus.lastSync.updated + '）'
+              : '失败：' + (fsStatus.lastSync.error ?? '未知错误')}
+          </p>
+        )}
         <input
           className="text-input"
           type="password"
@@ -186,7 +209,17 @@ export default function SettingsView(): React.JSX.Element {
                 if (r.ok) {
                   setFsToken('');
                   setFsMsg('令牌已保存');
-                  void window.api.getFeishuStatus().then((s) => s.ok && setFsStatus(s.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }));
+                  void window.api.getFeishuStatus().then((s) =>
+                      s.ok &&
+                      setFsStatus(
+                        s.data as {
+                          configured: boolean;
+                          autoSync: boolean;
+                          target: { appToken: string; tableId: string } | null;
+                          lastSync: { at: string; ok: boolean; created: number; updated: number; error?: string } | null;
+                        }
+                      )
+                    );
                 } else setFsErr(r.error);
               });
             }}
@@ -231,7 +264,17 @@ export default function SettingsView(): React.JSX.Element {
             checked={fsStatus?.autoSync ?? false}
             onChange={(e) =>
               void window.api.setFeishuAutoSync(e.target.checked).then(() =>
-                window.api.getFeishuStatus().then((r) => r.ok && setFsStatus(r.data as { configured: boolean; autoSync: boolean; target: { appToken: string; tableId: string } | null }))
+                window.api.getFeishuStatus().then((r) =>
+                  r.ok &&
+                  setFsStatus(
+                    r.data as {
+                      configured: boolean;
+                      autoSync: boolean;
+                      target: { appToken: string; tableId: string } | null;
+                      lastSync: { at: string; ok: boolean; created: number; updated: number; error?: string } | null;
+                    }
+                  )
+                )
               )
             }
           />

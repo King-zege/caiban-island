@@ -202,6 +202,15 @@ export default function TaskEditor({ detail }: { detail: TaskDetail }): React.JS
       </section>
 
       <section className="editor-section">
+        <h3 className="section-title">导出（可导入飞书多维表格）</h3>
+        <div className="l2-actions">
+          <button className="btn small" onClick={() => void window.api.exportTaskCsv(task.id)}>
+            导出 CSV
+          </button>
+        </div>
+      </section>
+
+      <section className="editor-section">
         <h3 className="section-title">备注（Markdown）</h3>
         <MarkdownNote body={noteBody} onChange={setNoteBody} />
         <div className="note-actions">

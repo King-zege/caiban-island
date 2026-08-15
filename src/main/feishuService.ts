@@ -40,6 +40,13 @@ const TABLE_FIELDS = [
 
 export class FeishuService {
 
+  // FR-094：最近一次同步状态（成功/失败均可查，供界面显示）
+  private lastSync: { at: string; ok: boolean; created: number; updated: number; error?: string } | null = null;
+
+  lastSyncStatus(): { at: string; ok: boolean; created: number; updated: number; error?: string } | null {
+    return this.lastSync;
+  }
+
   constructor(
     private readonly tasks: TaskService,
     private readonly settings: SettingsService,
@@ -168,6 +175,15 @@ export class FeishuService {
 
   // FR-093：按 采办岛任务ID 幂等 upsert
   async sync(): Promise<SyncResult> {
+    try {
+      return await this.syncInner();
+    } catch (e) {
+      this.lastSync = { at: new Date().toISOString(), ok: false, created: 0, updated: 0, error: e instanceof Error ? e.message : String(e) };
+      throw e;
+    }
+  }
+
+  private async syncInner(): Promise<SyncResult> {
     const target = await this.ensureTarget();
     const cards = this.tasks.listActive();
     const ids = cards.map((c) => c.task.id);
@@ -193,6 +209,7 @@ export class FeishuService {
         await this.api(base + '/batch_update', { method: 'POST', body: JSON.stringify({ records: chunk }) });
       }
     }
+    this.lastSync = { at: new Date().toISOString(), ok: true, created: toCreate.length, updated: toUpdate.length };
     return { created: toCreate.length, updated: toUpdate.length };
   }
 
@@ -293,8 +310,76 @@ exportMarkdown(targetPath: string): string {
     writeFileSync(targetPath, lines.join(String.fromCharCode(10)), 'utf8');
     return targetPath;
   }
-}
 
+  // FR-096：单任务导出（任务详情页使用）
+  exportTaskCsv(targetPath: string, taskId: string): string {
+    const detail = this.tasks.getTaskDetail(taskId);
+    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,状态,进度,时间轴节点,网页链接,文件链接,备注,采办岛任务ID'];
+    const esc = (v: string) => '"' + v.replaceAll('"', '""').replaceAll(String.fromCharCode(10), '；') + '"';
+    const nodes = [...detail.nodes].sort((a, b) => a.position - b.position);
+    const urls = detail.links.filter((l) => l.kind === 'url').map((l) => l.target);
+    const files = detail.links.filter((l) => l.kind === 'file').map((l) => l.target);
+    const progress = detail.nodes.length > 0
+      ? Math.round((detail.nodes.filter((n) => n.status === 'completed').length / detail.nodes.length) * 100)
+      : '';
+    const vals = [
+      detail.task.name,
+      detail.task.kind === 'misc' ? '杂事' : '任务',
+      URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency,
+      detail.task.deadlineUtc ?? '',
+      detail.task.status === 'active' ? '进行中' : detail.task.archiveOutcome === 'completed' ? '已完成' : '已取消',
+      String(progress),
+      nodes.map((n) => '[' + (STATUS_LABEL[n.status] ?? n.status) + '] ' + n.title).join('；'),
+      urls.join('；'),
+      files.join('；'),
+      detail.note.replaceAll(String.fromCharCode(10), ' '),
+      detail.task.id
+    ];
+    lines.push(vals.map(esc).join(','));
+    const content = String.fromCharCode(0xfeff) + lines.join(String.fromCharCode(10)) + String.fromCharCode(10);
+    writeFileSync(targetPath, content, 'utf8');
+    return targetPath;
+  }
+
+  exportTaskMarkdown(targetPath: string, taskId: string): string {
+    const detail = this.tasks.getTaskDetail(taskId);
+    const nodes = [...detail.nodes].sort((a, b) => a.position - b.position);
+    const lines: string[] = [
+      '# ' + detail.task.name,
+      '',
+      '- 类型：' + (detail.task.kind === 'misc' ? '杂事' : '任务'),
+      '- 紧急程度：' + (URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency),
+      '- 截止时间：' + (detail.task.deadlineUtc ?? '未设置'),
+      ''
+    ];
+    if (nodes.length > 0) {
+      lines.push('## 节点', '');
+      for (const n of nodes) lines.push('- [' + (STATUS_LABEL[n.status] ?? n.status) + '] ' + n.title);
+    }
+    const urls = detail.links.filter((l) => l.kind === 'url');
+    const files = detail.links.filter((l) => l.kind === 'file');
+    if (urls.length > 0 || files.length > 0) {
+      lines.push('', '## 链接', '');
+      for (const l of [...urls, ...files]) lines.push('- ' + l.target);
+    }
+    if (detail.note.trim()) lines.push('', '## 备注', '', detail.note.trim());
+    lines.push('');
+    writeFileSync(targetPath, lines.join(String.fromCharCode(10)), 'utf8');
+    return targetPath;
+  }
+
+  // FR-096：归档任务导出
+  exportArchivedCsv(targetPath: string): string {
+    const items = this.tasks.listArchived();
+    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,结果,归档时间,采办岛任务ID'];
+    const esc = (v: string) => '"' + v.replaceAll('"', '""') + '"';
+    for (const it of items) {
+      lines.push([it.name, it.kind === 'misc' ? '杂事' : '任务', URGENCY_LABEL[it.urgency] ?? it.urgency, it.deadlineUtc ?? '', it.outcome === 'completed' ? '已完成' : '已取消', it.archivedAt, it.id].map(esc).join(','));
+    }
+    writeFileSync(targetPath, String.fromCharCode(0xfeff) + lines.join(String.fromCharCode(10)) + String.fromCharCode(10), 'utf8');
+    return targetPath;
+  }
+}
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));

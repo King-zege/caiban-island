@@ -12,6 +12,7 @@ export default function ArchiveView(): React.JSX.Element {
   const [outcome, setOutcome] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<ArchivedDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = async (q: string, oc?: string) => {
@@ -106,6 +107,19 @@ export default function ArchiveView(): React.JSX.Element {
   return (
     <div className="archive-view">
       <div className="archive-toolbar">
+        <div className="l2-actions">
+          <button
+            className="btn small"
+            onClick={() =>
+              void window.api.exportArchivedCsv().then((r) => {
+                if (r.ok) setExportMsg('已导出：' + r.data);
+                else setError(r.error);
+              })
+            }
+          >
+            导出归档 CSV
+          </button>
+        </div>
         <input
           className="text-input grow"
           placeholder="搜索归档任务…"
@@ -139,6 +153,7 @@ export default function ArchiveView(): React.JSX.Element {
           ))}
         </ul>
       )}
+      {exportMsg && <p className="note-saved">{exportMsg}</p>}
       {error && <p className="form-error">{error}</p>}
     </div>
   );
