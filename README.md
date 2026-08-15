@@ -51,14 +51,13 @@ P0（规划与文档）已交付（含飞书多维表格同步需求）：本仓
 4. 可在设置中打开"变更后自动同步"；
 5. 若企业禁用个人令牌：任务详情/归档页可导出 CSV 或 Markdown，在多维表格中点"导入"即可（无需任何权限）。
 
-## 开发命令（P1 建立骨架后生效）
+## 开发命令（P1 起生效）
 
-    pnpm install
-    pnpm dev
-    pnpm typecheck
-    pnpm lint
-    pnpm test
-    pnpm build
-    pnpm package
+    npm install
+    npm run dev
+    npm run typecheck
+    npm test
+    npm run build
+    npm run package   # P7 起
 
 开发流程：按 docs/PLAN.md 里程碑推进，每个节点完成后执行该节点的测试机制（见 docs/TEST_PLAN.md），全部通过后做一次 git commit。

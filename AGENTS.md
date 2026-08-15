@@ -54,7 +54,7 @@
 
 - 透明窗口：BrowserWindow(frame:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, hasShadow:false)；置顶层级用 screen-saver 级别，但不得挡住真正全屏应用（P7 检测）。
 - 点击穿透：折叠态用 setIgnoreMouseEvents(true, {forward:true}) 配合屏幕坐标轮询热区；禁止大范围透明覆盖窗口吞掉下层点击。
-- 磨砂：koffi 调用 SetWindowCompositionAttribute（ACCENT_ENABLE_ACRYLICBLURBEHIND）；失败回退纯色 #111216；高对比度/减少动画时关闭。
+- 磨砂：koffi 调用 SetWindowCompositionAttribute（ACCENT_ENABLE_ACRYLICBLURBEHIND，失败级联 BLURBEHIND）；HWND 必须从 getNativeWindowHandle() 的 Buffer 读出数值按 int64 传参（把 Buffer 当指针会静默失败）；全部失败回退纯色 #111216；高对比度/减少动画时关闭。
 - DPI：per-monitor 感知；所有窗口尺寸用逻辑像素并做显示器换算。
 - 通知：app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标显示所需）；无证书不影响 Toast。
 - 单实例：app.requestSingleInstanceLock；二次启动时唤起已运行实例。
@@ -62,11 +62,10 @@
 
 ## 7. 提交前门禁（P1 起生效，每个节点完成时执行）
 
-    pnpm typecheck
-    pnpm lint
-    pnpm test          # 全部通过
-    pnpm build         # 成功
-    pnpm package       # P6 起
+    npm run typecheck
+    npm test           # 全部通过
+    npm run build      # 成功
+    npm run package    # P7 起
 
 P0 阶段以上命令随 P1 建立；P0 的门禁是文档一致性检查（相对链接可达、标题结构、术语一致、SPEC 覆盖全部需求）。提交前检查 git diff，确认无凭据、无私人路径、无无关改动。
 

@@ -1,0 +1,37 @@
+{
+  "name": "caiban-island",
+  "version": "0.1.0",
+  "description": "采办岛 — Windows 顶部灵动岛式采购任务管理工具",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "koffi": "^3.1.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.4.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  },
+  "allowScripts": {
+    "koffi@3.1.5": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron@43.4.0": true
+  }
+}

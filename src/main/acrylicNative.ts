@@ -1,0 +1,48 @@
+import koffi from 'koffi';
+import { ACRYLIC_TINT, buildGradientColor } from '../shared/acrylic';
+
+const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
+const ACCENT_ENABLE_BLURBEHIND = 3;
+const WCA_ACCENT_POLICY = 19;
+
+
+// 注意：Electron getNativeWindowHandle() 返回的是句柄值的 Buffer，
+// 传给 koffi 时必须读出数值并按 int64 传递，不能把 Buffer 当指针。
+function hwndValue(hwnd: Buffer): number {
+  return Number(hwnd.readBigUInt64LE(0));
+}
+
+// Win10 1803+ / Win11：为透明窗口启用系统 Acrylic 模糊；
+// 失败时级联到普通 Blur，再失败返回 false 由上层回退纯色。
+export function applyAcrylic(hwndBuffer: Buffer): boolean {
+  const hwnd = hwndValue(hwndBuffer);
+  const gradient = buildGradientColor(ACRYLIC_TINT.a, ACRYLIC_TINT.b, ACRYLIC_TINT.g, ACRYLIC_TINT.r);
+  try {
+    const user32 = koffi.load('user32.dll');
+    const AccentPolicy = koffi.struct('AccentPolicy', {
+      AccentState: 'int32',
+      AccentFlags: 'uint32',
+      GradientColor: 'uint32',
+      AnimationId: 'int32'
+    });
+    const WCAData = koffi.struct('WCAData', {
+      Attribute: 'int32',
+      Data: 'AccentPolicy*',
+      SizeOfData: 'uint32'
+    });
+    koffi.sizeof(WCAData); // 确保结构体已注册，func 签名按名称引用
+    const setWindowCompositionAttribute = user32.func(
+      'int SetWindowCompositionAttribute(int64 hwnd, WCAData* data)'
+    );
+    const call = (state: number): boolean =>
+      setWindowCompositionAttribute(hwnd, {
+        Attribute: WCA_ACCENT_POLICY,
+        Data: { AccentState: state, AccentFlags: 0, GradientColor: gradient, AnimationId: 0 },
+        SizeOfData: koffi.sizeof(AccentPolicy)
+      }) !== 0;
+    if (call(ACCENT_ENABLE_ACRYLICBLURBEHIND)) return true;
+    return call(ACCENT_ENABLE_BLURBEHIND);
+  } catch {
+    return false;
+  }
+}
