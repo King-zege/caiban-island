@@ -31,7 +31,10 @@ export default function App(): React.JSX.Element {
   }, [handleEsc]);
 
   return (
-    <div className={'app level-' + level + ' backdrop-' + backdrop}>
+    <div
+      className={'app level-' + level + ' backdrop-' + backdrop}
+      onPointerDown={() => void window.api.activate()}
+    >
       {level === 'l1' && <L1Strip />}
       {level === 'l2' && <L2Panel />}
       {level === 'l3' && <L3Panel />}

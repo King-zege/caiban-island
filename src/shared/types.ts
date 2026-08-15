@@ -6,3 +6,5 @@ export interface WorkArea { x: number; y: number; width: number; height: number 
 export interface DisplayInfo { x: number; y: number; width: number; height: number; workArea: WorkArea }
 
 export interface IslandState { level: IslandLevel; backdrop: BackdropMode; paused: boolean }
+
+export * from './taskContracts';

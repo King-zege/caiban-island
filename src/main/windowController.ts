@@ -11,6 +11,7 @@ export class IslandWindowController {
   level: IslandLevel = 'l1';
   backdrop: BackdropMode = 'fallback';
   paused = false;
+  private l2Detail = false;
 
   private dwellTimer: NodeJS.Timeout | null = null;
   private leaveTimer: NodeJS.Timeout | null = null;
@@ -69,8 +70,14 @@ export class IslandWindowController {
   boundsFor(level: IslandLevel): Rect {
     const d = this.primaryDisplay();
     if (level === 'l1') return computeL1Bounds(d);
-    if (level === 'l2') return computeL2Bounds(d);
+    if (level === 'l2') return computeL2Bounds(d, this.l2Detail);
     return computeL3Bounds(d);
+  }
+
+  setL2Detail(v: boolean): void {
+    if (this.l2Detail === v) return;
+    this.l2Detail = v;
+    if (this.level === 'l2') this.animateBounds(this.boundsFor('l2'));
   }
 
   // Windows 无原生窗口动画，用主进程定时器做弹簧式形变

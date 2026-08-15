@@ -3,6 +3,11 @@ import path from 'node:path';
 import { IslandWindowController } from './windowController';
 import { registerIpc } from './ipc';
 import { createTray } from './tray';
+import { openDatabase } from './db';
+import { TaskService } from './taskService';
+
+// 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
+app.setPath('userData', path.join(app.getPath('appData'), 'caiban-island'));
 
 let controller: IslandWindowController | null = null;
 
@@ -38,6 +43,9 @@ if (!gotLock) {
     });
     win.setAlwaysOnTop(true, 'screen-saver');
 
+    const db = openDatabase(path.join(app.getPath('userData'), 'island.db'));
+    const tasks = new TaskService(db);
+
     if (process.env['ELECTRON_RENDERER_URL']) {
       await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
     } else {
@@ -46,7 +54,7 @@ if (!gotLock) {
 
     controller = new IslandWindowController(win);
     await controller.init();
-    registerIpc(controller);
+    registerIpc(controller, tasks);
     createTray(controller);
   }
 

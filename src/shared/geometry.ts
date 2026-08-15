@@ -6,9 +6,11 @@ export const ISLAND = {
   L1_OFFSET_ABOVE: 2,      // 窗口向上偏移，仅露约 4px
   L2_WIDTH: 760,
   L2_HEIGHT: 280,
+  L2_HEIGHT_DETAIL: 480,
   L2_MIN_WIDTH: 560,
   L2_MAX_WIDTH_RATIO: 0.8,
   L2_MAX_HEIGHT_RATIO: 0.45,
+  L2_DETAIL_HEIGHT_RATIO: 0.68,
   L3_MAX_WIDTH_RATIO: 0.85,
   L3_MAX_HEIGHT_RATIO: 0.85,
   L3_VERTICAL_POSITION: 0.08,
@@ -26,11 +28,13 @@ export function computeL1Bounds(display: DisplayInfo): Rect {
   };
 }
 
-export function computeL2Bounds(display: DisplayInfo): Rect {
+export function computeL2Bounds(display: DisplayInfo, detail = false): Rect {
   let w = Math.min(ISLAND.L2_WIDTH, Math.floor(display.width * ISLAND.L2_MAX_WIDTH_RATIO));
   w = Math.max(Math.min(ISLAND.L2_MIN_WIDTH, display.width), w);
   if (w > display.width) w = display.width;
-  const h = Math.min(ISLAND.L2_HEIGHT, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
+  const h = detail
+    ? Math.min(ISLAND.L2_HEIGHT_DETAIL, Math.floor(display.height * ISLAND.L2_DETAIL_HEIGHT_RATIO))
+    : Math.min(ISLAND.L2_HEIGHT, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
   return {
     x: display.x + Math.round((display.width - w) / 2),
     y: Math.max(display.y, display.workArea.y),

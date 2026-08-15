@@ -28,6 +28,11 @@ describe('computeL2Bounds', () => {
     expect(b.width).toBe(640);
     expect(b.width).toBeLessThanOrEqual(800);
   });
+  it('detail 模式加高（速览/表单态）', () => {
+    const b = computeL2Bounds(display, true);
+    expect(b.height).toBe(ISLAND.L2_HEIGHT_DETAIL);
+    expect(b.width).toBe(760);
+  });
   it('任务栏在顶部时贴工作区顶边', () => {
     const d: DisplayInfo = { x: 0, y: 0, width: 1920, height: 1080, workArea: { x: 0, y: 32, width: 1920, height: 1048 } };
     const b = computeL2Bounds(d);
