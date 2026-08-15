@@ -33,6 +33,30 @@ export interface TaskNode {
   position: number;
 }
 
+export interface NodeInput {
+  title: string;
+  description: string;
+  startUtc: string | null;
+  endUtc: string | null;
+}
+
+export type LinkKind = 'url' | 'file';
+
+export interface TaskLink {
+  id: string;
+  taskId: string;
+  kind: LinkKind;
+  title: string;
+  target: string;
+  meta: string;
+}
+
+export interface LinkInput {
+  kind: LinkKind;
+  title: string;
+  target: string;
+}
+
 export interface TaskInput {
   name: string;
   description: string;
@@ -52,6 +76,13 @@ export interface TaskCard {
   task: Task;
   progress: ProgressInfo;
   overdue: boolean;
+}
+
+export interface TaskDetail {
+  task: Task;
+  nodes: TaskNode[];
+  links: TaskLink[];
+  note: string;
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };

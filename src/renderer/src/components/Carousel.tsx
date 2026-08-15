@@ -6,13 +6,21 @@ interface CarouselProps {
   itemWidth: number;
   gap: number;
   children: ReactNode[];
+  onCardClick?: (index: number) => void;
 }
 
-export default function Carousel({ itemWidth, gap, children }: CarouselProps): React.JSX.Element {
+export default function Carousel({ itemWidth, gap, children, onCardClick }: CarouselProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState(0);
   const [viewport, setViewport] = useState(0);
-  const drag = useRef<{ startX: number; startOffset: number; lastX: number; lastT: number; v: number } | null>(null);
+  const drag = useRef<{
+    startX: number;
+    startOffset: number;
+    lastX: number;
+    lastT: number;
+    v: number;
+    totalMove: number;
+  } | null>(null);
   const rafRef = useRef<number | null>(null);
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -38,7 +46,6 @@ export default function Carousel({ itemWidth, gap, children }: CarouselProps): R
     rafRef.current = requestAnimationFrame(step);
   }, []);
 
-  // 惯性滚动（松手后按速度衰减）
   const inertia = useCallback(
     (start: number, velocity: number) => {
       stopAnim();
@@ -67,7 +74,7 @@ export default function Carousel({ itemWidth, gap, children }: CarouselProps): R
     stopAnim();
     if (wheelTimer.current) clearTimeout(wheelTimer.current);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { startX: e.clientX, startOffset: offset, lastX: e.clientX, lastT: performance.now(), v: 0 };
+    drag.current = { startX: e.clientX, startOffset: offset, lastX: e.clientX, lastT: performance.now(), v: 0, totalMove: 0 };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -76,9 +83,10 @@ export default function Carousel({ itemWidth, gap, children }: CarouselProps): R
     const now = performance.now();
     const dx = e.clientX - d.lastX;
     const dt = Math.max(8, now - d.lastT);
-    d.v = (dx / dt) * 1000 * 0.6 + d.v * 0.4; // 指数平滑速度
+    d.v = (dx / dt) * 1000 * 0.6 + d.v * 0.4;
     d.lastX = e.clientX;
     d.lastT = now;
+    d.totalMove += Math.abs(e.clientX - d.startX);
     setOffset(clampOffset(d.startOffset + (e.clientX - d.startX), physics));
   };
 
@@ -90,6 +98,11 @@ export default function Carousel({ itemWidth, gap, children }: CarouselProps): R
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
       // 忽略释放失败
+    }
+    // 位移极小视为点击（选择卡片）
+    if (d.totalMove < 10 && onCardClick) {
+      onCardClick(Math.max(0, Math.min(children.length - 1, Math.round(-offset / (itemWidth + gap)))));
+      return;
     }
     const target = snapOffsetWithVelocity(offset, d.v, physics);
     if (Math.abs(d.v) > 900) inertia(offset, d.v * 0.5);

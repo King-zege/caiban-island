@@ -29,23 +29,25 @@
 - **renderer（React UI）**：组件、面板、Zustand 状态；不直接访问 Node/DB/文件/网络，一切经 IPC。
 - **shared**：类型、IPC 通道名、设计 token 常量、schema 校验器（main 与测试复用）。
 
-## 4. IPC 通道白名单（P2 起实现）
+## 4. IPC 通道白名单
 
 | 通道 | 方向 | 说明 |
 | --- | --- | --- |
-| tasks:list / get / create / update / complete / cancel / delete | renderer→main | 任务 CRUD；删除需二次确认 |
-| drafts:list / get / confirm / discard | renderer→main | 草稿审核 |
-| nodes:setStatus / reorder / add / update / remove | renderer→main | 节点操作 |
-| links:add / update / remove / relocate | renderer→main | 链接管理 |
-| archive:list / search / get / restore | renderer→main | 归档查询与恢复 |
-| settings:get / set / testApi | renderer→main | 设置与连接测试 |
-| feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出 |
-| mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置 |
-| system:openUrl / openPath / showInFolder / openDataDir | renderer→main | 系统打开动作 |
-| window:setLevel / moveTo / getState | renderer→main | 窗口三级控制 |
-| app:quit | renderer→main | 托盘退出 |
+| tasks:list / detail / create / update / complete / cancel | renderer→main | 任务 CRUD 与详情（完成/取消即归档） |
+| nodes:add / update / remove / setStatus / reorder | renderer→main | 节点操作（三态、排序） |
+| links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
+| notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
+| drafts:list / get / confirm / discard | renderer→main | AI 草稿审核（P5） |
+| archive:list / search / get / restore | renderer→main | 归档查询与恢复（P4） |
+| settings:get / set / testApi | renderer→main | 设置与连接测试（P4） |
+| feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出（P6） |
+| mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置（P5） |
+| system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |
+| window:setLevel / setL2Detail / activate | renderer→main | 窗口三级控制、速览加高、焦点激活 |
+| ui:interacting / island:togglePause / app:quit | renderer→main | 交互态、暂停、退出 |
+| debug:sendKey / sendTab（仅 ISLAND_DEBUG） | renderer→main | 自动化验证输入注入 |
 
-所有通道入参与出参类型在 shared 定义；renderer 收到的错误为可操作的中文消息。
+所有通道入参与出参类型在 shared 定义；renderer 收到的错误为可操作的中文消息；业务通道统一返回 { ok, data | error }。
 
 ## 5. 数据模型与 SQLite
 

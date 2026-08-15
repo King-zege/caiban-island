@@ -1,8 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateTaskInput } from '../shared/validation';
+import { validateNodeInput, validateTaskInput } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
-import type { Task, TaskCard, TaskInput } from '../shared/taskContracts';
+import type {
+  LinkInput,
+  LinkKind,
+  NodeInput,
+  NodeStatus,
+  Task,
+  TaskCard,
+  TaskDetail,
+  TaskInput,
+  TaskLink,
+  TaskNode
+} from '../shared/taskContracts';
 
 function toTask(row: Record<string, unknown>): Task {
   return {
@@ -16,6 +27,30 @@ function toTask(row: Record<string, unknown>): Task {
     status: String(row.status) as Task['status'],
     createdAtUtc: String(row.created_at),
     updatedAtUtc: String(row.updated_at)
+  };
+}
+
+function toNode(row: Record<string, unknown>): TaskNode {
+  return {
+    id: String(row.id),
+    taskId: String(row.task_id),
+    title: String(row.title),
+    description: String(row.description),
+    startUtc: row.start_utc === null ? null : String(row.start_utc),
+    endUtc: row.end_utc === null ? null : String(row.end_utc),
+    status: String(row.status) as NodeStatus,
+    position: Number(row.position)
+  };
+}
+
+function toLink(row: Record<string, unknown>): TaskLink {
+  return {
+    id: String(row.id),
+    taskId: String(row.task_id),
+    kind: String(row.kind) as LinkKind,
+    title: String(row.title),
+    target: String(row.target),
+    meta: String(row.meta)
   };
 }
 
@@ -49,6 +84,19 @@ export class TaskService {
   getTask(id: string): Task | null {
     const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     return row ? toTask(row) : null;
+  }
+
+  getTaskDetail(id: string): TaskDetail {
+    const task = this.getTask(id);
+    if (!task) throw new TaskError('任务不存在');
+    const nodes = (
+      this.db.prepare('SELECT * FROM nodes WHERE task_id = ? ORDER BY position').all(id) as unknown as Record<string, unknown>[]
+    ).map(toNode);
+    const links = (
+      this.db.prepare('SELECT * FROM links WHERE task_id = ? ORDER BY rowid').all(id) as unknown as Record<string, unknown>[]
+    ).map(toLink);
+    const noteRow = this.db.prepare('SELECT body FROM notes WHERE task_id = ?').get(id) as { body: string } | undefined;
+    return { task, nodes, links, note: noteRow ? noteRow.body : '' };
   }
 
   createTask(input: TaskInput): Task {
@@ -108,6 +156,138 @@ export class TaskService {
       .run('archived', now, outcome, now, id);
     this.logEvent(id, 'task_archived', JSON.stringify({ outcome }));
     return this.getTask(id) as Task;
+  }
+
+  // —— 节点 ——
+  addNode(taskId: string, input: NodeInput): TaskNode {
+    const task = this.getTask(taskId);
+    if (!task) throw new TaskError('任务不存在');
+    if (task.kind === 'misc') throw new TaskError('杂事不支持节点时间轴');
+    const v = validateNodeInput(input);
+    if (!v.ok) throw new TaskError(v.errors.join('；'));
+    const maxRow = this.db.prepare('SELECT MAX(position) AS m FROM nodes WHERE task_id = ?').get(taskId) as { m: number | null };
+    const node: TaskNode = {
+      id: randomUUID(),
+      taskId,
+      title: input.title.trim(),
+      description: input.description.trim(),
+      startUtc: input.startUtc,
+      endUtc: input.endUtc,
+      status: 'pending',
+      position: (maxRow.m ?? -1) + 1
+    };
+    this.db
+      .prepare('INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position) VALUES(?,?,?,?,?,?,?,?)')
+      .run(node.id, node.taskId, node.title, node.description, node.startUtc, node.endUtc, node.status, node.position);
+    this.logEvent(taskId, 'node_added', JSON.stringify({ nodeId: node.id, title: node.title }));
+    return node;
+  }
+
+  updateNode(nodeId: string, input: NodeInput): TaskNode {
+    const row = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskError('节点不存在');
+    const v = validateNodeInput(input);
+    if (!v.ok) throw new TaskError(v.errors.join('；'));
+    this.db
+      .prepare('UPDATE nodes SET title=?, description=?, start_utc=?, end_utc=? WHERE id=?')
+      .run(input.title.trim(), input.description.trim(), input.startUtc, input.endUtc, nodeId);
+    this.logEvent(String(row.task_id), 'node_updated', JSON.stringify({ nodeId }));
+    return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown>);
+  }
+
+  removeNode(nodeId: string): void {
+    const row = this.db.prepare('SELECT task_id, position FROM nodes WHERE id = ?').get(nodeId) as
+      | { task_id: string; position: number }
+      | undefined;
+    if (!row) throw new TaskError('节点不存在');
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('DELETE FROM nodes WHERE id = ?').run(nodeId);
+      this.db.prepare('UPDATE nodes SET position = position - 1 WHERE task_id = ? AND position > ?').run(row.task_id, row.position);
+      this.logEvent(row.task_id, 'node_removed', JSON.stringify({ nodeId }));
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  setNodeStatus(nodeId: string, status: NodeStatus): TaskNode {
+    const valid: NodeStatus[] = ['pending', 'in_progress', 'completed'];
+    if (!valid.includes(status)) throw new TaskError('无效的节点状态');
+    const row = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskError('节点不存在');
+    this.db.prepare('UPDATE nodes SET status = ? WHERE id = ?').run(status, nodeId);
+    this.logEvent(String(row.task_id), 'node_status', JSON.stringify({ nodeId, status }));
+    return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown>);
+  }
+
+  reorderNodes(taskId: string, orderedIds: string[]): void {
+    const task = this.getTask(taskId);
+    if (!task) throw new TaskError('任务不存在');
+    const rows = this.db.prepare('SELECT id FROM nodes WHERE task_id = ?').all(taskId) as unknown as { id: string }[];
+    const ids = new Set(rows.map((r) => r.id));
+    if (orderedIds.length !== rows.length || orderedIds.some((id) => !ids.has(id))) {
+      throw new TaskError('节点列表与任务不匹配');
+    }
+    this.db.exec('BEGIN');
+    try {
+      orderedIds.forEach((id, idx) => this.db.prepare('UPDATE nodes SET position = ? WHERE id = ?').run(idx, id));
+      this.logEvent(taskId, 'nodes_reordered', JSON.stringify({ count: orderedIds.length }));
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  // —— 链接 ——
+  addLink(taskId: string, input: LinkInput): TaskLink {
+    const task = this.getTask(taskId);
+    if (!task) throw new TaskError('任务不存在');
+    const target = input.target.trim();
+    if (input.kind === 'url') {
+      if (!/^https?:\/\/\S+$/i.test(target)) throw new TaskError('网址仅支持 http/https');
+    } else {
+      if (target.length === 0) throw new TaskError('文件路径不能为空');
+    }
+    const link: TaskLink = {
+      id: randomUUID(),
+      taskId,
+      kind: input.kind,
+      title: input.title.trim() || target,
+      target,
+      meta: JSON.stringify({ addedAt: new Date().toISOString() })
+    };
+    this.db.prepare('INSERT INTO links(id, task_id, kind, title, target, meta) VALUES(?,?,?,?,?,?)').run(
+      link.id,
+      link.taskId,
+      link.kind,
+      link.title,
+      link.target,
+      link.meta
+    );
+    this.logEvent(taskId, 'link_added', JSON.stringify({ linkId: link.id, kind: link.kind }));
+    return link;
+  }
+
+  removeLink(linkId: string): void {
+    const row = this.db.prepare('SELECT task_id FROM links WHERE id = ?').get(linkId) as { task_id: string } | undefined;
+    if (!row) throw new TaskError('链接不存在');
+    this.db.prepare('DELETE FROM links WHERE id = ?').run(linkId);
+    this.logEvent(row.task_id, 'link_removed', JSON.stringify({ linkId }));
+  }
+
+  // —— 备注 ——
+  saveNote(taskId: string, body: string): void {
+    const task = this.getTask(taskId);
+    if (!task) throw new TaskError('任务不存在');
+    const now = new Date().toISOString();
+    // 每任务一条备注：以 taskId 为主键，幂等更新
+    this.db
+      .prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at')
+      .run(taskId, taskId, body, now);
+    this.logEvent(taskId, 'note_saved', JSON.stringify({ chars: body.length }));
   }
 
   private logEvent(taskId: string, kind: string, detail: string): void {

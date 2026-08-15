@@ -1,4 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useTaskStore } from '../state/useStore';
+import TaskEditor from '../components/TaskEditor';
 
 type Tab = 'edit' | 'draft' | 'archive' | 'settings';
 const TABS: { id: Tab; label: string }[] = [
@@ -10,6 +12,26 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function L3Panel(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('edit');
+  const tasks = useTaskStore((s) => s.tasks);
+  const load = useTaskStore((s) => s.load);
+  const detail = useTaskStore((s) => s.detail);
+  const openDetail = useTaskStore((s) => s.openDetail);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // 从 L2 速览进入时选中 detail；否则默认第一个任务
+  useEffect(() => {
+    if (selectedId) return;
+    const id = detail ? detail.task.id : tasks.length > 0 ? tasks[0].task.id : null;
+    if (id) {
+      setSelectedId(id);
+      if (!detail) void openDetail(id);
+    }
+  }, [detail, tasks, selectedId, openDetail]);
+
   const press = useCallback((v: boolean) => () => void window.api.interacting(v), []);
 
   return (
@@ -40,7 +62,40 @@ export default function L3Panel(): React.JSX.Element {
         ))}
       </nav>
       <div className="l3-content">
-        <span className="placeholder">P2+：{TABS.find((t) => t.id === tab)?.label} 内容</span>
+        {tab === 'edit' && (
+          <>
+            {tasks.length === 0 ? (
+              <span className="placeholder">暂无任务</span>
+            ) : (
+              <>
+                <div className="task-picker">
+                  {tasks.map((c) => (
+                    <button
+                      key={c.task.id}
+                      className={'chip-btn' + (selectedId === c.task.id ? ' active' : '')}
+                      onClick={() => {
+                        setSelectedId(c.task.id);
+                        void openDetail(c.task.id);
+                      }}
+                    >
+                      {c.task.name}
+                    </button>
+                  ))}
+                </div>
+                {detail && detail.task.id === selectedId ? (
+                  <div className="editor-scroll">
+                    <TaskEditor detail={detail} />
+                  </div>
+                ) : (
+                  <span className="placeholder">加载中…</span>
+                )}
+              </>
+            )}
+          </>
+        )}
+        {tab === 'draft' && <span className="placeholder">P5：AI 草稿审核</span>}
+        {tab === 'archive' && <span className="placeholder">P4：归档</span>}
+        {tab === 'settings' && <span className="placeholder">P4：设置</span>}
       </div>
     </div>
   );

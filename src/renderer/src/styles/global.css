@@ -444,3 +444,419 @@ body,
   background: #7ddbff;
 }
 
+/* —— 时间轴 —— */
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  min-height: 64px;
+}
+
+.timeline-item {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.timeline-connector {
+  width: 28px;
+  height: 2px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.timeline-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-chip);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.timeline-chip:hover {
+  background: var(--surface-card-hover);
+}
+
+.timeline-chip:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.timeline-chip.status-pending { border-color: rgba(255, 214, 10, 0.55); }
+.timeline-chip.status-in-progress { border-color: rgba(10, 132, 255, 0.55); }
+.timeline-chip.status-completed { border-color: rgba(50, 215, 75, 0.55); }
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-pending .chip-dot { background: var(--node-pending); }
+.status-in-progress .chip-dot { background: var(--node-in-progress); }
+.status-completed .chip-dot { background: var(--node-completed); }
+
+.chip-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.chip-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+
+.chip-dates {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.timeline-empty {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* —— 速览详情 —— */
+.detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+  box-sizing: border-box;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.icon-btn {
+  min-width: 36px;
+  width: 36px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.detail-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+  word-break: break-all;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detail-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+}
+
+.section-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.detail-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.note-preview {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn.danger-outline {
+  border: 1px solid rgba(255, 69, 58, 0.5);
+  background: transparent;
+  color: #ff6b61;
+}
+
+.btn.danger-outline:hover {
+  background: rgba(255, 69, 58, 0.12);
+}
+
+.confirm-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.confirm-text {
+  color: #ffb340;
+}
+
+/* —— 链接列表 —— */
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  background: var(--surface-card);
+  padding: 6px 10px;
+}
+
+.link-kind {
+  font-size: 14px;
+}
+
+.link-title {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--focus);
+  font-size: 13px;
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-action {
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.link-action:hover {
+  background: var(--surface-card-hover);
+  color: var(--text-primary);
+}
+
+.link-action.danger {
+  color: #ff6b61;
+}
+
+/* —— L3 编辑器 —— */
+.task-picker {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.editor-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.task-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 12px 16px;
+}
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-name {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.editor-meta {
+  display: flex;
+  gap: 6px;
+}
+
+.editor-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+
+.node-admin {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-admin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-admin-title {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn.small {
+  height: 28px;
+  min-width: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.inline-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.text-input.grow {
+  flex: 2;
+  min-width: 180px;
+}
+
+.text-input.grow-half {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* —— 备注 —— */
+.markdown-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-toolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 140px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: var(--font);
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.note-textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.markdown-preview {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  min-height: 140px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3 {
+  margin: 0.6em 0 0.3em;
+}
+
+.markdown-preview p {
+  margin: 0.4em 0;
+}
+
+.markdown-preview ul, .markdown-preview ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+
+.markdown-preview code {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+.markdown-preview a {
+  color: var(--focus);
+}
+
+.note-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.note-saved {
+  font-size: 12px;
+  color: var(--node-completed);
+}
+
+
