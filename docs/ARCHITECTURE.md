@@ -119,8 +119,11 @@
 
 ## 6. MCP 契约（Qoder 主通道）
 
-- **传输 1（SSE，主）**：GUI 启动后监听 http://127.0.0.1:<随机端口>/mcp?token=<随机令牌>；仅绑定回环地址；token 为 24 位随机 base64url，可在设置页复制/重置。
-- **传输 2（STDIO，备）**：采办岛.exe --mcp-stdio 启动 stdio MCP 服务，转发到 GUI 的本地端点；GUI 未运行时自动拉起 GUI。
+- **传输 1（SSE，主）**：GUI 启动后监听 http://127.0.0.1:<随机端口>/sse?token=<随机令牌>（经典 SSE，Qoder 桌面 IDE 的 SSE 模式）；仅绑定回环地址；token 为 24 字节随机 base64url，可在设置页复制/重置。
+- **传输 2（Streamable HTTP）**：http://127.0.0.1:<随机端口>/mcp?token=<随机令牌>（Qoder CLI -t http 使用；原始握手已验证）。
+- **传输 3（STDIO，备）**：`node "<应用目录>/scripts/caiban-stdio.mjs"` 桥接脚本，把 stdio JSON-RPC 转发到 GUI 的 SSE 端点；GUI 未运行时自动拉起。注意：Windows GUI 子系统程序没有可用 stdio 管道，不能用 exe 直接做 stdio MCP（已踩坑记录）。
+- **鉴权**：仅"创建会话"的请求校验 token（错误 token 返回 401）；携带 sessionId 的后续请求以随机会话 ID 本身为凭据（SDK 客户端从 endpoint 事件拿到的地址不含原 URL 的 token）。
+- **会话模型**：每个会话使用独立的 MCP Server 实例（Server 只能连接一个传输，重复 connect 会返回 400 "Server already initialized"）。
 - **工具集**（全部"只读 + 草稿"，禁止直接修改正式数据）：
 
 | 工具 | 参数 | 返回 |
@@ -130,9 +133,7 @@
 | propose_task_draft | draft{name, description?, deadline?, urgency?, nodes[]} | draft_id 与校验结果；草稿进入岛内审核面板 |
 | propose_node_draft | task_id, nodes[] | draft_id；为已有任务建议节点拆解 |
 
-- 认证：token 校验失败一律 401；来源非 127.0.0.1 一律拒绝。
 - 日志：只记录工具名、耗时、成功/失败类别；禁止记录请求正文与敏感内容。
-
 ## 7. 内置 LLM 兜底通道
 
 - 配置：Base URL、API Key、模型名（设置页；Key 经 safeStorage 加密落盘）。

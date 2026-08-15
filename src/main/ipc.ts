@@ -1,10 +1,24 @@
+import { randomBytes } from 'node:crypto';
+import path from 'node:path';
 import { app, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { IslandWindowController } from './windowController';
 import type { AppService } from './appService';
+import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
 
 export function registerIpc(c: IslandWindowController, appSvc: AppService): void {
+  const mcpConfig = () => {
+    const port = Number(appSvc.settings.get('mcp_port') ?? 0);
+    const token = appSvc.settings.get('mcp_token') ?? '';
+    const bridge = path.join(app.getAppPath(), 'scripts', 'caiban-stdio.mjs');
+    return {
+      url: 'http://127.0.0.1:' + port + '/mcp?token=' + token,
+      token,
+      port,
+      stdioCommand: 'node "' + bridge + '"'
+    };
+  };
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
     c.setLevel(level);
     return true;
@@ -95,6 +109,47 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService): void
   ipcMain.handle('app:openDataDir', async () => {
     const err = await shell.openPath(app.getPath('userData'));
     return err === '' ? { ok: true, data: true } : { ok: false, error: err };
+  });
+
+  // —— AI 草稿 ——
+  ipcMain.handle('drafts:list', () => wrap(() => appSvc.drafts.listPending()));
+  ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
+  ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
+  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.confirm(id)));
+
+  // —— MCP 配置 ——
+  ipcMain.handle('mcp:getConfig', () => wrap(() => mcpConfig()));
+  ipcMain.handle('mcp:resetToken', () => {
+    const token = randomBytes(24).toString('base64url');
+    appSvc.settings.set('mcp_token', token);
+    return { ok: true, data: mcpConfig() };
+  });
+
+  // —— 内置 AI ——
+  ipcMain.handle('ai:status', () => wrap(() => appSvc.llm.status()));
+  ipcMain.handle('ai:saveConfig', (_e: IpcMainInvokeEvent, baseUrl: string, model: string, key: string) => {
+    try {
+      appSvc.llm.saveConfig(baseUrl, model, key);
+      return { ok: true, data: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('ai:test', async () => {
+    try {
+      const msg = await appSvc.llm.test();
+      return { ok: true, data: msg };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('ai:breakdown', async (_e: IpcMainInvokeEvent, description: string) => {
+    try {
+      const draft = await appSvc.llm.breakdown(description);
+      return { ok: true, data: draft };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // —— 系统打开动作 ——

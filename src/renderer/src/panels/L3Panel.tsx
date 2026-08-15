@@ -3,6 +3,7 @@ import { useTaskStore } from '../state/useStore';
 import TaskEditor from '../components/TaskEditor';
 import ArchiveView from '../components/ArchiveView';
 import SettingsView from '../components/SettingsView';
+import DraftsPanel from '../components/DraftsPanel';
 
 type Tab = 'edit' | 'draft' | 'archive' | 'settings';
 const TABS: { id: Tab; label: string }[] = [
@@ -95,7 +96,11 @@ export default function L3Panel(): React.JSX.Element {
             )}
           </>
         )}
-        {tab === 'draft' && <span className="placeholder">P5：AI 草稿审核</span>}
+        {tab === 'draft' && (
+          <div className="editor-scroll">
+            <DraftsPanel />
+          </div>
+        )}
         {tab === 'archive' && (
           <div className="editor-scroll">
             <ArchiveView />

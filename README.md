@@ -34,13 +34,19 @@
 
 ## Qoder MCP 配置（P5 起可用）
 
-1. 启动采办岛，打开 L3 → 设置 → MCP；
-2. 复制 SSE 地址（形如 http://127.0.0.1:端口/mcp?token=令牌）；
+**方式一（推荐）：SSE**
+
+1. 启动采办岛，打开 L3 → 设置 → Qoder MCP；
+2. 复制 SSE 地址（形如 http://127.0.0.1:端口/sse?token=令牌）；
 3. 打开 Qoder 独立桌面 IDE → 个人设置 → MCP 服务 → 添加 → 类型选 SSE → 粘贴地址；
 4. 在 Qoder 智能体模式下对话，例如："帮我把《XX设备采购》拆成时间节点"；
 5. 草稿出现在采办岛 L3 的 AI 草稿审核中，逐节点保留/删除/修改/排序后确认，即可生成任务卡片。
 
-如 SSE 不可用，改用 STDIO 备用命令（设置页显示说明）。
+**方式二（备用）：STDIO**
+
+设置页提供 node 桥接命令（node "<应用目录>/scripts/caiban-stdio.mjs"），在 Qoder 的 MCP 服务中选择 STDIO 类型并粘贴该命令；桥接脚本会自动拉起采办岛并把 stdio 转发到 SSE 端点。
+
+内置 AI 兜底通道：设置 → 内置 AI 配置任意 OpenAI 兼容 API（Base URL/模型/Key），即可在 AI 草稿审核页直接"用 AI 拆解"。
 
 ## 免证书绿色版与 SmartScreen
 

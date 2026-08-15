@@ -55,6 +55,7 @@
 - 透明窗口：BrowserWindow(frame:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, hasShadow:false)；置顶层级用 screen-saver 级别，但不得挡住真正全屏应用（P7 检测）。
 - 点击穿透：折叠态用 setIgnoreMouseEvents(true, {forward:true}) 配合屏幕坐标轮询热区；禁止大范围透明覆盖窗口吞掉下层点击。
 - 磨砂：koffi 调用 SetWindowCompositionAttribute（ACCENT_ENABLE_ACRYLICBLURBEHIND，失败级联 BLURBEHIND）；HWND 必须从 getNativeWindowHandle() 的 Buffer 读出数值按 int64 传参（把 Buffer 当指针会静默失败）；全部失败回退纯色 #111216；高对比度/减少动画时关闭。
+- MCP/stdio：Windows GUI 子系统程序（Electron 打包的 exe）没有可用 stdio 管道，无法直接做 STDIO MCP 服务；使用 scripts/caiban-stdio.mjs（Node）桥接到 GUI 的 SSE 端点。MCP Server 实例只能连接一个传输，多会话须各自 new Server；"创建会话"请求才校验 token（sessionId 即会话凭据）。
 - DPI：per-monitor 感知；所有窗口尺寸用逻辑像素并做显示器换算。
 - 通知：app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标显示所需）；无证书不影响 Toast。
 - 单实例：app.requestSingleInstanceLock；二次启动时唤起已运行实例。

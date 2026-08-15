@@ -12,6 +12,13 @@ export default function SettingsView(): React.JSX.Element {
   const [autostart, setAutostart] = useState(false);
   const [acrylic, setAcrylic] = useState(true);
   const [paused, setPaused] = useState(false);
+  const [mcpConfig, setMcpConfig] = useState<{ url: string; stdioCommand: string } | null>(null);
+  const [aiStatus, setAiStatus] = useState<{ configured: boolean; baseUrl: string; model: string } | null>(null);
+  const [aiBase, setAiBase] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [aiKey, setAiKey] = useState('');
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
+  const [aiErr, setAiErr] = useState<string | null>(null);
 
   useEffect(() => {
     void window.api.getSettings().then((r) => {
@@ -20,6 +27,14 @@ export default function SettingsView(): React.JSX.Element {
       setDefaultOffsets(s.reminder_default_offsets ?? []);
       setAutostart(s.autostart === true);
       setAcrylic(s.acrylic_disabled !== true);
+    });
+    void window.api.getMcpConfig().then((r) => r.ok && setMcpConfig(r.data as { url: string; stdioCommand: string }));
+    void window.api.getAiStatus().then((r) => {
+      if (!r.ok) return;
+      const s = r.data as { configured: boolean; baseUrl: string; model: string };
+      setAiStatus(s);
+      setAiBase(s.baseUrl);
+      setAiModel(s.model);
     });
   }, []);
 
@@ -76,6 +91,71 @@ export default function SettingsView(): React.JSX.Element {
             {paused ? '恢复' : '暂停'}
           </button>
         </div>
+      </section>
+
+      <section className="editor-section">
+        <h3 className="section-title">Qoder MCP（主通道）</h3>
+        <p className="detail-empty">在 Qoder 中注册此地址（个人设置 → MCP 服务 → 类型 SSE）：</p>
+        <code className="mcp-url">{mcpConfig ? mcpConfig.url : '加载中…'}</code>
+        <div className="setting-row">
+          <span>备用命令（类型 STDIO）：</span>
+        </div>
+        <code className="mcp-url">{mcpConfig ? mcpConfig.stdioCommand : ''}</code>
+        <div className="setting-row">
+          <button
+            className="btn small"
+            onClick={() => mcpConfig && void navigator.clipboard.writeText(mcpConfig.url)}
+          >
+            复制地址
+          </button>
+          <button
+            className="btn small danger-outline"
+            onClick={() => void window.api.resetMcpToken().then((r) => r.ok && setMcpConfig(r.data as { url: string; stdioCommand: string }))}
+          >
+            重置令牌
+          </button>
+        </div>
+      </section>
+
+      <section className="editor-section">
+        <h3 className="section-title">内置 AI（兜底通道）</h3>
+        <p className="detail-empty">{aiStatus?.configured ? '已配置（' + (aiStatus.model || '') + '）' : '未配置 — 配置后可在草稿页使用 AI 拆解'}</p>
+        <input className="text-input" value={aiBase} placeholder="Base URL，如 https://api.deepseek.com/v1" onChange={(e) => setAiBase(e.target.value)} />
+        <input className="text-input" value={aiModel} placeholder="模型名，如 deepseek-chat" onChange={(e) => setAiModel(e.target.value)} />
+        <input className="text-input" type="password" value={aiKey} placeholder="API Key（留空表示不修改）" onChange={(e) => setAiKey(e.target.value)} />
+        <div className="setting-row">
+          <button
+            className="btn small"
+            onClick={() => {
+              setAiErr(null);
+              setAiMsg(null);
+              void window.api.saveAiConfig(aiBase, aiModel, aiKey).then((r) => {
+                if (r.ok) {
+                  setAiMsg('已保存');
+                  setAiKey('');
+                  void window.api.getAiStatus().then((s) => s.ok && setAiStatus(s.data as { configured: boolean; baseUrl: string; model: string }));
+                } else setAiErr(r.error);
+              });
+            }}
+          >
+            保存配置
+          </button>
+          <button
+            className="btn small"
+            onClick={() => {
+              setAiErr(null);
+              setAiMsg(null);
+              void window.api.testAi().then((r) => {
+                if (r.ok) setAiMsg(r.data as string);
+                else setAiErr(r.error);
+              });
+            }}
+          >
+            测试连接
+          </button>
+        </div>
+        {aiMsg && <p className="note-saved">{aiMsg}</p>}
+        {aiErr && <p className="form-error">{aiErr}</p>}
       </section>
 
       <section className="editor-section">

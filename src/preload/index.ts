@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
+  DraftPayload,
+  DraftRecord,
+  MCPConfig,
+  AiStatus,
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
@@ -60,7 +64,20 @@ const api = {
 
   openUrl: (url: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openUrl', url),
   openPath: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openPath', p),
-  showInFolder: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:showInFolder', p)
+  showInFolder: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:showInFolder', p),
+
+  listDrafts: (): Promise<IpcResult<DraftRecord[]>> => ipcRenderer.invoke('drafts:list'),
+  updateDraft: (id: string, payload: DraftPayload): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:update', id, payload),
+  discardDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:discard', id),
+  confirmDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:confirm', id),
+
+  getMcpConfig: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:getConfig'),
+  resetMcpToken: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:resetToken'),
+
+  getAiStatus: (): Promise<IpcResult<AiStatus>> => ipcRenderer.invoke('ai:status'),
+  saveAiConfig: (baseUrl: string, model: string, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('ai:saveConfig', baseUrl, model, key),
+  testAi: (): Promise<IpcResult<string>> => ipcRenderer.invoke('ai:test'),
+  aiBreakdown: (description: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('ai:breakdown', description)
 };
 
 contextBridge.exposeInMainWorld('api', api);

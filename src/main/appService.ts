@@ -1,16 +1,20 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ArchiveService } from './archiveService';
+import { DraftService } from './draftService';
+import { LlmService } from './llmService';
 import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
-import type { LinkInput, NodeInput, NodeStatus, Task, TaskInput } from '../shared/taskContracts';
+import type { Task, TaskInput } from '../shared/taskContracts';
 
-// 组合根：任务/归档/提醒/设置 的跨服务事务编排
+// 组合根：任务/归档/提醒/设置/AI 的跨服务事务编排
 export class AppService {
   readonly tasks: TaskService;
   readonly archive: ArchiveService;
   readonly reminders: ReminderService;
   readonly settings: SettingsService;
+  readonly drafts: DraftService;
+  readonly llm: LlmService;
 
   constructor(
     db: DatabaseSync,
@@ -20,6 +24,8 @@ export class AppService {
     this.archive = new ArchiveService(db, this.dataDir);
     this.reminders = new ReminderService(db);
     this.settings = new SettingsService(db);
+    this.drafts = new DraftService(db);
+    this.llm = new LlmService(this, this.settings);
   }
 
   createTask(input: TaskInput): Task {
@@ -32,7 +38,6 @@ export class AppService {
 
   updateTask(id: string, input: TaskInput): Task {
     const t = this.tasks.updateTask(id, input);
-    // FR-063：deadline 变化后重算提醒时间
     this.reminders.recomputeForTask(id);
     return t;
   }
@@ -61,5 +66,3 @@ export class AppService {
     this.reminders.setOffsets(taskId, offsets);
   }
 }
-
-export type { LinkInput, NodeInput, NodeStatus };

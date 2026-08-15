@@ -8,3 +8,4 @@ export interface DisplayInfo { x: number; y: number; width: number; height: numb
 export interface IslandState { level: IslandLevel; backdrop: BackdropMode; paused: boolean }
 
 export * from './taskContracts';
+export * from './draftContracts';
