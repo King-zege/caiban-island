@@ -1,0 +1,65 @@
+import type { DatabaseSync } from 'node:sqlite';
+import { ArchiveService } from './archiveService';
+import { ReminderService } from './reminderService';
+import { SettingsService } from './settingsService';
+import { TaskService } from './taskService';
+import type { LinkInput, NodeInput, NodeStatus, Task, TaskInput } from '../shared/taskContracts';
+
+// 组合根：任务/归档/提醒/设置 的跨服务事务编排
+export class AppService {
+  readonly tasks: TaskService;
+  readonly archive: ArchiveService;
+  readonly reminders: ReminderService;
+  readonly settings: SettingsService;
+
+  constructor(
+    db: DatabaseSync,
+    private readonly dataDir: string
+  ) {
+    this.tasks = new TaskService(db);
+    this.archive = new ArchiveService(db, this.dataDir);
+    this.reminders = new ReminderService(db);
+    this.settings = new SettingsService(db);
+  }
+
+  createTask(input: TaskInput): Task {
+    const t = this.tasks.createTask(input);
+    // FR-060：设置中配置了全局默认提前量时自动添加提醒
+    const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
+    if (t.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(t.id, defaults);
+    return t;
+  }
+
+  updateTask(id: string, input: TaskInput): Task {
+    const t = this.tasks.updateTask(id, input);
+    // FR-063：deadline 变化后重算提醒时间
+    this.reminders.recomputeForTask(id);
+    return t;
+  }
+
+  completeTask(id: string): Task {
+    const t = this.tasks.setArchived(id, 'completed');
+    this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
+    this.reminders.disableForTask(id);
+    return t;
+  }
+
+  cancelTask(id: string): Task {
+    const t = this.tasks.setArchived(id, 'cancelled');
+    this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
+    this.reminders.disableForTask(id);
+    return t;
+  }
+
+  restoreTask(id: string): Task {
+    this.archive.restoreTask(id);
+    this.reminders.recomputeForTask(id);
+    return this.tasks.getTask(id) as Task;
+  }
+
+  setReminders(taskId: string, offsets: number[]): void {
+    this.reminders.setOffsets(taskId, offsets);
+  }
+}
+
+export type { LinkInput, NodeInput, NodeStatus };

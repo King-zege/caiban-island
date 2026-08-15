@@ -13,6 +13,8 @@ function task(partial: Partial<Task> & { id: string }): Task {
     status: 'active',
     createdAtUtc: '2026-01-01T00:00:00.000Z',
     updatedAtUtc: '2026-01-01T00:00:00.000Z',
+    archivedAt: null,
+    archiveOutcome: null,
     ...partial
   };
 }

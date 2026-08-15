@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
+  ArchivedItem,
+  ArchivedDetail,
   IslandLevel,
   IslandState,
   IpcResult,
@@ -43,6 +45,18 @@ const api = {
   addLink: (taskId: string, input: LinkInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('links:add', taskId, input),
   removeLink: (linkId: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('links:remove', linkId),
   saveNote: (taskId: string, body: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('notes:save', taskId, body),
+
+  listReminders: (taskId: string): Promise<IpcResult<number[]>> => ipcRenderer.invoke('reminders:list', taskId),
+  setReminders: (taskId: string, offsets: number[]): Promise<IpcResult<boolean>> => ipcRenderer.invoke('reminders:set', taskId, offsets),
+
+  listArchive: (): Promise<IpcResult<ArchivedItem[]>> => ipcRenderer.invoke('archive:list'),
+  searchArchive: (q: string, outcome?: string): Promise<IpcResult<ArchivedItem[]>> => ipcRenderer.invoke('archive:search', q, outcome),
+  getArchived: (id: string): Promise<IpcResult<ArchivedDetail>> => ipcRenderer.invoke('archive:get', id),
+  restoreTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('archive:restore', id),
+
+  getSettings: (): Promise<IpcResult<Record<string, unknown>>> => ipcRenderer.invoke('settings:getAll'),
+  setSetting: (key: string, value: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('settings:set', key, value),
+  openDataDir: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('app:openDataDir'),
 
   openUrl: (url: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openUrl', url),
   openPath: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openPath', p),

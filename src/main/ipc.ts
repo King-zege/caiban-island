@@ -1,10 +1,10 @@
 import { app, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { IslandWindowController } from './windowController';
-import type { TaskService } from './taskService';
+import type { AppService } from './appService';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
 
-export function registerIpc(c: IslandWindowController, tasks: TaskService): void {
+export function registerIpc(c: IslandWindowController, appSvc: AppService): void {
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
     c.setLevel(level);
     return true;
@@ -20,7 +20,6 @@ export function registerIpc(c: IslandWindowController, tasks: TaskService): void
     return true;
   });
   ipcMain.handle('window:activate', () => {
-    // 仅当窗口未聚焦时才激活；已聚焦时调用 focus() 会重置 DOM 焦点
     if (!c.win.isFocused()) c.win.focus();
     return true;
   });
@@ -28,7 +27,6 @@ export function registerIpc(c: IslandWindowController, tasks: TaskService): void
     app.quit();
     return true;
   });
-  // 调试通道（仅 ISLAND_DEBUG）：向渲染层注入键盘事件，用于自动化验证
   if (process.env.ISLAND_DEBUG === '1') {
     ipcMain.handle('debug:sendKey', (_e: IpcMainInvokeEvent, text: string) => {
       c.win.webContents.sendInputEvent({ type: 'char', keyCode: text });
@@ -41,27 +39,63 @@ export function registerIpc(c: IslandWindowController, tasks: TaskService): void
     });
   }
 
-  // —— 任务通道（统一 {ok, data|error} 返回）——
+  const { tasks, archive, reminders, settings } = appSvc;
+
   ipcMain.handle('tasks:list', () => wrap(() => tasks.listActive()));
   ipcMain.handle('tasks:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.getTaskDetail(id)));
-  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskInput) => wrap(() => tasks.createTask(input)));
-  ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => tasks.updateTask(id, input)));
-  ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.setArchived(id, 'completed')));
-  ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.setArchived(id, 'cancelled')));
+  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskInput) => wrap(() => appSvc.createTask(input)));
+  ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
+  ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.completeTask(id)));
+  ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
 
-  // —— 节点 ——
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => tasks.addNode(taskId, input)));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => tasks.updateNode(nodeId, input)));
   ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => tasks.removeNode(nodeId)));
   ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => tasks.setNodeStatus(nodeId, status)));
   ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => tasks.reorderNodes(taskId, orderedIds)));
 
-  // —— 链接 ——
   ipcMain.handle('links:add', (_e: IpcMainInvokeEvent, taskId: string, input: LinkInput) => wrap(() => tasks.addLink(taskId, input)));
   ipcMain.handle('links:remove', (_e: IpcMainInvokeEvent, linkId: string) => wrap(() => tasks.removeLink(linkId)));
 
-  // —— 备注 ——
   ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, taskId: string, body: string) => wrap(() => tasks.saveNote(taskId, body)));
+
+  // —— 提醒 ——
+  ipcMain.handle('reminders:list', (_e: IpcMainInvokeEvent, taskId: string) => wrap(() => reminders.offsetsForTask(taskId)));
+  ipcMain.handle('reminders:set', (_e: IpcMainInvokeEvent, taskId: string, offsets: number[]) => {
+    try {
+      appSvc.setReminders(taskId, offsets);
+      return { ok: true, data: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // —— 归档 ——
+  ipcMain.handle('archive:list', () => wrap(() => archive.listArchived()));
+  ipcMain.handle('archive:search', (_e: IpcMainInvokeEvent, q: string, outcome?: string) => wrap(() => archive.searchArchived(q, outcome)));
+  ipcMain.handle('archive:get', (_e: IpcMainInvokeEvent, id: string) => wrap(() => archive.getArchivedDetail(id)));
+  ipcMain.handle('archive:restore', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.restoreTask(id)));
+
+  // —— 设置 ——
+  ipcMain.handle('settings:getAll', () =>
+    wrap(() => ({
+      reminder_default_offsets: settings.getJson<number[]>('reminder_default_offsets', []),
+      autostart: settings.get('autostart') === '1',
+      acrylic_disabled: settings.get('acrylic_disabled') === '1'
+    }))
+  );
+  ipcMain.handle('settings:set', (_e: IpcMainInvokeEvent, key: string, value: string) => {
+    settings.set(key, value);
+    if (key === 'acrylic_disabled') c.applyBackdrop();
+    if (key === 'autostart') {
+      app.setLoginItemSettings({ openAtLogin: value === '1' });
+    }
+    return { ok: true, data: true };
+  });
+  ipcMain.handle('app:openDataDir', async () => {
+    const err = await shell.openPath(app.getPath('userData'));
+    return err === '' ? { ok: true, data: true } : { ok: false, error: err };
+  });
 
   // —— 系统打开动作 ——
   ipcMain.handle('system:openUrl', async (_e: IpcMainInvokeEvent, url: string) => {

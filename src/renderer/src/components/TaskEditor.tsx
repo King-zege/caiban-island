@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LinkInput, NodeInput, TaskDetail } from '../../../shared/types';
 import { useTaskStore } from '../state/useStore';
 import Timeline from './Timeline';
@@ -24,6 +24,22 @@ export default function TaskEditor({ detail }: { detail: TaskDetail }): React.JS
   const [linkError, setLinkError] = useState<string | null>(null);
   const [noteBody, setNoteBody] = useState(detail.note);
   const [noteSaved, setNoteSaved] = useState<boolean | null>(null);
+  const [remindOffsets, setRemindOffsets] = useState<number[]>([]);
+  const [remindLoaded, setRemindLoaded] = useState(false);
+
+  // 加载任务的提醒提前量
+  useEffect(() => {
+    void window.api.listReminders(task.id).then((r) => {
+      if (r.ok) setRemindOffsets(r.data);
+      setRemindLoaded(true);
+    });
+  }, [task.id]);
+
+  const toggleReminder = async (off: number) => {
+    const next = remindOffsets.includes(off) ? remindOffsets.filter((o) => o !== off) : [...remindOffsets, off].sort((a, b) => a - b);
+    setRemindOffsets(next);
+    await window.api.setReminders(task.id, next);
+  };
 
   const doAddNode = async () => {
     setNodeError(null);
@@ -47,6 +63,12 @@ export default function TaskEditor({ detail }: { detail: TaskDetail }): React.JS
     setLinkTarget('');
     setLinkTitle('');
   };
+
+  const REMINDER_CHOICES = [
+    { label: '提前 30 分钟', value: 30 },
+    { label: '提前 1 小时', value: 60 },
+    { label: '提前 1 天', value: 1440 }
+  ];
 
   const doSaveNote = async () => {
     setNoteSaved(null);
@@ -158,6 +180,25 @@ export default function TaskEditor({ detail }: { detail: TaskDetail }): React.JS
           </button>
         </div>
         {linkError && <p className="form-error">{linkError}</p>}
+      </section>
+
+      <section className="editor-section">
+        <h3 className="section-title">提醒（FR-060：需先设置截止时间）</h3>
+        {remindLoaded && (
+          <div className="chip-group">
+            {REMINDER_CHOICES.map((c) => (
+              <button
+                key={c.value}
+                className={'chip-btn' + (remindOffsets.includes(c.value) ? ' active' : '')}
+                disabled={!task.deadlineUtc}
+                onClick={() => void toggleReminder(c.value)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!task.deadlineUtc && <p className="detail-empty">未设置截止时间，无法添加提醒</p>}
       </section>
 
       <section className="editor-section">

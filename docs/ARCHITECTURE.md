@@ -37,9 +37,10 @@
 | nodes:add / update / remove / setStatus / reorder | renderer→main | 节点操作（三态、排序） |
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
+| reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
 | drafts:list / get / confirm / discard | renderer→main | AI 草稿审核（P5） |
-| archive:list / search / get / restore | renderer→main | 归档查询与恢复（P4） |
-| settings:get / set / testApi | renderer→main | 设置与连接测试（P4） |
+| archive:list / search / get / restore | renderer→main | 归档查询、恢复（快照导出在主进程完成/取消时执行） |
+| settings:getAll / set | renderer→main | 设置（默认提醒、自启、磨砂开关） |
 | feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出（P6） |
 | mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置（P5） |
 | system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |

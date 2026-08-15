@@ -26,7 +26,9 @@ function toTask(row: Record<string, unknown>): Task {
     tzId: String(row.tz_id),
     status: String(row.status) as Task['status'],
     createdAtUtc: String(row.created_at),
-    updatedAtUtc: String(row.updated_at)
+    updatedAtUtc: String(row.updated_at),
+    archivedAt: row.archived_at === null ? null : String(row.archived_at),
+    archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as Task['archiveOutcome'])
   };
 }
 
@@ -113,7 +115,9 @@ export class TaskService {
       tzId: input.tzId,
       status: 'active',
       createdAtUtc: now,
-      updatedAtUtc: now
+      updatedAtUtc: now,
+      archivedAt: null,
+      archiveOutcome: null
     };
     this.db.exec('BEGIN');
     try {

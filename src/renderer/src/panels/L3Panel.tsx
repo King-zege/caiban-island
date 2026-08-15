@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTaskStore } from '../state/useStore';
 import TaskEditor from '../components/TaskEditor';
+import ArchiveView from '../components/ArchiveView';
+import SettingsView from '../components/SettingsView';
 
 type Tab = 'edit' | 'draft' | 'archive' | 'settings';
 const TABS: { id: Tab; label: string }[] = [
@@ -94,8 +96,16 @@ export default function L3Panel(): React.JSX.Element {
           </>
         )}
         {tab === 'draft' && <span className="placeholder">P5：AI 草稿审核</span>}
-        {tab === 'archive' && <span className="placeholder">P4：归档</span>}
-        {tab === 'settings' && <span className="placeholder">P4：设置</span>}
+        {tab === 'archive' && (
+          <div className="editor-scroll">
+            <ArchiveView />
+          </div>
+        )}
+        {tab === 'settings' && (
+          <div className="editor-scroll">
+            <SettingsView />
+          </div>
+        )}
       </div>
     </div>
   );

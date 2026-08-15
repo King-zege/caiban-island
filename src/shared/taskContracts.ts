@@ -20,6 +20,8 @@ export interface Task {
   status: TaskStatus;
   createdAtUtc: string;
   updatedAtUtc: string;
+  archivedAt: string | null;
+  archiveOutcome: 'completed' | 'cancelled' | null;
 }
 
 export interface TaskNode {
@@ -83,6 +85,20 @@ export interface TaskDetail {
   nodes: TaskNode[];
   links: TaskLink[];
   note: string;
+}
+
+export interface ArchivedItem {
+  id: string;
+  name: string;
+  kind: string;
+  urgency: string;
+  outcome: 'completed' | 'cancelled';
+  archivedAt: string;
+}
+
+export interface ArchivedDetail {
+  task: TaskDetail;
+  events: Array<{ at: string; kind: string; detail: string }>;
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
