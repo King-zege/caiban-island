@@ -42,7 +42,7 @@
 
 | Token | 值 | 用途 |
 | --- | --- | --- |
-| Radius.Island | 28px | L2 / L3 外轮廓 |
+| Radius.Island | 40px | L2 / L3 外轮廓（柔化四角） |
 | Radius.Collapsed | 999px | L1 提示条胶囊 |
 | Radius.Card | 18px | 任务卡片、详情分区 |
 | Radius.Control | 12px | 输入框、按钮、菜单 |

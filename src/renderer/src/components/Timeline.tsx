@@ -36,6 +36,7 @@ export default function Timeline({ nodes, onStatus, editable = true }: TimelineP
             >
               <span className="chip-dot" />
               <span className="chip-text">
+                <span className={'chip-status ' + meta.cls}>{meta.label}</span>
                 <span className="chip-title">{n.title}</span>
                 {n.startUtc || n.endUtc ? (
                   <span className="chip-dates">
