@@ -28,7 +28,7 @@ export interface ProgressNodeLike {
 }
 
 export function computeProgress(nodes: ProgressNodeLike[]): ProgressInfo {
-  const ordered = [...nodes].sort((a, b) => a.position - b.position);
+  const ordered = nodes.filter((node) => node.status !== 'cancelled').sort((a, b) => a.position - b.position);
   if (ordered.length === 0) return { done: 0, total: 0, nextTitle: null };
   const done = ordered.filter((n) => n.status === 'completed').length;
   const next = ordered.find((n) => n.status !== 'completed');

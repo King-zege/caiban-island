@@ -47,7 +47,7 @@ export class IslandWindowController {
     return { x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height, workArea: { ...d.workArea } };
   }
 
-  applyBackdrop(): void {
+  applyBackdrop(broadcast = true): void {
     const scheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
     const highContrast = nativeTheme.shouldUseHighContrastColors;
     const reducedMotion = systemPreferences.getAnimationSettings().prefersReducedMotion;
@@ -58,19 +58,28 @@ export class IslandWindowController {
       : (disableAcrylic(this.win.getNativeWindowHandle()), false);
     this.backdrop = decideBackdrop(this.level, ok, highContrast, reducedMotion, disabled);
     dbg('backdrop=' + this.backdrop + ' acrylicOk=' + ok + ' highContrast=' + highContrast + ' reducedMotion=' + reducedMotion);
-    this.broadcastState();
-    this.broadcastPreferences();
+    if (broadcast) {
+      this.broadcastState();
+      this.broadcastPreferences();
+    }
   }
 
   setLevel(next: IslandLevel): void {
     if (next === this.level || this.paused) return;
     dbg('setLevel -> ' + next);
+    const previous = this.level;
     this.level = next;
-    this.applyBackdrop();
+    if (this.leaveTimer) {
+      clearTimeout(this.leaveTimer);
+      this.leaveTimer = null;
+    }
+    const crossesCollapsedBoundary = previous === 'l1' || next === 'l1';
+    if (crossesCollapsedBoundary) this.applyBackdrop(false);
     this.animateBounds(this.boundsFor(next));
     this.win.setIgnoreMouseEvents(next === 'l1', { forward: true });
     if (next !== 'l1' && !this.win.isVisible()) this.win.showInactive();
     this.broadcastState();
+    if (crossesCollapsedBoundary) this.broadcastPreferences();
   }
 
   state(): IslandState {
@@ -118,20 +127,28 @@ export class IslandWindowController {
     const dur = TIMING.ANIMATION_MS;
     const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
     if (this.animTimer) clearInterval(this.animTimer);
+    let lastBounds = start;
     this.animTimer = setInterval(() => {
       const p = Math.min(1, (Date.now() - t0) / dur);
       const e = easeOutCubic(p);
-      this.win.setBounds({
+      const nextBounds = {
         x: Math.round(start.x + (target.x - start.x) * e),
         y: Math.round(start.y + (target.y - start.y) * e),
         width: Math.round(start.width + (target.width - start.width) * e),
         height: Math.round(start.height + (target.height - start.height) * e)
-      });
+      };
+      if (
+        nextBounds.x !== lastBounds.x || nextBounds.y !== lastBounds.y ||
+        nextBounds.width !== lastBounds.width || nextBounds.height !== lastBounds.height
+      ) {
+        this.win.setBounds(nextBounds);
+        lastBounds = nextBounds;
+      }
       if (p >= 1 && this.animTimer) {
         clearInterval(this.animTimer);
         this.animTimer = null;
       }
-    }, 16);
+    }, TIMING.ANIMATION_FRAME_MS);
   }
 
   private startPolling(): void {
@@ -152,7 +169,7 @@ export class IslandWindowController {
           clearTimeout(this.dwellTimer);
           this.dwellTimer = null;
         }
-      } else {
+      } else if (this.level === 'l2') {
         const b = this.win.getBounds();
         const inside =
           cursor.x >= b.x && cursor.x <= b.x + b.width &&
@@ -161,13 +178,16 @@ export class IslandWindowController {
           if (!this.leaveTimer) {
             this.leaveTimer = setTimeout(() => {
               this.leaveTimer = null;
-              if (!this.interacting && !this.paused && this.level !== 'l1') this.setLevel('l1');
+              if (!this.interacting && !this.paused && this.level === 'l2') this.setLevel('l1');
             }, TIMING.LEAVE_GRACE_MS);
           }
         } else if (this.leaveTimer) {
           clearTimeout(this.leaveTimer);
           this.leaveTimer = null;
         }
+      } else if (this.leaveTimer) {
+        clearTimeout(this.leaveTimer);
+        this.leaveTimer = null;
       }
     }, TIMING.POLL_INTERVAL_MS);
   }

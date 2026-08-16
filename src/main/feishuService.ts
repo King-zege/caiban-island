@@ -19,7 +19,7 @@ interface SyncResult {
 }
 
 const URGENCY_LABEL: Record<string, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
-const STATUS_LABEL: Record<string, string> = { pending: '待完成', in_progress: '进行中', completed: '已完成' };
+const STATUS_LABEL: Record<string, string> = { pending: '待完成', in_progress: '进行中', completed: '已完成', cancelled: '已取消' };
 
 // FR-092 字段映射（v1 单表）
 const TABLE_FIELDS = [
@@ -319,8 +319,9 @@ exportMarkdown(targetPath: string): string {
     const nodes = [...detail.nodes].sort((a, b) => a.position - b.position);
     const urls = detail.links.filter((l) => l.kind === 'url').map((l) => l.target);
     const files = detail.links.filter((l) => l.kind === 'file').map((l) => l.target);
-    const progress = detail.nodes.length > 0
-      ? Math.round((detail.nodes.filter((n) => n.status === 'completed').length / detail.nodes.length) * 100)
+    const effectiveNodes = detail.nodes.filter((node) => node.status !== 'cancelled');
+    const progress = effectiveNodes.length > 0
+      ? Math.round((effectiveNodes.filter((node) => node.status === 'completed').length / effectiveNodes.length) * 100)
       : '';
     const vals = [
       detail.task.name,

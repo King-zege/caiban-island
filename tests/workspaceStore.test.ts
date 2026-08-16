@@ -41,4 +41,12 @@ describe('工作台导航与撤销', () => {
     expect(useWorkspaceStore.getState().pendingUndo?.id).toBe('node-1');
     expect(secondCommit).not.toHaveBeenCalled();
   });
+
+  it('任务永久删除使用同一 5 秒撤销队列', async () => {
+    vi.useFakeTimers();
+    const commit = vi.fn(async () => null);
+    expect(useWorkspaceStore.getState().scheduleUndo({ id: 'task-1', kind: 'task', label: '任务', commit })).toBe(true);
+    await vi.advanceTimersByTimeAsync(UNDO_DELAY_MS);
+    expect(commit).toHaveBeenCalledOnce();
+  });
 });

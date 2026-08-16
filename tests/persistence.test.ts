@@ -77,6 +77,23 @@ describe('TaskService 持久化', () => {
     expect(() => service.setArchived(t.id, 'cancelled')).toThrow(TaskError);
   });
 
+  it('永久删除活跃任务并级联清理正式数据与事件', () => {
+    const { service, dbPath } = freshService();
+    const task = service.createTask(input({ name: '待删除任务' }));
+    service.addNode(task.id, { title: '询价', description: '', startUtc: null, endUtc: null });
+    service.addLink(task.id, { kind: 'url', title: '报价', target: 'https://example.com' });
+    service.saveNote(task.id, '删除测试');
+    service.deleteTask(task.id);
+
+    expect(service.getTask(task.id)).toBeNull();
+    const verify = openDatabase(dbPath);
+    for (const table of ['nodes', 'links', 'notes', 'reminders', 'change_events']) {
+      const row = verify.prepare('SELECT COUNT(*) AS count FROM ' + table + ' WHERE task_id = ?').get(task.id) as { count: number };
+      expect(row.count).toBe(0);
+    }
+    verify.close();
+  });
+
   it('重新打开数据库数据仍在（持久化往返）', () => {
     const { service, dbPath } = freshService();
     service.createTask(input({ name: '持久化任务' }));

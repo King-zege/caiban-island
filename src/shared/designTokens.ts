@@ -18,7 +18,7 @@ const shared = {
   controlMin: '44px',
   motionFast: '160ms',
   motionContent: '190ms',
-  motionWindow: '320ms',
+  motionWindow: '200ms',
   fontUi: "'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif",
   fontUtility: "'Cascadia Mono', 'Consolas', monospace"
 } as const;
@@ -42,6 +42,7 @@ export const DESIGN_TOKENS = {
     completed: '#32D74B',
     inProgress: '#64D2FF',
     pending: '#FFD60A',
+    cancelled: '#858B96',
     critical: '#FF453A',
     high: '#FF9F0A',
     normal: '#8E8E93',
@@ -68,6 +69,7 @@ export const DESIGN_TOKENS = {
     completed: '#16843A',
     inProgress: '#0078D4',
     pending: '#8A6500',
+    cancelled: '#656C76',
     critical: '#C62828',
     high: '#A65300',
     normal: '#6D737C',
@@ -115,6 +117,7 @@ const cssNames: Record<keyof typeof DESIGN_TOKENS.dark, string> = {
   completed: '--status-completed',
   inProgress: '--status-in-progress',
   pending: '--status-pending',
+  cancelled: '--status-cancelled',
   critical: '--urgency-critical',
   high: '--urgency-high',
   normal: '--urgency-normal',

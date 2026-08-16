@@ -64,6 +64,7 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
   ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
   ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.completeTask(id)));
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
+  ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.deleteTask(id)));
 
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => tasks.addNode(taskId, input)));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => tasks.updateNode(nodeId, input)));

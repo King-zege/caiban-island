@@ -60,7 +60,7 @@ export class ArchiveService {
     };
     writeFileSync(jsonPath, JSON.stringify(json, null, 2), 'utf8');
 
-    const statusLabel: Record<string, string> = { pending: '待完成', in_progress: '进行中', completed: '已完成' };
+    const statusLabel: Record<string, string> = { pending: '待完成', in_progress: '进行中', completed: '已完成', cancelled: '已取消' };
     const urgencyLabel: Record<string, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
     const lines: string[] = [
       '# ' + task.name,

@@ -84,6 +84,7 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
   );
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('[data-carousel-no-drag="true"]')) return;
     stopAnim();
     if (wheelTimer.current) clearTimeout(wheelTimer.current);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);

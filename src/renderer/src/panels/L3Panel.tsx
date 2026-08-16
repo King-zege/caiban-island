@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, Bell, ChevronDown, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Archive, ArrowLeft, Bell, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -9,7 +9,7 @@ import ArchiveView from '../components/ArchiveView';
 import SettingsView from '../components/SettingsView';
 import DraftsPanel from '../components/DraftsPanel';
 import NewTaskForm from '../components/NewTaskForm';
-import { Button, IconButton } from '../components/ui/Button';
+import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
@@ -48,6 +48,11 @@ export default function L3Panel(): React.JSX.Element {
   }, [load]);
 
   useEffect(() => {
+    void window.api.interacting(false);
+    return () => { void window.api.interacting(false); };
+  }, []);
+
+  useEffect(() => {
     if (section !== 'tasks' || loading) return;
     const currentExists = selectedTaskId ? tasks.some((card) => card.task.id === selectedTaskId) : false;
     const targetId = currentExists ? selectedTaskId : tasks[0]?.task.id ?? null;
@@ -70,11 +75,10 @@ export default function L3Panel(): React.JSX.Element {
     void openDetail(taskId);
   };
 
-  const press = useCallback((value: boolean) => () => void window.api.interacting(value), []);
   const currentTask = tasks.find((card) => card.task.id === selectedTaskId);
 
   return (
-    <div className="panel l3-panel" onMouseEnter={press(true)} onMouseLeave={press(false)}>
+    <div className="panel l3-panel">
       <header className="l3-header">
         <div className="panel-brand">
           <span className="brand-mark" aria-hidden="true" />
@@ -82,7 +86,7 @@ export default function L3Panel(): React.JSX.Element {
         </div>
         <div className="l3-actions">
           <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>
-          <IconButton icon={ChevronDown} label="收起到采购凭条" onClick={() => void window.api.setLevel('l2')} />
+          <Button icon={ArrowLeft} variant="ghost" onClick={() => void window.api.setLevel('l2')}>返回速览</Button>
         </div>
       </header>
 

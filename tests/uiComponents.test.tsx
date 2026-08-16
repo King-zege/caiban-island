@@ -27,6 +27,11 @@ const CARD: TaskCardData = {
     archiveOutcome: null
   },
   progress: { done: 1, total: 3, nextTitle: '确认技术参数' },
+  nodes: [
+    { id: 'node-1', title: '确认需求', status: 'completed', position: 0 },
+    { id: 'node-2', title: '确认技术参数', status: 'in_progress', position: 1 },
+    { id: 'node-3', title: '签订合同', status: 'pending', position: 2 }
+  ],
   overdue: false
 };
 
@@ -69,14 +74,36 @@ afterEach(() => {
 describe('P9 核心界面控件', () => {
   it('任务凭条是可聚焦按钮并优先朗读下一动作', async () => {
     const onOpen = vi.fn();
-    render(<TaskCard card={CARD} onOpen={onOpen} />);
+    render(<TaskCard card={CARD} onOpen={onOpen} onNodeStatus={async () => undefined} onTaskAction={() => undefined} />);
 
     const card = screen.getByRole('button', { name: /下一步：确认技术参数/ });
     expect(card.tagName).toBe('BUTTON');
-    expect(card.textContent).toContain('下一采购动作');
+    expect(card.textContent).not.toContain('下一采购动作');
+    expect(card.textContent).toContain('办公电脑采购');
     expect(card.textContent).toContain('确认技术参数');
     await userEvent.click(card);
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it('采购凭条节点轴支持四态显式选择', async () => {
+    const onNodeStatus = vi.fn(async () => undefined);
+    render(<TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={onNodeStatus} onTaskAction={() => undefined} />);
+
+    const select = screen.getByRole('combobox', { name: '确认技术参数的状态' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toContain('已取消');
+    await userEvent.selectOptions(select, 'cancelled');
+    expect(onNodeStatus).toHaveBeenCalledWith('task-1', 'node-2', 'cancelled');
+  });
+
+  it('采购凭条右上角菜单提供完成、取消和永久删除', async () => {
+    const onTaskAction = vi.fn();
+    render(<TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={async () => undefined} onTaskAction={onTaskAction} />);
+
+    await userEvent.click(screen.getByRole('button', { name: '管理任务：办公电脑采购' }));
+    expect(screen.getByRole('button', { name: '完成并归档' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '取消并归档' })).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '永久删除' }));
+    expect(onTaskAction).toHaveBeenCalledWith('delete');
   });
 
   it('节点状态只能通过显式选择改变', () => {
@@ -156,7 +183,7 @@ describe('P9 核心界面控件', () => {
   });
 
   it('核心任务凭条没有 serious 或 critical 的 axe 问题', async () => {
-    const { container } = render(<main><TaskCard card={CARD} onOpen={() => undefined} /></main>);
+    const { container } = render(<main><TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={async () => undefined} onTaskAction={() => undefined} /></main>);
     const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     const blocking = result.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical');
     expect(blocking).toEqual([]);

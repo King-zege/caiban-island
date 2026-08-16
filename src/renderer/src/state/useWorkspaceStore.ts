@@ -5,7 +5,7 @@ export type TaskWorkspaceSection = 'overview' | 'nodes' | 'materials' | 'reminde
 
 export interface PendingUndoAction {
   id: string;
-  kind: 'node' | 'link';
+  kind: 'node' | 'link' | 'task';
   label: string;
   commit: () => Promise<string | null>;
 }

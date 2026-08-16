@@ -13,7 +13,7 @@
 | UI | React 19 + Vite（electron-vite） | 组件化、HMR 快 |
 | 状态 | Zustand | 轻量、配合 React 18/19 |
 | 图标 | lucide-react | 用户锁定的单一线性图标家族；全局统一 1.75px stroke |
-| 动画 | 主进程窗口插值 + CSS compositor 动画 | 窗口形变在 main；renderer 只动画 transform/opacity/border-radius |
+| 动画 | 主进程合并窗口插值 + CSS compositor 动画 | 窗口形变在 main；L2/L3 共用 backdrop，避免重复 DWM 切换；renderer 只动画 transform/opacity/border-radius |
 | 数据库 | better-sqlite3 | 同步 API、快、WAL；主进程独占 |
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
 | MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
@@ -48,8 +48,8 @@
 
 | 通道 | 方向 | 说明 |
 | --- | --- | --- |
-| tasks:list / detail / create / update / complete / cancel | renderer→main | 任务 CRUD 与详情（完成/取消即归档） |
-| nodes:add / update / remove / setStatus / reorder | renderer→main | 节点操作（三态、排序） |
+| tasks:list / detail / create / update / complete / cancel / delete | renderer→main | 任务 CRUD 与详情（完成/取消即归档；delete 为确认后的永久删除） |
+| nodes:add / update / remove / setStatus / reorder | renderer→main | 节点操作（四态、排序） |
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
 | reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
@@ -91,7 +91,7 @@
       description TEXT NOT NULL DEFAULT '',
       start_utc TEXT,
       end_utc TEXT,
-      status TEXT NOT NULL DEFAULT 'pending', -- pending | in_progress | completed
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | in_progress | completed | cancelled
       position INTEGER NOT NULL
     );
     CREATE TABLE links(
@@ -102,6 +102,8 @@
       target TEXT NOT NULL,                -- URL 或绝对路径
       meta TEXT NOT NULL DEFAULT '{}'      -- 名称/大小/修改时间等
     );
+
+`tasks:delete` 只接受活跃任务。应用服务在单个事务中删除该任务的 `change_events`，再删除 `tasks`；`nodes`、`links`、`notes`、`reminders` 由已启用的外键级联清理。renderer 在真正调用前提供二次确认与 5 秒撤销窗口。该扩展复用现有 TEXT 状态列与外键，不需要 SQLite schema 迁移。
     CREATE TABLE notes(
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

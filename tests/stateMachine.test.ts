@@ -7,9 +7,9 @@ describe('nextLevel 状态机', () => {
     expect(nextLevel('l2', { type: 'hoverDwell' })).toBe('l2');
     expect(nextLevel('l3', { type: 'hoverDwell' })).toBe('l3');
   });
-  it('离开：l2/l3 → l1', () => {
+  it('离开：只有 l2 自动返回 l1，l3 保持工作台', () => {
     expect(nextLevel('l2', { type: 'leave' })).toBe('l1');
-    expect(nextLevel('l3', { type: 'leave' })).toBe('l1');
+    expect(nextLevel('l3', { type: 'leave' })).toBe('l3');
     expect(nextLevel('l1', { type: 'leave' })).toBe('l1');
   });
   it('Esc 逐层返回', () => {
@@ -32,5 +32,7 @@ describe('TIMING 常量', () => {
     expect(TIMING.HOVER_DWELL_MS).toBe(250);
     expect(TIMING.LEAVE_GRACE_MS).toBe(400);
     expect(TIMING.POLL_INTERVAL_MS).toBe(80);
+    expect(TIMING.ANIMATION_MS).toBeGreaterThanOrEqual(180);
+    expect(TIMING.ANIMATION_MS).toBeLessThanOrEqual(220);
   });
 });

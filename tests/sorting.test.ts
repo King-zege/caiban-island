@@ -76,6 +76,15 @@ describe('computeProgress', () => {
     ];
     expect(computeProgress(nodes)).toEqual({ done: 2, total: 2, nextTitle: null });
   });
+  it('已取消节点不进入进度分母或下一步', () => {
+    const nodes = [
+      { title: '需求取消', status: 'cancelled', position: 1 },
+      { title: '询价', status: 'completed', position: 2 },
+      { title: '下单', status: 'pending', position: 3 }
+    ];
+    expect(computeProgress(nodes)).toEqual({ done: 1, total: 2, nextTitle: '下单' });
+    expect(computeProgress([{ title: '全部取消', status: 'cancelled', position: 1 }])).toEqual({ done: 0, total: 0, nextTitle: null });
+  });
 });
 
 describe('isOverdue', () => {

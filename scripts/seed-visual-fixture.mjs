@@ -49,7 +49,9 @@ try {
       new Date(now.getTime() + index * 60000).toISOString()
     );
     for (let nodeIndex = 0; nodeIndex < nodeTitles.length; nodeIndex += 1) {
-      const status = nodeIndex < index % 3 ? 'completed' : nodeIndex === index % 3 ? 'in_progress' : 'pending';
+      const status = index === 2 && nodeIndex === nodeTitles.length - 1
+        ? 'cancelled'
+        : nodeIndex < index % 3 ? 'completed' : nodeIndex === index % 3 ? 'in_progress' : 'pending';
       db.prepare(`INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position)
         VALUES(?, ?, ?, '', NULL, NULL, ?, ?)`).run(randomUUID(), taskId, nodeTitles[nodeIndex], status, nodeIndex);
     }

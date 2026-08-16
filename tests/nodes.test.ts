@@ -32,13 +32,14 @@ describe('节点管理（FR-024/FR-025/FR-026）', () => {
     expect(detail.nodes[0].status).toBe('pending');
   });
 
-  it('三态切换并记录事件', () => {
+  it('四态切换并记录事件', () => {
     const svc = fresh();
     const t = svc.createTask({ name: 't', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
     const n = svc.addNode(t.id, { title: 'n', description: '', startUtc: null, endUtc: null });
     expect(svc.setNodeStatus(n.id, 'in_progress').status).toBe('in_progress');
     expect(svc.setNodeStatus(n.id, 'completed').status).toBe('completed');
     expect(svc.setNodeStatus(n.id, 'pending').status).toBe('pending');
+    expect(svc.setNodeStatus(n.id, 'cancelled').status).toBe('cancelled');
     expect(() => svc.setNodeStatus(n.id, 'done' as never)).toThrow(TaskError);
     const events = svc.getTaskDetail(t.id);
     expect(events.task.id).toBe(t.id);

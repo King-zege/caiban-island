@@ -22,6 +22,7 @@ describe('design tokens', () => {
     expect(DESIGN_TOKENS.dark.normal).toBe('#8E8E93');
     expect(designTokenCssVariables('dark')['--radius-l3']).toBe('24px');
     expect(designTokenCssVariables('light')['--accent']).toBe('#0078D4');
+    expect(designTokenCssVariables('dark')['--status-cancelled']).toBe('#858B96');
   });
 
   it('小字号弱文本在深浅确定性背景上满足 WCAG AA', () => {

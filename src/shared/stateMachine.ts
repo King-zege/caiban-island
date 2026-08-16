@@ -4,7 +4,8 @@ export const TIMING = {
   HOVER_DWELL_MS: 250,
   LEAVE_GRACE_MS: 400,
   POLL_INTERVAL_MS: 80,
-  ANIMATION_MS: 280
+  ANIMATION_MS: 200,
+  ANIMATION_FRAME_MS: 24
 } as const;
 
 export type IslandEvent =
@@ -18,7 +19,7 @@ export type IslandEvent =
 export function nextLevel(current: IslandLevel, event: IslandEvent): IslandLevel {
   switch (event.type) {
     case 'hoverDwell': return current === 'l1' ? 'l2' : current;
-    case 'leave': return current === 'l2' || current === 'l3' ? 'l1' : current;
+    case 'leave': return current === 'l2' ? 'l1' : current;
     case 'esc': return current === 'l3' ? 'l2' : current === 'l2' ? 'l1' : current;
     case 'back': return current === 'l3' ? 'l2' : current;
     case 'openDetail': return current === 'l2' ? 'l3' : current;

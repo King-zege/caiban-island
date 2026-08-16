@@ -1,11 +1,12 @@
-import { Check, Circle, LoaderCircle } from 'lucide-react';
+import { Check, Circle, LoaderCircle, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { NodeStatus, TaskNode } from '../../../shared/types';
 
 const STATUS_META: Record<NodeStatus, { label: string; icon: LucideIcon }> = {
   pending: { label: '待完成', icon: Circle },
   in_progress: { label: '进行中', icon: LoaderCircle },
-  completed: { label: '已完成', icon: Check }
+  completed: { label: '已完成', icon: Check },
+  cancelled: { label: '已取消', icon: X }
 };
 
 interface TimelineProps {

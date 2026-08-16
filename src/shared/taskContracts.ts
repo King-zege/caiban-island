@@ -6,7 +6,7 @@ export type TaskKind = (typeof KINDS)[number];
 
 export type TaskStatus = 'active' | 'archived';
 
-export const NODE_STATUSES = ['pending', 'in_progress', 'completed'] as const;
+export const NODE_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'] as const;
 export type NodeStatus = (typeof NODE_STATUSES)[number];
 
 export interface Task {
@@ -74,9 +74,17 @@ export interface ProgressInfo {
   nextTitle: string | null; // total=0 → 尚未拆分
 }
 
+export interface TaskCardNode {
+  id: string;
+  title: string;
+  status: NodeStatus;
+  position: number;
+}
+
 export interface TaskCard {
   task: Task;
   progress: ProgressInfo;
+  nodes: TaskCardNode[];
   overdue: boolean;
 }
 

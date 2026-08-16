@@ -83,9 +83,10 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
 
   const orderedNodes = useMemo(() => [...nodes].sort((a, b) => a.position - b.position), [nodes]);
   const hiddenIds = useMemo(() => pendingUndo ? new Set([pendingUndo.id]) : new Set<string>(), [pendingUndo]);
+  const effectiveNodeCount = nodes.filter((node) => node.status !== 'cancelled').length;
   const completedCount = nodes.filter((node) => node.status === 'completed').length;
   const nextNode = orderedNodes.find((node) => node.status === 'in_progress') ?? orderedNodes.find((node) => node.status === 'pending');
-  const nextAction = task.kind === 'misc' ? '处理这项杂事' : nextNode?.title ?? (nodes.length === 0 ? '拆分采购节点' : '确认采购结果');
+  const nextAction = task.kind === 'misc' ? '处理这项杂事' : nextNode?.title ?? (effectiveNodeCount === 0 ? '添加新的采购节点' : '确认采购结果');
   const overdue = task.deadlineUtc ? Date.parse(task.deadlineUtc) < Date.now() : false;
 
   const toggleReminder = async (offset: number) => {
@@ -178,7 +179,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
         </div>
         <div className="overview-facts" aria-label="任务概览">
           <div><span>紧急程度</span><strong>{URGENCY_LABEL[task.urgency]}</strong></div>
-          <div><span>采购进度</span><strong>{nodes.length === 0 ? '待拆分' : completedCount + ' / ' + nodes.length}</strong></div>
+          <div><span>采购进度</span><strong>{effectiveNodeCount === 0 ? '待拆分' : completedCount + ' / ' + effectiveNodeCount}</strong></div>
           <div><span>关联资料</span><strong>{links.length} 项</strong></div>
         </div>
         <section className="workspace-block">
@@ -217,13 +218,13 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
       <div className="task-workspace-section">
         <div className="section-heading">
           <div><span className="eyebrow">采购节点</span><h2>管理执行顺序与状态</h2></div>
-          <span>{completedCount} / {nodes.length} 已完成</span>
+          <span>{completedCount} / {effectiveNodeCount} 已完成</span>
         </div>
         <Timeline
           nodes={nodes}
           editable
           hiddenIds={hiddenIds}
-          onStatus={(nodeId, status) => void setNodeStatus(nodeId, status).then((error) => error && notify(error, 'error'))}
+          onStatus={(nodeId, status) => void setNodeStatus(task.id, nodeId, status).then((error) => error && notify(error, 'error'))}
         />
         {orderedNodes.filter((node) => !hiddenIds.has(node.id)).length > 0 && (
           <ul className="node-admin" aria-label="调整节点顺序">

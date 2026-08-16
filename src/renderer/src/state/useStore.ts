@@ -10,11 +10,12 @@ interface TaskState {
   create: (input: TaskInput) => Promise<string | null>;
   complete: (id: string) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
+  deleteTask: (id: string) => Promise<string | null>;
   openDetail: (id: string) => Promise<void>;
   closeDetail: () => void;
   addNode: (taskId: string, input: NodeInput) => Promise<string | null>;
   removeNode: (nodeId: string) => Promise<string | null>;
-  setNodeStatus: (nodeId: string, status: NodeStatus) => Promise<string | null>;
+  setNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<string | null>;
   moveNode: (taskId: string, nodeId: string, dir: -1 | 1) => Promise<string | null>;
   addLink: (taskId: string, input: LinkInput) => Promise<string | null>;
   removeLink: (linkId: string) => Promise<string | null>;
@@ -63,6 +64,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return r.error;
   },
 
+  deleteTask: async (id) => {
+    const r = await window.api.deleteTask(id);
+    if (r.ok) {
+      if (get().detail?.task.id === id) set({ detail: null });
+      await get().load();
+      return null;
+    }
+    return r.error;
+  },
+
   openDetail: async (id) => {
     set({ detailLoading: true });
     const r = await window.api.taskDetail(id);
@@ -97,12 +108,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return r.error;
   },
 
-  setNodeStatus: async (nodeId, status) => {
-    const d = get().detail;
-    if (!d) return '详情未打开';
+  setNodeStatus: async (taskId, nodeId, status) => {
     const r = await window.api.setNodeStatus(nodeId, status);
     if (r.ok) {
-      await get().refreshDetail(d.task.id);
+      if (get().detail?.task.id === taskId) await get().refreshDetail(taskId);
+      else await get().load();
       return null;
     }
     return r.error;

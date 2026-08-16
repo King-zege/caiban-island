@@ -9,6 +9,7 @@ import type {
   NodeStatus,
   Task,
   TaskCard,
+  TaskCardNode,
   TaskDetail,
   TaskInput,
   TaskLink,
@@ -69,18 +70,22 @@ export class TaskService {
     const nodeRows = this.db
       .prepare('SELECT id, task_id, title, status, position FROM nodes ORDER BY position')
       .all() as unknown as Record<string, unknown>[];
-    const byTask = new Map<string, Array<{ status: string; title: string; position: number }>>();
+    const byTask = new Map<string, TaskCardNode[]>();
     for (const n of nodeRows) {
       const key = String(n.task_id);
       const list = byTask.get(key) ?? [];
-      list.push({ status: String(n.status), title: String(n.title), position: Number(n.position) });
+      list.push({ id: String(n.id), status: String(n.status) as NodeStatus, title: String(n.title), position: Number(n.position) });
       byTask.set(key, list);
     }
-    return tasks.map((task) => ({
-      task,
-      progress: computeProgress(byTask.get(task.id) ?? []),
-      overdue: isOverdue(task, nowMs)
-    }));
+    return tasks.map((task) => {
+      const nodes = byTask.get(task.id) ?? [];
+      return {
+        task,
+        progress: computeProgress(nodes),
+        nodes,
+        overdue: isOverdue(task, nowMs)
+      };
+    });
   }
 
   getTask(id: string): Task | null {
@@ -168,6 +173,21 @@ export class TaskService {
     return this.getTask(id) as Task;
   }
 
+  deleteTask(id: string): void {
+    const existing = this.getTask(id);
+    if (!existing) throw new TaskError('任务不存在');
+    if (existing.status !== 'active') throw new TaskError('只能永久删除活跃任务');
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('DELETE FROM change_events WHERE task_id = ?').run(id);
+      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   // —— 节点 ——
   addNode(taskId: string, input: NodeInput): TaskNode {
     const task = this.getTask(taskId);
@@ -223,7 +243,7 @@ export class TaskService {
   }
 
   setNodeStatus(nodeId: string, status: NodeStatus): TaskNode {
-    const valid: NodeStatus[] = ['pending', 'in_progress', 'completed'];
+    const valid: NodeStatus[] = ['pending', 'in_progress', 'completed', 'cancelled'];
     if (!valid.includes(status)) throw new TaskError('无效的节点状态');
     const row = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown> | undefined;
     if (!row) throw new TaskError('节点不存在');

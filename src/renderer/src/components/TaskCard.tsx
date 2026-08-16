@@ -1,6 +1,21 @@
-import { ArrowDown, ChevronsUp, CircleDot, Clock3, ListChecks, TriangleAlert } from 'lucide-react';
+import {
+  ArrowDown,
+  Ban,
+  Check,
+  CheckCircle2,
+  ChevronsUp,
+  Circle,
+  CircleDot,
+  Clock3,
+  ListChecks,
+  MoreHorizontal,
+  Play,
+  Trash2,
+  TriangleAlert
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { FocusEventHandler } from 'react';
-import type { TaskCard as TaskCardData, Urgency } from '../../../shared/types';
+import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, Urgency } from '../../../shared/types';
 
 const URGENCY_LABEL: Record<Urgency, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
 const URGENCY_ICON = {
@@ -9,6 +24,15 @@ const URGENCY_ICON = {
   normal: CircleDot,
   low: ArrowDown
 } satisfies Record<Urgency, typeof TriangleAlert>;
+
+const NODE_STATUS_META = {
+  pending: { label: '待完成', icon: Circle },
+  in_progress: { label: '进行中', icon: Play },
+  completed: { label: '已完成', icon: Check },
+  cancelled: { label: '已取消', icon: Ban }
+} satisfies Record<NodeStatus, { label: string; icon: typeof Circle }>;
+
+export type TaskCardAction = 'complete' | 'cancel' | 'delete';
 
 export function formatDeadline(deadlineUtc: string | null, tzId: string): string {
   if (!deadlineUtc) return '未设置截止时间';
@@ -34,22 +58,44 @@ export function formatOverdueDuration(deadlineUtc: string | null, now = Date.now
   return '已逾期 ' + Math.floor(hours / 24) + ' 天';
 }
 
+export function visibleNodeWindow(nodes: TaskCardNode[], limit = 3): { nodes: TaskCardNode[]; currentId: string | null; hidden: number } {
+  const ordered = [...nodes].sort((left, right) => left.position - right.position);
+  if (ordered.length === 0) return { nodes: [], currentId: null, hidden: 0 };
+  let currentIndex = ordered.findIndex((node) => node.status === 'in_progress');
+  if (currentIndex < 0) currentIndex = ordered.findIndex((node) => node.status === 'pending');
+  if (currentIndex < 0) currentIndex = ordered.length - 1;
+  const safeLimit = Math.max(1, limit);
+  const start = Math.max(0, Math.min(currentIndex - 1, ordered.length - safeLimit));
+  return {
+    nodes: ordered.slice(start, start + safeLimit),
+    currentId: ordered[currentIndex]?.id ?? null,
+    hidden: Math.max(0, ordered.length - safeLimit)
+  };
+}
+
 interface TaskCardProps {
   card: TaskCardData;
   onOpen: () => void;
+  onNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<void>;
+  onTaskAction: (action: TaskCardAction) => void;
   tabIndex?: number;
   onFocus?: FocusEventHandler<HTMLButtonElement>;
 }
 
-export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
-  const { task, progress, overdue } = card;
+export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
+  const { task, progress, nodes, overdue } = card;
   const misc = task.kind === 'misc';
-  const progressText = progress.total === 0 ? '尚未拆分' : progress.done + '/' + progress.total + ' 个节点完成';
-  const nextTitle = misc ? '处理这项杂事' : progress.nextTitle ?? (progress.total === 0 ? '拆分采购节点' : '所有节点已完成');
+  const [busyNodeId, setBusyNodeId] = useState<string | null>(null);
+  const nodeWindow = useMemo(() => visibleNodeWindow(nodes), [nodes]);
+  const progressText = progress.total === 0
+    ? nodes.length === 0 ? '尚未拆分' : '无有效节点'
+    : progress.done + '/' + progress.total + ' 已完成';
+  const nextTitle = misc
+    ? '处理这项杂事'
+    : progress.nextTitle ?? (progress.total === 0 ? '添加新的采购节点' : '采购链路已完成');
   const UrgencyIcon = URGENCY_ICON[task.urgency];
   const deadline = formatDeadline(task.deadlineUtc, task.tzId);
   const overdueDuration = overdue ? formatOverdueDuration(task.deadlineUtc) : null;
-  const segmentCount = Math.min(Math.max(progress.total, 1), 6);
 
   const a11y = [
     task.name,
@@ -60,40 +106,87 @@ export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCa
     misc ? '杂事' : progressText
   ].filter(Boolean).join('，');
 
+  const changeNodeStatus = async (nodeId: string, status: NodeStatus) => {
+    setBusyNodeId(nodeId);
+    try {
+      await onNodeStatus(task.id, nodeId, status);
+    } finally {
+      setBusyNodeId(null);
+    }
+  };
+
+  const chooseTaskAction = (event: React.MouseEvent<HTMLButtonElement>, action: TaskCardAction) => {
+    event.currentTarget.closest('details')?.removeAttribute('open');
+    onTaskAction(action);
+  };
+
   return (
-    <button
-      type="button"
-      className={'task-card urgency-' + task.urgency + (overdue ? ' overdue' : '')}
-      aria-label={a11y}
-      data-carousel-card="true"
-      tabIndex={tabIndex}
-      onFocus={onFocus}
-      onClick={onOpen}
-    >
-      <span className="card-next-label">下一采购动作</span>
-      <strong className="card-next" title={nextTitle}>{nextTitle}</strong>
-      <span className="card-title" title={task.name}>{task.name}</span>
-      <span className="card-meta">
-        <span className={'urgency-label urgency-' + task.urgency}>
-          <UrgencyIcon aria-hidden="true" size={14} strokeWidth={1.9} />
-          {URGENCY_LABEL[task.urgency]}
-        </span>
-        <span className={overdue ? 'deadline-overdue' : 'deadline'}>
-          <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
-          {overdueDuration ? overdueDuration + ' · ' : ''}{deadline}
-        </span>
-      </span>
-      {!misc && (
-        <span className="card-trail-wrap">
-          <span className="card-trail" aria-hidden="true">
-            {Array.from({ length: segmentCount }, (_, index) => {
-              const status = index < progress.done ? 'done' : index === progress.done && progress.done < progress.total ? 'current' : 'pending';
-              return <span key={index} className={'trail-segment ' + status} />;
-            })}
+    <article className={'task-card urgency-' + task.urgency + (overdue ? ' overdue' : '')}>
+      <button
+        type="button"
+        className="task-card-open"
+        aria-label={a11y}
+        data-carousel-card="true"
+        tabIndex={tabIndex}
+        onFocus={onFocus}
+        onClick={onOpen}
+      >
+        <strong className="card-title" title={task.name}>{task.name}</strong>
+        <span className="card-next" title={nextTitle}><span>下一步</span>{nextTitle}</span>
+        <span className="card-meta">
+          <span className={'urgency-label urgency-' + task.urgency}>
+            <UrgencyIcon aria-hidden="true" size={14} strokeWidth={1.9} />
+            {URGENCY_LABEL[task.urgency]}
           </span>
-          <span className="card-progress-text"><ListChecks aria-hidden="true" size={14} strokeWidth={1.8} />{progressText}</span>
+          <span className={overdue ? 'deadline-overdue' : 'deadline'}>
+            <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
+            {overdueDuration ? overdueDuration + ' · ' : ''}{deadline}
+          </span>
         </span>
+      </button>
+
+      <details className="card-task-menu" data-carousel-no-drag="true">
+        <summary aria-label={'管理任务：' + task.name} role="button" title="任务操作"><MoreHorizontal aria-hidden="true" size={18} /></summary>
+        <div className="card-task-menu-popover">
+          <button type="button" onClick={(event) => chooseTaskAction(event, 'complete')}><CheckCircle2 aria-hidden="true" size={16} />完成并归档</button>
+          <button type="button" onClick={(event) => chooseTaskAction(event, 'cancel')}><Ban aria-hidden="true" size={16} />取消并归档</button>
+          <button type="button" className="danger" onClick={(event) => chooseTaskAction(event, 'delete')}><Trash2 aria-hidden="true" size={16} />永久删除</button>
+        </div>
+      </details>
+
+      {!misc && (
+        <div className="card-node-block">
+          <div className={'card-node-axis count-' + nodeWindow.nodes.length} aria-label="采购节点速览">
+            {nodeWindow.nodes.map((node) => {
+              const meta = NODE_STATUS_META[node.status];
+              const StatusIcon = meta.icon;
+              return (
+                <label
+                  key={node.id}
+                  className={'card-node-control status-' + node.status + (node.id === nodeWindow.currentId ? ' current' : '')}
+                  data-carousel-no-drag="true"
+                  title={node.title + ' · ' + meta.label}
+                >
+                  <select
+                    value={node.status}
+                    aria-label={node.title + '的状态'}
+                    disabled={busyNodeId === node.id}
+                    onChange={(event) => void changeNodeStatus(node.id, event.target.value as NodeStatus)}
+                  >
+                    {(Object.keys(NODE_STATUS_META) as NodeStatus[]).map((status) => <option key={status} value={status}>{NODE_STATUS_META[status].label}</option>)}
+                  </select>
+                  <span className="card-node-marker"><StatusIcon aria-hidden="true" size={12} strokeWidth={2} /></span>
+                  <span>{node.title}</span>
+                </label>
+              );
+            })}
+          </div>
+          <span className="card-progress-text">
+            <ListChecks aria-hidden="true" size={13} strokeWidth={1.8} />
+            {progressText}{nodeWindow.hidden > 0 ? ' · 另 ' + nodeWindow.hidden + ' 项' : ''}
+          </span>
+        </div>
       )}
-    </button>
+    </article>
   );
 }

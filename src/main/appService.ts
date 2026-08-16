@@ -71,6 +71,12 @@ export class AppService {
     return t;
   }
 
+  deleteTask(id: string): boolean {
+    this.tasks.deleteTask(id);
+    this.emitChanged();
+    return true;
+  }
+
   restoreTask(id: string): Task {
     this.archive.restoreTask(id);
     this.reminders.recomputeForTask(id);
