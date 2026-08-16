@@ -1,117 +1,175 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Archive, Bell, ChevronDown, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
+import { useWorkspaceStore } from '../state/useWorkspaceStore';
+import type { TaskWorkspaceSection, WorkspaceSection } from '../state/useWorkspaceStore';
 import TaskEditor from '../components/TaskEditor';
 import ArchiveView from '../components/ArchiveView';
 import SettingsView from '../components/SettingsView';
 import DraftsPanel from '../components/DraftsPanel';
+import NewTaskForm from '../components/NewTaskForm';
+import { Button, IconButton } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
 
-type Tab = 'edit' | 'draft' | 'archive' | 'settings';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'edit', label: '任务编辑' },
-  { id: 'draft', label: 'AI 草稿审核' },
-  { id: 'archive', label: '归档' },
-  { id: 'settings', label: '设置' }
+const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
+  { id: 'overview', label: '概览', icon: Gauge },
+  { id: 'nodes', label: '采购节点', icon: ListChecks },
+  { id: 'materials', label: '资料', icon: Paperclip },
+  { id: 'reminders', label: '提醒', icon: Bell },
+  { id: 'notes', label: '备注', icon: StickyNote }
+];
+
+const WORKSPACE_NAV: Array<{ id: Exclude<WorkspaceSection, 'tasks'>; label: string; icon: LucideIcon }> = [
+  { id: 'drafts', label: 'AI 草稿', icon: Sparkles },
+  { id: 'archive', label: '归档', icon: Archive },
+  { id: 'settings', label: '设置', icon: Settings }
 ];
 
 export default function L3Panel(): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('edit');
-  const tasks = useTaskStore((s) => s.tasks);
-  const load = useTaskStore((s) => s.load);
-  const detail = useTaskStore((s) => s.detail);
-  const openDetail = useTaskStore((s) => s.openDetail);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const tasks = useTaskStore((state) => state.tasks);
+  const loading = useTaskStore((state) => state.loading);
+  const load = useTaskStore((state) => state.load);
+  const detail = useTaskStore((state) => state.detail);
+  const detailLoading = useTaskStore((state) => state.detailLoading);
+  const openDetail = useTaskStore((state) => state.openDetail);
+  const section = useWorkspaceStore((state) => state.section);
+  const taskSection = useWorkspaceStore((state) => state.taskSection);
+  const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
+  const openSection = useWorkspaceStore((state) => state.openSection);
+  const openTask = useWorkspaceStore((state) => state.openTask);
+  const clearTaskSelection = useWorkspaceStore((state) => state.clearTaskSelection);
+  const setTaskSection = useWorkspaceStore((state) => state.setTaskSection);
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // 从 L2 速览进入时选中 detail；否则默认第一个任务
   useEffect(() => {
-    if (selectedId) return;
-    const id = detail ? detail.task.id : tasks.length > 0 ? tasks[0].task.id : null;
-    if (id) {
-      setSelectedId(id);
-      if (!detail) void openDetail(id);
+    if (section !== 'tasks' || loading) return;
+    const currentExists = selectedTaskId ? tasks.some((card) => card.task.id === selectedTaskId) : false;
+    const targetId = currentExists ? selectedTaskId : tasks[0]?.task.id ?? null;
+    if (!targetId) {
+      if (selectedTaskId) clearTaskSelection();
+      return;
     }
-  }, [detail, tasks, selectedId, openDetail]);
+    if (!currentExists) openTask(targetId);
+    if (detail?.task.id !== targetId && !detailLoading) void openDetail(targetId);
+  }, [clearTaskSelection, detail?.task.id, detailLoading, loading, openDetail, openTask, section, selectedTaskId, tasks]);
 
-  const press = useCallback((v: boolean) => () => void window.api.interacting(v), []);
+  const filteredTasks = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('zh-CN');
+    if (!query) return tasks;
+    return tasks.filter((card) => card.task.name.toLocaleLowerCase('zh-CN').includes(query) || card.progress.nextTitle?.toLocaleLowerCase('zh-CN').includes(query));
+  }, [search, tasks]);
+
+  const selectTask = (taskId: string) => {
+    openTask(taskId);
+    void openDetail(taskId);
+  };
+
+  const press = useCallback((value: boolean) => () => void window.api.interacting(value), []);
+  const currentTask = tasks.find((card) => card.task.id === selectedTaskId);
 
   return (
     <div className="panel l3-panel" onMouseEnter={press(true)} onMouseLeave={press(false)}>
       <header className="l3-header">
-        <span className="l3-title">采办岛 · 详细</span>
+        <div className="panel-brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <span><strong>采办岛</strong><small>{section === 'tasks' ? '当前任务工作台' : WORKSPACE_NAV.find((item) => item.id === section)?.label}</small></span>
+        </div>
         <div className="l3-actions">
-          <button className="btn" onPointerDown={press(true)} onPointerUp={press(false)} onPointerLeave={press(false)} onClick={() => void window.api.setLevel('l2')}>
-            返回
-          </button>
-          <button className="btn" onPointerDown={press(true)} onPointerUp={press(false)} onPointerLeave={press(false)} onClick={() => void window.api.quit()}>
-            退出
-          </button>
+          <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>
+          <IconButton icon={ChevronDown} label="收起到采购凭条" onClick={() => void window.api.setLevel('l2')} />
         </div>
       </header>
-      <nav className="l3-nav" aria-label="分区">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={'nav-tab' + (tab === t.id ? ' active' : '')}
-            onPointerDown={press(true)}
-            onPointerUp={press(false)}
-            onPointerLeave={press(false)}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-      <div className="l3-content">
-        {tab === 'edit' && (
-          <>
-            {tasks.length === 0 ? (
-              <span className="placeholder">暂无任务</span>
+
+      <div className="l3-mobile-picker">
+        <label>
+          <span className="sr-only">选择任务</span>
+          <select value={selectedTaskId ?? ''} onChange={(event) => selectTask(event.target.value)}>
+            {tasks.map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="l3-shell">
+        <aside className="workspace-sidebar" aria-label="任务与工作区导航">
+          <div className="sidebar-search">
+            <Search aria-hidden="true" size={17} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索任务" aria-label="搜索任务" />
+          </div>
+          <div className="sidebar-label"><span>活跃任务</span><span>{tasks.length}</span></div>
+          <nav className="task-switcher" aria-label="活跃任务">
+            {filteredTasks.length === 0 ? <p>没有匹配的任务</p> : filteredTasks.map((card) => (
+              <button
+                key={card.task.id}
+                className={section === 'tasks' && selectedTaskId === card.task.id ? 'active' : ''}
+                aria-current={section === 'tasks' && selectedTaskId === card.task.id ? 'page' : undefined}
+                onClick={() => selectTask(card.task.id)}
+              >
+                <span className={'task-indicator urgency-' + card.task.urgency} aria-hidden="true" />
+                <span><strong>{card.task.name}</strong><small>{card.progress.nextTitle ?? (card.progress.total === 0 ? '待拆分采购节点' : '采购链路已完成')}</small></span>
+              </button>
+            ))}
+          </nav>
+          <nav className="workspace-nav" aria-label="其他工作区">
+            {WORKSPACE_NAV.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button key={item.id} className={section === item.id ? 'active' : ''} aria-current={section === item.id ? 'page' : undefined} onClick={() => openSection(item.id)}>
+                  <Icon aria-hidden="true" size={18} /><span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <main className="workspace-main">
+          {section === 'tasks' && (
+            loading ? <p className="loading-state">正在加载任务</p> : tasks.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="还没有活跃任务" description="创建一项采购任务，工作台会把下一步动作放在最前面。" action={<Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>} />
             ) : (
               <>
-                <div className="task-picker">
-                  {tasks.map((c) => (
-                    <button
-                      key={c.task.id}
-                      className={'chip-btn' + (selectedId === c.task.id ? ' active' : '')}
-                      onClick={() => {
-                        setSelectedId(c.task.id);
-                        void openDetail(c.task.id);
-                      }}
-                    >
-                      {c.task.name}
-                    </button>
-                  ))}
-                </div>
-                {detail && detail.task.id === selectedId ? (
-                  <div className="editor-scroll">
-                    <TaskEditor detail={detail} />
+                <div className="workspace-task-head">
+                  <div>
+                    <span className="eyebrow">当前任务</span>
+                    <h1>{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
                   </div>
-                ) : (
-                  <span className="placeholder">加载中…</span>
-                )}
+                  <span className={'workspace-urgency urgency-' + (currentTask?.task.urgency ?? detail?.task.urgency ?? 'normal')}>
+                    {currentTask?.overdue ? '已逾期' : currentTask?.task.urgency === 'critical' ? '紧急' : currentTask?.task.urgency === 'high' ? '高优先级' : currentTask?.task.urgency === 'low' ? '低优先级' : '普通'}
+                  </span>
+                </div>
+                <nav className="task-section-tabs" role="tablist" aria-label="当前任务分区">
+                  {TASK_SECTIONS.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        role="tab"
+                        aria-selected={taskSection === item.id}
+                        className={taskSection === item.id ? 'active' : ''}
+                        onClick={() => setTaskSection(item.id)}
+                      >
+                        <Icon aria-hidden="true" size={17} /><span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
+                <div className="workspace-scroll" role="tabpanel">
+                  {detailLoading || !detail || detail.task.id !== selectedTaskId ? <p className="loading-state">正在打开任务</p> : <TaskEditor detail={detail} section={taskSection} />}
+                </div>
               </>
-            )}
-          </>
-        )}
-        {tab === 'draft' && (
-          <div className="editor-scroll">
-            <DraftsPanel />
-          </div>
-        )}
-        {tab === 'archive' && (
-          <div className="editor-scroll">
-            <ArchiveView />
-          </div>
-        )}
-        {tab === 'settings' && (
-          <div className="editor-scroll">
-            <SettingsView />
-          </div>
-        )}
+            )
+          )}
+          {section === 'drafts' && <div className="workspace-scroll standalone-section"><DraftsPanel /></div>}
+          {section === 'archive' && <div className="workspace-scroll standalone-section"><ArchiveView /></div>}
+          {section === 'settings' && <div className="workspace-scroll standalone-section"><SettingsView /></div>}
+        </main>
       </div>
+      {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
     </div>
   );
 }

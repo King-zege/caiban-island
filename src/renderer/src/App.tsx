@@ -5,6 +5,7 @@ import { designTokenCssVariables } from '../../shared/designTokens';
 import L1Strip from './panels/L1Strip';
 import L2Panel from './panels/L2Panel';
 import L3Panel from './panels/L3Panel';
+import { ToastHost } from './components/ui/ToastHost';
 
 export default function App(): React.JSX.Element {
   const [level, setLevel] = useState<IslandLevel>('l1');
@@ -57,6 +58,7 @@ export default function App(): React.JSX.Element {
       {level === 'l1' && <L1Strip />}
       {level === 'l2' && <L2Panel />}
       {level === 'l3' && <L3Panel />}
+      <ToastHost />
     </div>
   );
 }

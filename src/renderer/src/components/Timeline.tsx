@@ -1,55 +1,68 @@
+import { Check, Circle, LoaderCircle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { NodeStatus, TaskNode } from '../../../shared/types';
 
-const STATUS_META: Record<NodeStatus, { label: string; cls: string }> = {
-  pending: { label: '待完成', cls: 'status-pending' },
-  in_progress: { label: '进行中', cls: 'status-in-progress' },
-  completed: { label: '已完成', cls: 'status-completed' }
+const STATUS_META: Record<NodeStatus, { label: string; icon: LucideIcon }> = {
+  pending: { label: '待完成', icon: Circle },
+  in_progress: { label: '进行中', icon: LoaderCircle },
+  completed: { label: '已完成', icon: Check }
 };
-
-const CYCLE: NodeStatus[] = ['pending', 'in_progress', 'completed'];
 
 interface TimelineProps {
   nodes: TaskNode[];
-  onStatus: (nodeId: string, status: NodeStatus) => void;
+  onStatus?: (nodeId: string, status: NodeStatus) => void;
   editable?: boolean;
+  hiddenIds?: ReadonlySet<string>;
 }
 
-export default function Timeline({ nodes, onStatus, editable = true }: TimelineProps): React.JSX.Element {
-  if (nodes.length === 0) {
-    return <p className="timeline-empty">尚未拆分节点 — 在「详细编辑」中用 AI 或手动添加</p>;
+function formatNodeDates(node: TaskNode): string | null {
+  if (!node.startUtc && !node.endUtc) return null;
+  const start = node.startUtc ? node.startUtc.slice(5, 16).replace('T', ' ') : '未设置';
+  const end = node.endUtc ? node.endUtc.slice(5, 16).replace('T', ' ') : '未设置';
+  return start + ' 至 ' + end;
+}
+
+export default function Timeline({ nodes, onStatus, editable = false, hiddenIds = new Set() }: TimelineProps): React.JSX.Element {
+  const ordered = [...nodes].filter((node) => !hiddenIds.has(node.id)).sort((a, b) => a.position - b.position);
+  if (ordered.length === 0) {
+    return <p className="timeline-empty">尚未拆分采购节点</p>;
   }
-  const ordered = [...nodes].sort((a, b) => a.position - b.position);
+
   return (
-    <div className="timeline" aria-label="任务时间轴">
-      {ordered.map((n, i) => {
-        const meta = STATUS_META[n.status];
-        const nextStatus = CYCLE[(CYCLE.indexOf(n.status) + 1) % 3];
-        const next = STATUS_META[nextStatus];
+    <ol className="timeline" aria-label="采购节点">
+      {ordered.map((node, index) => {
+        const meta = STATUS_META[node.status];
+        const StatusIcon = meta.icon;
+        const dates = formatNodeDates(node);
         return (
-          <div key={n.id} className="timeline-item">
-            {i > 0 && <div className="timeline-connector" />}
-            <button
-              className={'timeline-chip ' + meta.cls}
-              title={'当前：' + meta.label + '，点击切换为' + next.label}
-              disabled={!editable}
-              onClick={() => onStatus(n.id, nextStatus)}
-            >
-              <span className="chip-dot" />
-              <span className="chip-text">
-                <span className={'chip-status ' + meta.cls}>{meta.label}</span>
-                <span className="chip-title">{n.title}</span>
-                {n.startUtc || n.endUtc ? (
-                  <span className="chip-dates">
-                    {n.startUtc ? n.startUtc.slice(5, 16).replace('T', ' ') : ''}
-                    {n.startUtc && n.endUtc ? ' ~ ' : ''}
-                    {n.endUtc ? n.endUtc.slice(5, 16).replace('T', ' ') : ''}
-                  </span>
-                ) : null}
-              </span>
-            </button>
-          </div>
+          <li key={node.id} className={'timeline-item status-' + node.status}>
+            <span className="timeline-axis" aria-hidden="true">
+              <span className="timeline-marker"><StatusIcon size={15} strokeWidth={2} /></span>
+              {index < ordered.length - 1 && <span className="timeline-connector" />}
+            </span>
+            <span className="timeline-content">
+              <strong>{node.title}</strong>
+              {node.description && <span className="timeline-description">{node.description}</span>}
+              {dates && <span className="timeline-dates">{dates}</span>}
+            </span>
+            {editable ? (
+              <label className="node-status-control">
+                <span className="sr-only">{node.title}的状态</span>
+                <select
+                  value={node.status}
+                  onChange={(event) => onStatus?.(node.id, event.target.value as NodeStatus)}
+                >
+                  {(Object.keys(STATUS_META) as NodeStatus[]).map((status) => (
+                    <option key={status} value={status}>{STATUS_META[status].label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className={'timeline-status status-' + node.status}>{meta.label}</span>
+            )}
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }

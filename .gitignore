@@ -7,3 +7,5 @@ release/
 .playwright-mcp/
 tools/
 .verify/
+artifacts/
+.impeccable/review/

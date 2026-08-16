@@ -1,9 +1,17 @@
-import type { TaskCard as TaskCardData } from '../../../shared/types';
+import { ArrowDown, ChevronsUp, CircleDot, Clock3, ListChecks, TriangleAlert } from 'lucide-react';
+import type { FocusEventHandler } from 'react';
+import type { TaskCard as TaskCardData, Urgency } from '../../../shared/types';
 
-const URGENCY_LABEL: Record<string, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
+const URGENCY_LABEL: Record<Urgency, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
+const URGENCY_ICON = {
+  critical: TriangleAlert,
+  high: ChevronsUp,
+  normal: CircleDot,
+  low: ArrowDown
+} satisfies Record<Urgency, typeof TriangleAlert>;
 
 export function formatDeadline(deadlineUtc: string | null, tzId: string): string {
-  if (!deadlineUtc) return '未设置';
+  if (!deadlineUtc) return '未设置截止时间';
   try {
     return new Intl.DateTimeFormat('zh-CN', {
       month: 'numeric',
@@ -17,55 +25,65 @@ export function formatDeadline(deadlineUtc: string | null, tzId: string): string
   }
 }
 
-export default function TaskCard({ card }: { card: TaskCardData }): React.JSX.Element {
+interface TaskCardProps {
+  card: TaskCardData;
+  onOpen: () => void;
+  tabIndex?: number;
+  onFocus?: FocusEventHandler<HTMLButtonElement>;
+}
+
+export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
   const { task, progress, overdue } = card;
   const misc = task.kind === 'misc';
-  const progressText = progress.total === 0 ? '尚未拆分' : progress.done + '/' + progress.total;
-  const nextTitle = progress.nextTitle ?? '';
+  const progressText = progress.total === 0 ? '尚未拆分' : progress.done + '/' + progress.total + ' 个节点完成';
+  const nextTitle = misc ? '处理这项杂事' : progress.nextTitle ?? (progress.total === 0 ? '拆分采购节点' : '所有节点已完成');
+  const UrgencyIcon = URGENCY_ICON[task.urgency];
+  const deadline = formatDeadline(task.deadlineUtc, task.tzId);
+  const segmentCount = Math.min(Math.max(progress.total, 1), 6);
 
   const a11y = [
     task.name,
-    '紧急程度：' + (URGENCY_LABEL[task.urgency] ?? task.urgency),
-    task.deadlineUtc ? '截止：' + formatDeadline(task.deadlineUtc, task.tzId) : '未设置截止时间',
+    '下一步：' + nextTitle,
+    '紧急程度：' + URGENCY_LABEL[task.urgency],
+    deadline,
     overdue ? '已逾期' : '',
-    misc ? '杂事' : progressText + (nextTitle ? '，下一节点：' + nextTitle : '')
-  ]
-    .filter(Boolean)
-    .join('，');
+    misc ? '杂事' : progressText
+  ].filter(Boolean).join('，');
 
   return (
-    <article className={'task-card' + (overdue ? ' overdue' : '')} aria-label={a11y}>
-      <div className="card-top">
-        <span className={'chip urgency-' + task.urgency}>
-          {URGENCY_LABEL[task.urgency] ?? task.urgency}
+    <button
+      type="button"
+      className={'task-card urgency-' + task.urgency + (overdue ? ' overdue' : '')}
+      aria-label={a11y}
+      data-carousel-card="true"
+      tabIndex={tabIndex}
+      onFocus={onFocus}
+      onClick={onOpen}
+    >
+      <span className="card-next-label">下一采购动作</span>
+      <strong className="card-next" title={nextTitle}>{nextTitle}</strong>
+      <span className="card-title" title={task.name}>{task.name}</span>
+      <span className="card-meta">
+        <span className={'urgency-label urgency-' + task.urgency}>
+          <UrgencyIcon aria-hidden="true" size={14} strokeWidth={1.9} />
+          {URGENCY_LABEL[task.urgency]}
         </span>
-        <span className={'chip ' + (overdue ? 'deadline-overdue' : 'deadline')}>
-          {overdue ? '已逾期 · ' : ''}
-          {formatDeadline(task.deadlineUtc, task.tzId)}
+        <span className={overdue ? 'deadline-overdue' : 'deadline'}>
+          <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
+          {overdue ? '已逾期 ' : ''}{deadline}
         </span>
-      </div>
-      <h3 className="card-title" title={task.name}>
-        {task.name}
-      </h3>
-      {misc ? (
-        <div className="card-misc">
-          <span className="chip kind-misc">杂事</span>
-        </div>
-      ) : (
-        <>
-          <p className="card-next" title={nextTitle}>
-            {nextTitle ? '下一步：' + nextTitle : '下一步：—'}
-          </p>
-          <div className="card-progress">
-            <span className="progress-text">{progressText}</span>
-            {progress.total > 0 && (
-              <div className="progress-bar" role="progressbar" aria-valuenow={progress.done} aria-valuemax={progress.total}>
-                <div className="progress-fill" style={{ width: Math.round((progress.done / progress.total) * 100) + '%' }} />
-              </div>
-            )}
-          </div>
-        </>
+      </span>
+      {!misc && (
+        <span className="card-trail-wrap">
+          <span className="card-trail" aria-hidden="true">
+            {Array.from({ length: segmentCount }, (_, index) => {
+              const status = index < progress.done ? 'done' : index === progress.done && progress.done < progress.total ? 'current' : 'pending';
+              return <span key={index} className={'trail-segment ' + status} />;
+            })}
+          </span>
+          <span className="card-progress-text"><ListChecks aria-hidden="true" size={14} strokeWidth={1.8} />{progressText}</span>
+        </span>
       )}
-    </article>
+    </button>
   );
 }

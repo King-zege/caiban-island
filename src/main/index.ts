@@ -11,10 +11,16 @@ import { FullscreenDetector } from './fullscreenDetector';
 import { resolveUserDataPath } from './userData';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
+const testUserDataDir = process.env['CAIBAN_TEST_USER_DATA_DIR'];
 app.setPath(
   'userData',
-  resolveUserDataPath(app.getPath('appData'), process.env['CAIBAN_TEST_USER_DATA_DIR'], app.isPackaged)
+  resolveUserDataPath(app.getPath('appData'), testUserDataDir, app.isPackaged)
 );
+const testDebugPort = process.env['CAIBAN_TEST_REMOTE_DEBUGGING_PORT'];
+if (!app.isPackaged && testUserDataDir && testDebugPort && /^\d{4,5}$/.test(testDebugPort)) {
+  const port = Number.parseInt(testDebugPort, 10);
+  if (port >= 1024 && port <= 65535) app.commandLine.appendSwitch('remote-debugging-port', String(port));
+}
 // FR-061：Toast 通知需要 AppUserModelID（无证书也可用）
 app.setAppUserModelId('caiban-island');
 
@@ -117,6 +123,15 @@ let fullscreenDetector: FullscreenDetector | null = null;
 
       controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       await controller.init();
+      const testInitialLevel = process.env['CAIBAN_TEST_INITIAL_LEVEL'];
+      if (
+        !app.isPackaged &&
+        testUserDataDir &&
+        (testInitialLevel === 'l2' || testInitialLevel === 'l3')
+      ) {
+        controller.setLevel(testInitialLevel);
+        if (process.env['CAIBAN_TEST_HOLD_LEVEL'] === '1') controller.setInteracting(true);
+      }
       registerIpc(controller, appSvc, feishu);
       createTray(controller);
       // P7：真正全屏前台应用出现时自动暂停岛（FR-018）

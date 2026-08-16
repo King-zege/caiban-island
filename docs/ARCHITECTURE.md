@@ -23,6 +23,18 @@
 | 打包 | electron-builder（portable zip，可选 NSIS） | 免证书绿色分发 |
 | 测试 | Vitest + Testing Library + user-event + jsdom + axe + Electron 视觉回归 | 单元、交互、无障碍与确定性截图，见 TEST_PLAN.md |
 
+### 2.1 P9 新增依赖审查（2026-08-16）
+
+| 依赖 | 版本 | 许可证 | 维护状态与用途 |
+| --- | --- | --- | --- |
+| lucide-react | 1.31.0 | ISC | 2026-08-09 仍有发布；renderer 唯一功能图标家族 |
+| @testing-library/react | 16.3.2 | MIT | React 19 组件语义与交互测试 |
+| @testing-library/user-event | 14.6.4 | MIT | 键盘、指针与焦点行为测试 |
+| jsdom | 30.0.1 | MIT | Vitest renderer DOM 环境 |
+| axe-core | 4.13.0 | MPL-2.0 | serious/critical 无障碍问题自动检查 |
+
+上述依赖只用于图标呈现或测试，不跨越 renderer/main 边界；安装时 `npm audit` 为 0 个已知漏洞。
+
 ## 3. 进程分层
 
 - **main（主进程）**：窗口管理（L1/L2/L3 形变、置顶、点击穿透 setIgnoreMouseEvents）、屏幕定位与热区轮询、磨砂、托盘、单实例锁、SQLite 全部访问、归档快照与备份、提醒调度、Windows Toast（setAppUserModelId + 开始菜单快捷方式）、开机自启、MCP 服务、内置 LLM 调用、safeStorage 安全存储。
@@ -169,6 +181,8 @@
 - 通知显示：启动时 app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标正确显示所需）；
 - 目标平台：Win10 1809+ x64、Win11 x64；Arm64 为后续评估项。
 - `CAIBAN_TEST_USER_DATA_DIR` 仅在未打包开发/测试运行时生效，且目标必须位于系统临时目录；生产包拒绝该覆盖。视觉与集成测试不得依赖 `%APPDATA%` 覆盖来隔离数据。
+- `CAIBAN_TEST_INITIAL_LEVEL` 仅在上述隔离目录已生效且应用未打包时接受 `l2`/`l3`，用于确定性截图，不改变生产启动层级。
+- `CAIBAN_TEST_HOLD_LEVEL=1` 与 `CAIBAN_TEST_REMOTE_DEBUGGING_PORT` 同样要求未打包且隔离目录已启用，只用于保持截图层级并开放本机 CDP；生产包忽略它们。
 
 ## 11. 目录结构（P1 建立）
 

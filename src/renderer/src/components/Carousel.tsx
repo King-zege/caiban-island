@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { clampOffset, computeMaxOffset, decayVelocity, snapOffset, snapOffsetWithVelocity } from '../../../shared/carousel';
 
@@ -6,10 +6,11 @@ interface CarouselProps {
   itemWidth: number;
   gap: number;
   children: ReactNode[];
-  onCardClick?: (index: number) => void;
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
 }
 
-export default function Carousel({ itemWidth, gap, children, onCardClick }: CarouselProps): React.JSX.Element {
+export default function Carousel({ itemWidth, gap, children, activeIndex, onActiveIndexChange }: CarouselProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState(0);
   const [viewport, setViewport] = useState(0);
@@ -23,8 +24,9 @@ export default function Carousel({ itemWidth, gap, children, onCardClick }: Caro
   } | null>(null);
   const rafRef = useRef<number | null>(null);
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressClick = useRef(false);
 
-  const physics = { viewport, item: itemWidth, gap, count: children.length };
+  const physics = useMemo(() => ({ viewport, item: itemWidth, gap, count: children.length }), [children.length, gap, itemWidth, viewport]);
 
   const stopAnim = () => {
     if (rafRef.current !== null) {
@@ -32,6 +34,8 @@ export default function Carousel({ itemWidth, gap, children, onCardClick }: Caro
       rafRef.current = null;
     }
   };
+
+  useEffect(() => () => stopAnim(), []);
 
   const animateTo = useCallback((from: number, to: number, duration = 260) => {
     stopAnim();
@@ -99,11 +103,8 @@ export default function Carousel({ itemWidth, gap, children, onCardClick }: Caro
     } catch {
       // 忽略释放失败
     }
-    // 位移极小视为点击（选择卡片）
-    if (d.totalMove < 10 && onCardClick) {
-      onCardClick(Math.max(0, Math.min(children.length - 1, Math.round(-offset / (itemWidth + gap)))));
-      return;
-    }
+    suppressClick.current = d.totalMove >= 10;
+    if (d.totalMove < 10) return;
     const target = snapOffsetWithVelocity(offset, d.v, physics);
     if (Math.abs(d.v) > 900) inertia(offset, d.v * 0.5);
     else animateTo(offset, target, 240);
@@ -136,8 +137,29 @@ export default function Carousel({ itemWidth, gap, children, onCardClick }: Caro
   const maxOffset = computeMaxOffset(physics);
   const canScroll = maxOffset > 0;
 
+  const focusCard = (index: number) => {
+    const next = Math.max(0, Math.min(children.length - 1, index));
+    onActiveIndexChange(next);
+    const target = clampOffset(-next * (itemWidth + gap), physics);
+    animateTo(offset, target, 200);
+    requestAnimationFrame(() => {
+      const cards = viewportRef.current?.querySelectorAll<HTMLButtonElement>('[data-carousel-card="true"]');
+      cards?.[next]?.focus();
+    });
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLElement) || event.target.dataset['carouselCard'] !== 'true') return;
+    if (event.key === 'ArrowRight') focusCard(activeIndex + 1);
+    else if (event.key === 'ArrowLeft') focusCard(activeIndex - 1);
+    else if (event.key === 'Home') focusCard(0);
+    else if (event.key === 'End') focusCard(children.length - 1);
+    else return;
+    event.preventDefault();
+  };
+
   return (
-    <div className={'carousel' + (canScroll ? ' scrollable' : '')} ref={viewportRef}>
+    <div className={'carousel' + (canScroll ? ' scrollable' : '')} ref={viewportRef} onKeyDown={onKeyDown} aria-label="活跃采购任务">
       <div
         className="carousel-track"
         style={{ transform: 'translateX(' + offset + 'px)', gap: gap + 'px' }}
@@ -145,6 +167,12 @@ export default function Carousel({ itemWidth, gap, children, onCardClick }: Caro
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onClickCapture={(event) => {
+          if (!suppressClick.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClick.current = false;
+        }}
       >
         {children}
       </div>
