@@ -12,7 +12,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 type SortMode = 'deadline' | 'urgency' | 'updated';
 const URGENCY_ORDER = { critical: 0, high: 1, normal: 2, low: 3 } as const;
 
-export default function L2Panel(): React.JSX.Element {
+export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): React.JSX.Element {
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const load = useTaskStore((state) => state.load);
@@ -95,7 +95,7 @@ export default function L2Panel(): React.JSX.Element {
             action={<Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>}
           />
         ) : (
-          <Carousel itemWidth={248} gap={12} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex}>
+          <Carousel itemWidth={248} gap={12} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} reducedMotion={reducedMotion}>
             {sortedTasks.map((card, index) => (
               <TaskCard
                 key={card.task.id}

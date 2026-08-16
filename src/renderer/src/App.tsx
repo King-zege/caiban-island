@@ -36,7 +36,7 @@ export default function App(): React.JSX.Element {
   );
 
   const handleEsc = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !document.querySelector('dialog[open]')) {
       void window.api.setLevel(level === 'l3' ? 'l2' : 'l1');
     }
   }, [level]);
@@ -56,7 +56,7 @@ export default function App(): React.JSX.Element {
       onPointerDown={() => void window.api.activate()}
     >
       {level === 'l1' && <L1Strip />}
-      {level === 'l2' && <L2Panel />}
+      {level === 'l2' && <L2Panel reducedMotion={preferences.reducedMotion} />}
       {level === 'l3' && <L3Panel />}
       <ToastHost />
     </div>

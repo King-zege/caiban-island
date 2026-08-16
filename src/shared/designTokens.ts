@@ -45,7 +45,7 @@ export const DESIGN_TOKENS = {
     critical: '#FF453A',
     high: '#FF9F0A',
     normal: '#8E8E93',
-    low: '#6E737C',
+    low: '#858B96',
     danger: '#FF6961',
     shadow: 'rgba(3, 7, 12, 0.42)',
     selection: 'rgba(100, 210, 255, 0.28)'
@@ -62,7 +62,7 @@ export const DESIGN_TOKENS = {
     borderStrong: 'rgba(17, 19, 24, 0.18)',
     textPrimary: '#15171A',
     textSecondary: '#5B616B',
-    textTertiary: '#747B86',
+    textTertiary: '#656C76',
     accent: '#0078D4',
     accentText: '#F8FBFF',
     completed: '#16843A',
@@ -71,7 +71,7 @@ export const DESIGN_TOKENS = {
     critical: '#C62828',
     high: '#A65300',
     normal: '#6D737C',
-    low: '#7A8089',
+    low: '#656C76',
     danger: '#B42318',
     shadow: 'rgba(40, 52, 68, 0.20)',
     selection: 'rgba(0, 120, 212, 0.20)'

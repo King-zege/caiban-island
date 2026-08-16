@@ -2,7 +2,7 @@
 
 | 属性 | 值 |
 | --- | --- |
-| 状态 | Implemented through P7；P8–P10 执行全量 UI 重设计 |
+| 状态 | Implemented through P10；精密采购工作台全量 UI 重设计完成 |
 | 工作名称 | 采办岛（Caiban Island，工程标识 caiban-island） |
 | 平台 | Windows 10 1809+ 与 Windows 11（x64 优先，Arm64 后续评估） |
 | 用户范围 | 单机、单用户、本地优先 |

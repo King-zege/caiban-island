@@ -87,12 +87,31 @@ export default function L3Panel(): React.JSX.Element {
       </header>
 
       <div className="l3-mobile-picker">
-        <label>
+        <label className={section === 'tasks' ? 'active' : ''}>
           <span className="sr-only">选择任务</span>
           <select value={selectedTaskId ?? ''} onChange={(event) => selectTask(event.target.value)}>
+            {tasks.length === 0 && <option value="">暂无活跃任务</option>}
             {tasks.map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}
           </select>
         </label>
+        <nav aria-label="移动工作区导航">
+          {WORKSPACE_NAV.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={section === item.id ? 'active' : ''}
+                aria-current={section === item.id ? 'page' : undefined}
+                aria-label={item.label}
+                title={item.label}
+                onClick={() => openSection(item.id)}
+              >
+                <Icon aria-hidden="true" size={18} />
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       <div className="l3-shell">
@@ -119,7 +138,7 @@ export default function L3Panel(): React.JSX.Element {
             {WORKSPACE_NAV.map((item) => {
               const Icon = item.icon;
               return (
-                <button key={item.id} className={section === item.id ? 'active' : ''} aria-current={section === item.id ? 'page' : undefined} onClick={() => openSection(item.id)}>
+                <button key={item.id} data-workspace-section={item.id} className={section === item.id ? 'active' : ''} aria-current={section === item.id ? 'page' : undefined} onClick={() => openSection(item.id)}>
                   <Icon aria-hidden="true" size={18} /><span>{item.label}</span>
                 </button>
               );
@@ -148,6 +167,7 @@ export default function L3Panel(): React.JSX.Element {
                     return (
                       <button
                         key={item.id}
+                        data-task-section={item.id}
                         role="tab"
                         aria-selected={taskSection === item.id}
                         className={taskSection === item.id ? 'active' : ''}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow, nativeTheme, Notification } from 'electron';
 import path from 'node:path';
 import { IslandWindowController } from './windowController';
 import { registerIpc } from './ipc';
@@ -20,6 +20,9 @@ const testDebugPort = process.env['CAIBAN_TEST_REMOTE_DEBUGGING_PORT'];
 if (!app.isPackaged && testUserDataDir && testDebugPort && /^\d{4,5}$/.test(testDebugPort)) {
   const port = Number.parseInt(testDebugPort, 10);
   if (port >= 1024 && port <= 65535) app.commandLine.appendSwitch('remote-debugging-port', String(port));
+}
+if (!app.isPackaged && testUserDataDir && process.env['CAIBAN_TEST_COLOR_SCHEME'] === 'dark') {
+  nativeTheme.themeSource = 'dark';
 }
 // FR-061：Toast 通知需要 AppUserModelID（无证书也可用）
 app.setAppUserModelId('caiban-island');

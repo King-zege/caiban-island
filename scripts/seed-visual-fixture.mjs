@@ -58,6 +58,41 @@ try {
     db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?, ?, ?, ?)')
       .run(randomUUID(), taskId, '- 已确认预算范围\n- 等待第二家供应商回复', now.toISOString());
   }
+  const archivedId = randomUUID();
+  const archivedAt = new Date(now.getTime() - 3 * 86400000).toISOString();
+  db.prepare(`INSERT INTO tasks(
+    id, name, description, kind, urgency, deadline_utc, tz_id, status, archived_at, archive_outcome, created_at, updated_at
+  ) VALUES(?, '年度办公耗材框架采购', '视觉回归归档任务', 'task', 'normal', ?, 'Asia/Shanghai', 'archived', ?, 'completed', ?, ?)`).run(
+    archivedId,
+    new Date(now.getTime() - 4 * 86400000).toISOString(),
+    archivedAt,
+    new Date(now.getTime() - 12 * 86400000).toISOString(),
+    archivedAt
+  );
+  for (let index = 0; index < 3; index += 1) {
+    db.prepare(`INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position)
+      VALUES(?, ?, ?, '', NULL, NULL, 'completed', ?)`).run(randomUUID(), archivedId, nodeTitles[index], index);
+  }
+  db.prepare("INSERT INTO links(id, task_id, kind, title, target, meta) VALUES(?, ?, 'url', '归档报价依据', 'https://example.com/archive-quote', '{}')")
+    .run(randomUUID(), archivedId);
+  db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?, ?, ?, ?)').run(randomUUID(), archivedId, '供应商已按合同完成交付。', archivedAt);
+  db.prepare('INSERT INTO change_events(task_id, at_utc, kind, detail) VALUES(?, ?, ?, ?)').run(archivedId, archivedAt, 'task_archived', '{}');
+
+  const draftPayload = {
+    type: 'task',
+    taskInput: {
+      name: '会议室音视频设备采购',
+      description: '替换三间会议室的显示与拾音设备',
+      kind: 'task',
+      urgency: 'high',
+      deadlineUtc: new Date(now.getTime() + 14 * 86400000).toISOString(),
+      tzId: 'Asia/Shanghai'
+    },
+    nodes: nodeTitles.slice(0, 4).map((title) => ({ title, description: '', startUtc: null, endUtc: null })),
+    warnings: ['建议在询价前再次确认会议室接口规格']
+  };
+  db.prepare("INSERT INTO drafts(id, source, payload, state, created_at) VALUES(?, 'api', ?, 'pending', ?)")
+    .run(randomUUID(), JSON.stringify(draftPayload), now.toISOString());
   db.exec('COMMIT');
 } catch (error) {
   db.exec('ROLLBACK');

@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-16T05:30:14.899Z",
+  "title": "Design System: 采办岛",
+  "extensions": {
+    "colorMeta": {
+      "surface-tint-dark": {
+        "role": "neutral",
+        "displayName": "冷黑曜石磨砂",
+        "canonical": "rgba(10, 12, 15, 0.78)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "surface-fallback-dark": {
+        "role": "neutral",
+        "displayName": "冷黑曜石实体",
+        "canonical": "#111318",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "surface-raised-dark": {
+        "role": "neutral",
+        "displayName": "自适应银内容面",
+        "canonical": "rgba(255, 255, 255, 0.06)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "surface-hover-dark": {
+        "role": "neutral",
+        "displayName": "自适应银悬停面",
+        "canonical": "rgba(255, 255, 255, 0.10)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "surface-pressed-dark": {
+        "role": "neutral",
+        "displayName": "自适应银按压面",
+        "canonical": "rgba(255, 255, 255, 0.14)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "surface-overlay-dark": {
+        "role": "neutral",
+        "displayName": "黑曜石浮层",
+        "canonical": "rgba(8, 10, 13, 0.88)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "border-subtle-dark": {
+        "role": "neutral",
+        "displayName": "银雾细边",
+        "canonical": "rgba(255, 255, 255, 0.10)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "border-strong-dark": {
+        "role": "neutral",
+        "displayName": "银雾强边",
+        "canonical": "rgba(255, 255, 255, 0.18)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "text-primary-dark": {
+        "role": "neutral",
+        "displayName": "霜白主文",
+        "canonical": "#F5F7FA",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "text-secondary-dark": {
+        "role": "neutral",
+        "displayName": "冷银辅文",
+        "canonical": "#B8BDC7",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "text-tertiary-dark": {
+        "role": "neutral",
+        "displayName": "雾银弱提示",
+        "canonical": "#858B96",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "冰蓝操作光",
+        "canonical": "#64D2FF",
+        "tonalRamp": ["oklch(15% 0.14 230)", "oklch(27% 0.14 230)", "oklch(39% 0.14 230)", "oklch(51% 0.14 230)", "oklch(63% 0.14 230)", "oklch(75% 0.14 230)", "oklch(87% 0.14 230)", "oklch(95% 0.14 230)"]
+      },
+      "accent-text-dark": {
+        "role": "neutral",
+        "displayName": "冰蓝深墨前景",
+        "canonical": "#061117",
+        "tonalRamp": ["oklch(15% 0.025 225)", "oklch(27% 0.025 225)", "oklch(39% 0.025 225)", "oklch(51% 0.025 225)", "oklch(63% 0.025 225)", "oklch(75% 0.025 225)", "oklch(87% 0.025 225)", "oklch(95% 0.025 225)"]
+      },
+      "completed-dark": {
+        "role": "secondary",
+        "displayName": "完成绿",
+        "canonical": "#32D74B",
+        "tonalRamp": ["oklch(15% 0.16 145)", "oklch(27% 0.16 145)", "oklch(39% 0.16 145)", "oklch(51% 0.16 145)", "oklch(63% 0.16 145)", "oklch(75% 0.16 145)", "oklch(87% 0.16 145)", "oklch(95% 0.16 145)"]
+      },
+      "pending-dark": {
+        "role": "secondary",
+        "displayName": "待办黄",
+        "canonical": "#FFD60A",
+        "tonalRamp": ["oklch(15% 0.18 95)", "oklch(27% 0.18 95)", "oklch(39% 0.18 95)", "oklch(51% 0.18 95)", "oklch(63% 0.18 95)", "oklch(75% 0.18 95)", "oklch(87% 0.18 95)", "oklch(95% 0.18 95)"]
+      },
+      "critical-dark": {
+        "role": "secondary",
+        "displayName": "紧急红",
+        "canonical": "#FF453A",
+        "tonalRamp": ["oklch(15% 0.20 28)", "oklch(27% 0.20 28)", "oklch(39% 0.20 28)", "oklch(51% 0.20 28)", "oklch(63% 0.20 28)", "oklch(75% 0.20 28)", "oklch(87% 0.20 28)", "oklch(95% 0.20 28)"]
+      },
+      "high-dark": {
+        "role": "secondary",
+        "displayName": "高优先橙",
+        "canonical": "#FF9F0A",
+        "tonalRamp": ["oklch(15% 0.18 65)", "oklch(27% 0.18 65)", "oklch(39% 0.18 65)", "oklch(51% 0.18 65)", "oklch(63% 0.18 65)", "oklch(75% 0.18 65)", "oklch(87% 0.18 65)", "oklch(95% 0.18 65)"]
+      },
+      "normal-dark": {
+        "role": "neutral",
+        "displayName": "普通中性灰",
+        "canonical": "#8E8E93",
+        "tonalRamp": ["oklch(15% 0.012 265)", "oklch(27% 0.012 265)", "oklch(39% 0.012 265)", "oklch(51% 0.012 265)", "oklch(63% 0.012 265)", "oklch(75% 0.012 265)", "oklch(87% 0.012 265)", "oklch(95% 0.012 265)"]
+      },
+      "danger-dark": {
+        "role": "secondary",
+        "displayName": "危险珊瑚红",
+        "canonical": "#FF6961",
+        "tonalRamp": ["oklch(15% 0.18 25)", "oklch(27% 0.18 25)", "oklch(39% 0.18 25)", "oklch(51% 0.18 25)", "oklch(63% 0.18 25)", "oklch(75% 0.18 25)", "oklch(87% 0.18 25)", "oklch(95% 0.18 25)"]
+      },
+      "surface-tint-light": {
+        "role": "neutral",
+        "displayName": "自适应银磨砂",
+        "canonical": "rgba(246, 247, 250, 0.84)",
+        "tonalRamp": ["oklch(15% 0.010 250)", "oklch(27% 0.010 250)", "oklch(39% 0.010 250)", "oklch(51% 0.010 250)", "oklch(63% 0.010 250)", "oklch(75% 0.010 250)", "oklch(87% 0.010 250)", "oklch(95% 0.010 250)"]
+      },
+      "surface-fallback-light": {
+        "role": "neutral",
+        "displayName": "自适应银实体",
+        "canonical": "#F2F4F7",
+        "tonalRamp": ["oklch(15% 0.010 250)", "oklch(27% 0.010 250)", "oklch(39% 0.010 250)", "oklch(51% 0.010 250)", "oklch(63% 0.010 250)", "oklch(75% 0.010 250)", "oklch(87% 0.010 250)", "oklch(95% 0.010 250)"]
+      },
+      "surface-raised-light": {
+        "role": "neutral",
+        "displayName": "亮银内容面",
+        "canonical": "rgba(255, 255, 255, 0.72)",
+        "tonalRamp": ["oklch(15% 0.006 250)", "oklch(27% 0.006 250)", "oklch(39% 0.006 250)", "oklch(51% 0.006 250)", "oklch(63% 0.006 250)", "oklch(75% 0.006 250)", "oklch(87% 0.006 250)", "oklch(95% 0.006 250)"]
+      },
+      "surface-hover-light": {
+        "role": "neutral",
+        "displayName": "石墨悬停面",
+        "canonical": "rgba(17, 19, 24, 0.05)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "surface-pressed-light": {
+        "role": "neutral",
+        "displayName": "石墨按压面",
+        "canonical": "rgba(17, 19, 24, 0.08)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "surface-overlay-light": {
+        "role": "neutral",
+        "displayName": "亮银浮层",
+        "canonical": "rgba(246, 247, 250, 0.92)",
+        "tonalRamp": ["oklch(15% 0.010 250)", "oklch(27% 0.010 250)", "oklch(39% 0.010 250)", "oklch(51% 0.010 250)", "oklch(63% 0.010 250)", "oklch(75% 0.010 250)", "oklch(87% 0.010 250)", "oklch(95% 0.010 250)"]
+      },
+      "border-subtle-light": {
+        "role": "neutral",
+        "displayName": "石墨细边",
+        "canonical": "rgba(17, 19, 24, 0.10)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "border-strong-light": {
+        "role": "neutral",
+        "displayName": "石墨强边",
+        "canonical": "rgba(17, 19, 24, 0.18)",
+        "tonalRamp": ["oklch(15% 0.012 250)", "oklch(27% 0.012 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.012 250)", "oklch(87% 0.012 250)", "oklch(95% 0.012 250)"]
+      },
+      "text-primary-light": {
+        "role": "neutral",
+        "displayName": "石墨主文",
+        "canonical": "#15171A",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "text-secondary-light": {
+        "role": "neutral",
+        "displayName": "钢灰辅文",
+        "canonical": "#5B616B",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "text-tertiary-light": {
+        "role": "neutral",
+        "displayName": "雾灰弱提示",
+        "canonical": "#656C76",
+        "tonalRamp": ["oklch(15% 0.015 255)", "oklch(27% 0.015 255)", "oklch(39% 0.015 255)", "oklch(51% 0.015 255)", "oklch(63% 0.015 255)", "oklch(75% 0.015 255)", "oklch(87% 0.015 255)", "oklch(95% 0.015 255)"]
+      },
+      "accent-light": {
+        "role": "primary",
+        "displayName": "系统冰蓝",
+        "canonical": "#0078D4",
+        "tonalRamp": ["oklch(15% 0.16 245)", "oklch(27% 0.16 245)", "oklch(39% 0.16 245)", "oklch(51% 0.16 245)", "oklch(63% 0.16 245)", "oklch(75% 0.16 245)", "oklch(87% 0.16 245)", "oklch(95% 0.16 245)"]
+      },
+      "accent-text-light": {
+        "role": "neutral",
+        "displayName": "冰白操作前景",
+        "canonical": "#F8FBFF",
+        "tonalRamp": ["oklch(15% 0.012 245)", "oklch(27% 0.012 245)", "oklch(39% 0.012 245)", "oklch(51% 0.012 245)", "oklch(63% 0.012 245)", "oklch(75% 0.012 245)", "oklch(87% 0.012 245)", "oklch(95% 0.012 245)"]
+      },
+      "completed-light": {
+        "role": "secondary",
+        "displayName": "完成深绿",
+        "canonical": "#16843A",
+        "tonalRamp": ["oklch(15% 0.14 145)", "oklch(27% 0.14 145)", "oklch(39% 0.14 145)", "oklch(51% 0.14 145)", "oklch(63% 0.14 145)", "oklch(75% 0.14 145)", "oklch(87% 0.14 145)", "oklch(95% 0.14 145)"]
+      },
+      "pending-light": {
+        "role": "secondary",
+        "displayName": "待办赭黄",
+        "canonical": "#8A6500",
+        "tonalRamp": ["oklch(15% 0.12 85)", "oklch(27% 0.12 85)", "oklch(39% 0.12 85)", "oklch(51% 0.12 85)", "oklch(63% 0.12 85)", "oklch(75% 0.12 85)", "oklch(87% 0.12 85)", "oklch(95% 0.12 85)"]
+      },
+      "critical-light": {
+        "role": "secondary",
+        "displayName": "紧急深红",
+        "canonical": "#C62828",
+        "tonalRamp": ["oklch(15% 0.18 28)", "oklch(27% 0.18 28)", "oklch(39% 0.18 28)", "oklch(51% 0.18 28)", "oklch(63% 0.18 28)", "oklch(75% 0.18 28)", "oklch(87% 0.18 28)", "oklch(95% 0.18 28)"]
+      },
+      "high-light": {
+        "role": "secondary",
+        "displayName": "高优先焦橙",
+        "canonical": "#A65300",
+        "tonalRamp": ["oklch(15% 0.15 60)", "oklch(27% 0.15 60)", "oklch(39% 0.15 60)", "oklch(51% 0.15 60)", "oklch(63% 0.15 60)", "oklch(75% 0.15 60)", "oklch(87% 0.15 60)", "oklch(95% 0.15 60)"]
+      },
+      "normal-light": {
+        "role": "neutral",
+        "displayName": "普通钢灰",
+        "canonical": "#6D737C",
+        "tonalRamp": ["oklch(15% 0.015 260)", "oklch(27% 0.015 260)", "oklch(39% 0.015 260)", "oklch(51% 0.015 260)", "oklch(63% 0.015 260)", "oklch(75% 0.015 260)", "oklch(87% 0.015 260)", "oklch(95% 0.015 260)"]
+      },
+      "danger-light": {
+        "role": "secondary",
+        "displayName": "危险砖红",
+        "canonical": "#B42318",
+        "tonalRamp": ["oklch(15% 0.16 25)", "oklch(27% 0.16 25)", "oklch(39% 0.16 25)", "oklch(51% 0.16 25)", "oklch(63% 0.16 25)", "oklch(75% 0.16 25)", "oklch(87% 0.16 25)", "oklch(95% 0.16 25)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "L3 独立视图标题和关键下一动作。" },
+      "headline": { "displayName": "Headline", "purpose": "当前任务标题，保持单行稳定。" },
+      "title": { "displayName": "Title", "purpose": "分区标题与采购凭条中的下一采购动作。" },
+      "body": { "displayName": "Body", "purpose": "正文、说明与大多数表单内容。" },
+      "label": { "displayName": "Label", "purpose": "眉题、侧栏分组、来源和元数据标签。" },
+      "utility": { "displayName": "Utility Mono", "purpose": "时间、路径、URL 与凭据框。" }
+    },
+    "shadows": [
+      { "name": "l1-edge-glow", "value": "0 0 14px rgba(3, 7, 12, 0.42)", "purpose": "L1 顶部安静边缘的低强度轮廓光。" },
+      { "name": "island-ambient", "value": "0 18px 58px rgba(3, 7, 12, 0.42)", "purpose": "只用于 L2/L3 最外壳。" },
+      { "name": "menu-float", "value": "0 16px 40px rgba(3, 7, 12, 0.42)", "purpose": "更多菜单等小型悬浮层。" },
+      { "name": "dialog-confirm", "value": "0 24px 72px rgba(3, 7, 12, 0.42)", "purpose": "确认对话框和模态操作。" },
+      { "name": "toast-feedback", "value": "0 14px 38px rgba(3, 7, 12, 0.42)", "purpose": "短时反馈，不用于常驻内容。" }
+    ],
+    "motion": [
+      { "name": "motion-fast", "value": "160ms ease", "purpose": "按钮按压、标签轨迹与节点状态切换。" },
+      { "name": "motion-content", "value": "190ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "凭条进入、悬停与内容分区显隐。" },
+      { "name": "motion-window", "value": "320ms", "purpose": "L1、L2、L3 窗口形态连续变化。" },
+      { "name": "reduced-motion", "value": "1ms linear", "purpose": "系统减少动画开启时直接切换；禁用惯性、补间与呼吸动效。" }
+    ],
+    "breakpoints": [
+      { "name": "compact-workbench", "value": "760px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary-dark",
+      "description": "当前视图唯一主要动作，使用冰蓝操作光与 44px 命中高度。",
+      "html": "<button class=\"ds-btn-primary\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\"><path d=\"M12 5v14M5 12h14\"/></svg><span>新建任务</span></button>",
+      "css": ".ds-btn-primary { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid #64D2FF; border-radius: 12px; color: #061117; background: #64D2FF; font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 620; transition: transform 160ms ease, background 160ms ease; } .ds-btn-primary:hover { background: rgba(255,255,255,0.10); } .ds-btn-primary:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-btn-primary:active { background: rgba(255,255,255,0.14); transform: scale(0.97); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary-dark",
+      "description": "常规次级动作，使用自适应银内容面与低对比边界。",
+      "html": "<button class=\"ds-btn-secondary\">测试连接</button>",
+      "css": ".ds-btn-secondary { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; color: #F5F7FA; background: rgba(255,255,255,0.06); font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 620; transition: transform 160ms ease, background 160ms ease; } .ds-btn-secondary:hover { background: rgba(255,255,255,0.10); } .ds-btn-secondary:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-btn-secondary:active { background: rgba(255,255,255,0.14); transform: scale(0.97); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost-dark",
+      "description": "取消、返回和低权重工具动作，默认不制造额外容器。",
+      "html": "<button class=\"ds-btn-ghost\">取消</button>",
+      "css": ".ds-btn-ghost { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid transparent; border-radius: 12px; color: #F5F7FA; background: transparent; font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 620; transition: transform 160ms ease, background 160ms ease; } .ds-btn-ghost:hover { background: rgba(255,255,255,0.10); } .ds-btn-ghost:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-btn-ghost:active { background: rgba(255,255,255,0.14); transform: scale(0.97); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field-dark",
+      "description": "44px 高的系统输入字段，标签与错误文本独立占行。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">服务地址</span><input value=\"https://api.example.com/v1\" aria-label=\"服务地址\"><span class=\"ds-field-hint\">连接地址会在保存前校验</span></label>",
+      "css": ".ds-field { display: grid; gap: 8px; width: 320px; color: #F5F7FA; font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-field-label { color: #B8BDC7; font-size: 12px; font-weight: 600; } .ds-field input { min-height: 44px; width: 100%; padding: 0 12px; border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; outline: 0; color: #F5F7FA; background: rgba(255,255,255,0.06); font: inherit; } .ds-field input:hover { background: rgba(255,255,255,0.10); } .ds-field input:focus-visible { border-color: #64D2FF; outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-field-hint { color: #858B96; font-size: 11px; }"
+    },
+    {
+      "name": "Current Task Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active-dark",
+      "description": "L3 侧栏中的当前任务项，以细状态轨迹和两级文本维持单焦点。",
+      "html": "<nav class=\"ds-task-nav\" aria-label=\"活跃任务\"><button class=\"ds-task-nav-item active\" aria-current=\"page\"><span class=\"ds-task-indicator\"></span><span><strong>办公椅批量采购</strong><small>确认供应商报价</small></span></button><button class=\"ds-task-nav-item\"><span class=\"ds-task-indicator normal\"></span><span><strong>年度软件续费</strong><small>核对授权数量</small></span></button></nav>",
+      "css": ".ds-task-nav { display: grid; gap: 4px; width: 240px; padding: 12px; background: rgba(255,255,255,0.06); font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-task-nav-item { min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid transparent; border-radius: 12px; color: #B8BDC7; text-align: left; background: transparent; } .ds-task-nav-item:hover { color: #F5F7FA; background: rgba(255,255,255,0.10); } .ds-task-nav-item:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-task-nav-item.active { color: #F5F7FA; border-color: rgba(255,255,255,0.10); background: rgba(255,255,255,0.14); } .ds-task-nav-item > span:last-child { display: grid; min-width: 0; } .ds-task-nav-item strong { overflow: hidden; font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; } .ds-task-nav-item small { margin-top: 2px; overflow: hidden; color: #858B96; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; } .ds-task-indicator { width: 3px; height: 24px; flex: 0 0 auto; border-radius: 999px; background: #FF9F0A; } .ds-task-indicator.normal { background: #8E8E93; }"
+    },
+    {
+      "name": "Task Section Tabs",
+      "kind": "nav",
+      "refersTo": "segmented-active-dark",
+      "description": "当前任务的主分区导航，用 2px 冰蓝轨迹显示唯一活动分区。",
+      "html": "<nav class=\"ds-section-tabs\" aria-label=\"当前任务分区\"><button class=\"active\" aria-selected=\"true\">概览</button><button aria-selected=\"false\">采购节点</button><button aria-selected=\"false\">资料</button></nav>",
+      "css": ".ds-section-tabs { min-height: 44px; display: flex; padding: 0 24px; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.10); font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-section-tabs button { position: relative; min-height: 44px; padding: 0 12px; border: 0; color: #B8BDC7; background: transparent; font: inherit; } .ds-section-tabs button::after { content: ''; position: absolute; right: 12px; bottom: -1px; left: 12px; height: 2px; border-radius: 999px; background: #64D2FF; transform: scaleX(0); transition: transform 160ms ease; } .ds-section-tabs button:hover, .ds-section-tabs button.active { color: #F5F7FA; } .ds-section-tabs button:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-section-tabs button.active::after { transform: scaleX(1); }"
+    },
+    {
+      "name": "Procurement Slip",
+      "kind": "card",
+      "refersTo": "procurement-slip-dark",
+      "description": "L2 的视觉签名；整张凭条是单一控件，并把下一采购动作置于首位。",
+      "html": "<button class=\"ds-procurement-slip\" aria-label=\"办公椅批量采购，下一步：确认供应商报价，高优先级，8月18日 16:00，2/5 个节点完成\"><span class=\"ds-slip-label\">下一采购动作</span><strong class=\"ds-slip-next\">确认供应商报价</strong><span class=\"ds-slip-title\">办公椅批量采购</span><span class=\"ds-slip-meta\"><span class=\"ds-slip-urgency\">↑ 高</span><span>◷ 8月18日 16:00</span></span><span class=\"ds-slip-trail\" aria-hidden=\"true\"><i class=\"done\"></i><i class=\"done\"></i><i class=\"current\"></i><i></i><i></i></span><small>2/5 个节点完成</small></button>",
+      "css": ".ds-procurement-slip { position: relative; display: grid; width: 248px; min-width: 248px; min-height: 176px; padding: 16px; overflow: hidden; grid-template-rows: auto auto minmax(0,1fr) auto auto auto; gap: 4px; border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; color: #F5F7FA; text-align: left; background: rgba(255,255,255,0.06); font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; transition: transform 190ms cubic-bezier(0.2,0.8,0.2,1), background 190ms ease; } .ds-procurement-slip::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: #FF9F0A; } .ds-procurement-slip:hover, .ds-procurement-slip:focus-visible { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.10); transform: translateY(-2px); } .ds-procurement-slip:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-procurement-slip:active { background: rgba(255,255,255,0.14); transform: scale(0.99); } .ds-slip-label { color: #858B96; font-size: 11px; font-weight: 650; letter-spacing: 0.1em; } .ds-slip-next { overflow: hidden; font-size: 18px; font-weight: 670; letter-spacing: -0.02em; text-overflow: ellipsis; white-space: nowrap; } .ds-slip-title { overflow: hidden; color: #B8BDC7; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; } .ds-slip-meta { display: flex; justify-content: space-between; gap: 8px; color: #B8BDC7; font-size: 11px; } .ds-slip-urgency { color: #FF9F0A; } .ds-slip-trail { display: flex; gap: 4px; } .ds-slip-trail i { height: 3px; flex: 1; border-radius: 999px; background: rgba(255,255,255,0.18); } .ds-slip-trail i.done { background: #32D74B; } .ds-slip-trail i.current { background: #64D2FF; } .ds-procurement-slip small { color: #858B96; font-size: 10px; }"
+    },
+    {
+      "name": "Procurement Trail",
+      "kind": "custom",
+      "refersTo": "procurement-slip-dark",
+      "description": "L3 展开的采购链路；图标、文字、线型和色彩共同表达状态。",
+      "html": "<ol class=\"ds-procurement-trail\" aria-label=\"采购节点\"><li class=\"completed\"><span class=\"ds-trail-axis\"><b>✓</b><i></i></span><span><strong>收集需求</strong><small>已完成</small></span></li><li class=\"current\"><span class=\"ds-trail-axis\"><b>◉</b><i></i></span><span><strong>确认供应商报价</strong><small>进行中</small></span></li><li class=\"pending\"><span class=\"ds-trail-axis\"><b>○</b></span><span><strong>发起审批</strong><small>待完成</small></span></li></ol>",
+      "css": ".ds-procurement-trail { width: 360px; margin: 0; padding: 16px; list-style: none; color: #F5F7FA; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-procurement-trail li { display: grid; min-height: 64px; grid-template-columns: 32px 1fr; gap: 12px; } .ds-trail-axis { display: grid; justify-items: center; grid-template-rows: 28px 1fr; } .ds-trail-axis b { display: grid; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 999px; background: #111318; place-items: center; font-size: 13px; } .ds-trail-axis i { width: 1px; height: 100%; background: rgba(255,255,255,0.18); } .ds-procurement-trail li > span:last-child { display: grid; align-content: start; gap: 4px; padding: 4px 0 20px; } .ds-procurement-trail strong { font-size: 14px; } .ds-procurement-trail small { color: currentColor; font-size: 11px; } .ds-procurement-trail .completed { color: #32D74B; } .ds-procurement-trail .current { color: #64D2FF; } .ds-procurement-trail .pending { color: #FFD60A; } .ds-procurement-trail li:hover { background: rgba(255,255,255,0.10); } .ds-procurement-trail li:focus-within { outline: 2px solid #64D2FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "External Target Confirmation",
+      "kind": "custom",
+      "refersTo": "dialog-dark",
+      "description": "离开应用前显示完整 URL 或文件目标，并将确认动作保持为显式选择。",
+      "html": "<section class=\"ds-external-dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"ds-external-title\"><header><div><h2 id=\"ds-external-title\">确认打开外部目标</h2><p>离开采办岛前，请核对完整地址。</p></div><button class=\"ds-dialog-close\" aria-label=\"关闭\">×</button></header><div class=\"ds-dialog-body\"><strong>供应商报价页面</strong><code>https://vendor.example.com/quotes/2026-0816</code></div><footer><button class=\"ds-dialog-ghost\">取消</button><button class=\"ds-dialog-primary\">确认打开</button></footer></section>",
+      "css": ".ds-external-dialog { width: min(480px, calc(100vw - 32px)); overflow: hidden; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; color: #F5F7FA; background: rgba(8,10,13,0.88); box-shadow: 0 24px 72px rgba(3,7,12,0.42); font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-external-dialog header { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 24px 16px; gap: 16px; } .ds-external-dialog h2 { margin: 0; font-size: 20px; } .ds-external-dialog p { margin: 8px 0 0; color: #B8BDC7; font-size: 14px; } .ds-dialog-close { width: 44px; height: 44px; border: 1px solid transparent; border-radius: 12px; color: #F5F7FA; background: transparent; font-size: 22px; } .ds-dialog-body { display: grid; padding: 0 24px 20px; gap: 12px; color: #B8BDC7; } .ds-dialog-body code { display: block; padding: 12px; overflow-wrap: anywhere; border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; color: #F5F7FA; background: rgba(255,255,255,0.06); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 11px; user-select: text; } .ds-external-dialog footer { display: flex; justify-content: flex-end; padding: 16px 24px 24px; gap: 8px; } .ds-dialog-ghost, .ds-dialog-primary { min-height: 44px; padding: 0 16px; border-radius: 12px; font: inherit; font-size: 13px; font-weight: 620; transition: transform 160ms ease, background 160ms ease; } .ds-dialog-ghost { border: 1px solid transparent; color: #F5F7FA; background: transparent; } .ds-dialog-primary { border: 1px solid #64D2FF; color: #061117; background: #64D2FF; } .ds-dialog-close:hover, .ds-dialog-ghost:hover, .ds-dialog-primary:hover { background: rgba(255,255,255,0.10); } .ds-dialog-close:focus-visible, .ds-dialog-ghost:focus-visible, .ds-dialog-primary:focus-visible { outline: 2px solid #64D2FF; outline-offset: 2px; } .ds-dialog-ghost:active, .ds-dialog-primary:active { background: rgba(255,255,255,0.14); transform: scale(0.97); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "精密采购工作台",
+    "overview": "“精密采购工作台”把采购链路本身作为界面：L1 是低打扰入口，L2 把下一采购动作放在最前，L3 只围绕当前任务展开。采购凭条与由节点、连接线、状态标记组成的采购链路是视觉签名；它们不是装饰，而是行动顺序和风险的共同载体。\n\n系统借鉴 Apple 的信息层级、渐进披露与连续动效，但不模仿 macOS 外观。视觉世界由冷黑曜石外壳、自适应银内容面和单一冰蓝交互强调构成，强调精确、安静和可核对；深色是品牌主呈现，浅色、高对比度与减少动画模式跟随系统偏好。概念种子为 `6d4d8516`。\n\n材质集中在外壳，内容靠留白、细分隔和稳定网格建立层级。AI 建议始终以草稿呈现，安全敏感操作显式确认，界面优先让用户看清下一步、当前状态和真实目标。",
+    "keyCharacteristics": [
+      "L1 低打扰、L2 下一采购动作优先、L3 当前任务单焦点。",
+      "冷黑曜石、自适应银与冰蓝构成品牌主世界，深色是主呈现。",
+      "采购凭条和采购链路是跨层级复用的视觉签名。",
+      "状态色保持微量，并始终与图标、文字、线型或描边共同出现。",
+      "安全边界可见：外链先核对完整目标，凭据默认遮罩，AI 输出只作为草稿。"
+    ],
+    "rules": [
+      { "name": "The 单一冰蓝 Rule", "body": "冰蓝是唯一主交互强调；同一视图不再引入第二个品牌强调色。", "section": "colors" },
+      { "name": "The 微量状态 Rule", "body": "状态色只进入小图标、文字、2–4px 轨迹或描边，不铺满卡片或大面积容器。", "section": "colors" },
+      { "name": "The 系统字形 Rule", "body": "后续界面继续使用系统 UI 字体和工具等宽字体，不用展示字体制造“高级感”。", "section": "typography" },
+      { "name": "The 单焦点 Rule", "body": "L2 只回答“下一步做什么”，L3 只展开一个当前任务和一个主分区；新增功能不得把工作区改回多卡片仪表盘。", "section": "layout" },
+      { "name": "The 壳体先行 Rule", "body": "材质和大阴影属于外壳或真实浮层；内容区默认平面，禁止卡片套卡片制造虚假层级。", "section": "elevation" },
+      { "name": "The 外大内小 Rule", "body": "新组件先确定所在层级，再从既有圆角 token 选择；不得新增相邻但不一致的 10px、14px 或 20px 圆角。", "section": "shapes" },
+      { "name": "The 安全边界 Rule", "body": "任何离开应用、暴露凭据或把草稿写入正式任务的动作，都必须在界面中显示真实目标与明确确认状态。", "section": "components" }
+    ],
+    "dos": [
+      "**Do** 让新增界面继续围绕采购动作、凭条或节点链路组织，而不是围绕功能模块堆卡片。",
+      "**Do** 复用共享语义 token，并同时验证深色、浅色、高对比度和纯色回退。",
+      "**Do** 保持所有交互目标至少 44×44px、键盘焦点可见，并让状态同时有图标、文字或线型。",
+      "**Do** 在 760px 以下验证单列重排、横向标签滚动、长中文标题和 Windows 文本缩放。",
+      "**Do** 把高级配置放进渐进披露，把下一步动作和安全后果放在第一层。"
+    ],
+    "donts": [
+      "**Don't** 模仿 macOS 窗口控件、菜单栏或桌面 chrome；借鉴的是信息层级和连续性，不是平台皮肤。",
+      "**Don't** 用整张高饱和红、黄、绿卡片表达状态，或让颜色成为唯一状态线索。",
+      "**Don't** 在内容区叠加无业务层级的卡片、渐变、玻璃层或装饰性阴影。",
+      "**Don't** 在减少动画模式运行惯性、补间或呼吸动效；直接定位到最终状态。",
+      "**Don't** 默认展示凭据、缩略外链目标，或让 AI 建议绕过草稿审核进入正式数据。"
+    ]
+  }
+}

@@ -116,6 +116,23 @@ describe('P9 核心界面控件', () => {
     expect(document.activeElement?.textContent).toBe('任务 1');
   });
 
+  it('减少动画时轮播定位不启动 RAF 补间', async () => {
+    const raf = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', raf);
+    function Harness(): React.JSX.Element {
+      const [active, setActive] = useState(0);
+      return (
+        <Carousel itemWidth={248} gap={12} activeIndex={active} onActiveIndexChange={setActive} reducedMotion>
+          {[0, 1].map((index) => <button key={index} type="button" data-carousel-card="true">任务 {index + 1}</button>)}
+        </Carousel>
+      );
+    }
+    render(<Harness />);
+    screen.getByRole('button', { name: '任务 1' }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(raf).not.toHaveBeenCalled();
+  });
+
   it('对话框关闭后恢复触发按钮焦点', async () => {
     function Harness(): React.JSX.Element {
       const [open, setOpen] = useState(false);

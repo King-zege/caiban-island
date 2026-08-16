@@ -8,9 +8,10 @@ interface CarouselProps {
   children: ReactNode[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  reducedMotion?: boolean;
 }
 
-export default function Carousel({ itemWidth, gap, children, activeIndex, onActiveIndexChange }: CarouselProps): React.JSX.Element {
+export default function Carousel({ itemWidth, gap, children, activeIndex, onActiveIndexChange, reducedMotion = false }: CarouselProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState(0);
   const [viewport, setViewport] = useState(0);
@@ -39,6 +40,10 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
 
   const animateTo = useCallback((from: number, to: number, duration = 260) => {
     stopAnim();
+    if (reducedMotion) {
+      setOffset(to);
+      return;
+    }
     const t0 = performance.now();
     const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
     const step = (now: number) => {
@@ -48,11 +53,15 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
       else rafRef.current = null;
     };
     rafRef.current = requestAnimationFrame(step);
-  }, []);
+  }, [reducedMotion]);
 
   const inertia = useCallback(
     (start: number, velocity: number) => {
       stopAnim();
+      if (reducedMotion) {
+        setOffset(snapOffsetWithVelocity(start, velocity, physics));
+        return;
+      }
       let off = start;
       let v = velocity;
       let last = performance.now();
@@ -71,7 +80,7 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
       };
       rafRef.current = requestAnimationFrame(step);
     },
-    [animateTo, physics]
+    [animateTo, physics, reducedMotion]
   );
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -106,7 +115,8 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
     suppressClick.current = d.totalMove >= 10;
     if (d.totalMove < 10) return;
     const target = snapOffsetWithVelocity(offset, d.v, physics);
-    if (Math.abs(d.v) > 900) inertia(offset, d.v * 0.5);
+    if (reducedMotion) setOffset(target);
+    else if (Math.abs(d.v) > 900) inertia(offset, d.v * 0.5);
     else animateTo(offset, target, 240);
   };
 
@@ -122,9 +132,9 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
       stopAnim();
       const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
       const next = clampOffset(offset - delta, physics);
-      setOffset(next);
+      setOffset(reducedMotion ? snapOffset(next, physics) : next);
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
-      wheelTimer.current = setTimeout(() => animateTo(next, snapOffset(next, physics), 200), 140);
+      if (!reducedMotion) wheelTimer.current = setTimeout(() => animateTo(next, snapOffset(next, physics), 200), 140);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
@@ -132,7 +142,7 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
       el.removeEventListener('wheel', onWheel);
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
     };
-  }, [offset, animateTo, physics]);
+  }, [offset, animateTo, physics, reducedMotion]);
 
   const maxOffset = computeMaxOffset(physics);
   const canScroll = maxOffset > 0;
@@ -142,10 +152,12 @@ export default function Carousel({ itemWidth, gap, children, activeIndex, onActi
     onActiveIndexChange(next);
     const target = clampOffset(-next * (itemWidth + gap), physics);
     animateTo(offset, target, 200);
-    requestAnimationFrame(() => {
+    const focus = () => {
       const cards = viewportRef.current?.querySelectorAll<HTMLButtonElement>('[data-carousel-card="true"]');
       cards?.[next]?.focus();
-    });
+    };
+    if (reducedMotion) queueMicrotask(focus);
+    else requestAnimationFrame(focus);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {

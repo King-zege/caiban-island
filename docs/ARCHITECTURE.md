@@ -182,7 +182,7 @@
 - 目标平台：Win10 1809+ x64、Win11 x64；Arm64 为后续评估项。
 - `CAIBAN_TEST_USER_DATA_DIR` 仅在未打包开发/测试运行时生效，且目标必须位于系统临时目录；生产包拒绝该覆盖。视觉与集成测试不得依赖 `%APPDATA%` 覆盖来隔离数据。
 - `CAIBAN_TEST_INITIAL_LEVEL` 仅在上述隔离目录已生效且应用未打包时接受 `l2`/`l3`，用于确定性截图，不改变生产启动层级。
-- `CAIBAN_TEST_HOLD_LEVEL=1` 与 `CAIBAN_TEST_REMOTE_DEBUGGING_PORT` 同样要求未打包且隔离目录已启用，只用于保持截图层级并开放本机 CDP；生产包忽略它们。
+- `CAIBAN_TEST_HOLD_LEVEL=1`、`CAIBAN_TEST_REMOTE_DEBUGGING_PORT` 与 `CAIBAN_TEST_COLOR_SCHEME=dark` 同样要求未打包且隔离目录已启用，只用于保持截图层级、开放本机 CDP 和确定性主题；生产包忽略它们。
 
 ## 11. 目录结构（P1 建立）
 

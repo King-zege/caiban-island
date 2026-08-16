@@ -25,6 +25,15 @@ export function formatDeadline(deadlineUtc: string | null, tzId: string): string
   }
 }
 
+export function formatOverdueDuration(deadlineUtc: string | null, now = Date.now()): string | null {
+  if (!deadlineUtc) return null;
+  const elapsed = now - Date.parse(deadlineUtc);
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return null;
+  const hours = Math.max(1, Math.floor(elapsed / 3600000));
+  if (hours < 24) return '已逾期 ' + hours + ' 小时';
+  return '已逾期 ' + Math.floor(hours / 24) + ' 天';
+}
+
 interface TaskCardProps {
   card: TaskCardData;
   onOpen: () => void;
@@ -39,6 +48,7 @@ export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCa
   const nextTitle = misc ? '处理这项杂事' : progress.nextTitle ?? (progress.total === 0 ? '拆分采购节点' : '所有节点已完成');
   const UrgencyIcon = URGENCY_ICON[task.urgency];
   const deadline = formatDeadline(task.deadlineUtc, task.tzId);
+  const overdueDuration = overdue ? formatOverdueDuration(task.deadlineUtc) : null;
   const segmentCount = Math.min(Math.max(progress.total, 1), 6);
 
   const a11y = [
@@ -46,7 +56,7 @@ export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCa
     '下一步：' + nextTitle,
     '紧急程度：' + URGENCY_LABEL[task.urgency],
     deadline,
-    overdue ? '已逾期' : '',
+    overdueDuration ?? '',
     misc ? '杂事' : progressText
   ].filter(Boolean).join('，');
 
@@ -70,7 +80,7 @@ export default function TaskCard({ card, onOpen, tabIndex = 0, onFocus }: TaskCa
         </span>
         <span className={overdue ? 'deadline-overdue' : 'deadline'}>
           <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
-          {overdue ? '已逾期 ' : ''}{deadline}
+          {overdueDuration ? overdueDuration + ' · ' : ''}{deadline}
         </span>
       </span>
       {!misc && (

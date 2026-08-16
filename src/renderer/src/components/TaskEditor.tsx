@@ -10,6 +10,9 @@ import { Button, IconButton } from './ui/Button';
 import { Dialog } from './ui/Dialog';
 import { EmptyState } from './ui/EmptyState';
 import { Field } from './ui/Field';
+import { ExternalTargetDialog } from './ui/ExternalTargetDialog';
+import type { ExternalTarget } from './ui/ExternalTargetDialog';
+import { AsyncFeedback } from './ui/AsyncFeedback';
 
 const URGENCY_LABEL = { critical: '紧急', high: '高', normal: '普通', low: '低' } as const;
 const REMINDER_CHOICES = [
@@ -62,6 +65,8 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const [remindLoaded, setRemindLoaded] = useState(false);
   const [archiveAction, setArchiveAction] = useState<ArchiveAction>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [externalTarget, setExternalTarget] = useState<ExternalTarget | null>(null);
+  const [locationError, setLocationError] = useState<{ target: string; message: string } | null>(null);
 
   useEffect(() => {
     setNoteBody(detail.note);
@@ -119,6 +124,20 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
     setLinkTarget('');
     setLinkTitle('');
     notify('资料已添加', 'success');
+  };
+
+  const showMaterialInFolder = async (target: string) => {
+    setLocationError(null);
+    try {
+      const result = await window.api.showInFolder(target);
+      if (!result.ok) {
+        setLocationError({ target, message: result.error });
+        return;
+      }
+      notify('已在资源管理器中定位', 'success');
+    } catch {
+      setLocationError({ target, message: '无法定位该文件，请检查文件是否仍然存在' });
+    }
   };
 
   const scheduleNodeRemoval = (nodeId: string, title: string) => {
@@ -252,16 +271,17 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
               return (
                 <li key={link.id}>
                   <LinkIcon aria-hidden="true" size={19} />
-                  <button className="material-link" title={link.target} onClick={() => link.kind === 'url' ? void window.api.openUrl(link.target) : void window.api.openPath(link.target)}>
+                  <button className="material-link" title={link.target} onClick={() => setExternalTarget({ kind: link.kind, target: link.target, title: link.title })}>
                     <strong>{link.title}</strong><span>{link.target}</span>
                   </button>
-                  {link.kind === 'file' && <Button variant="ghost" onClick={() => void window.api.showInFolder(link.target)}>定位</Button>}
+                  {link.kind === 'file' && <Button variant="ghost" onClick={() => void showMaterialInFolder(link.target)}>定位</Button>}
                   <IconButton icon={Trash2} label={'删除' + link.title} variant="danger" onClick={() => scheduleLinkRemoval(link.id, link.title)} />
                 </li>
               );
             })}
           </ul>
         )}
+        {locationError && <AsyncFeedback tone="error" message={locationError.message} onRetry={() => void showMaterialInFolder(locationError.target)} />}
         <div className="material-composer">
           <label className="ui-field">
             <span className="ui-field-label">资料类型</span>
@@ -271,6 +291,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
           <Field label="显示名称" value={linkTitle} placeholder="可选" onChange={(event) => setLinkTitle(event.target.value)} />
           <Button icon={Plus} variant="primary" disabled={linkTarget.trim().length === 0} onClick={() => void doAddLink()}>添加资料</Button>
         </div>
+        <ExternalTargetDialog target={externalTarget} onClose={() => setExternalTarget(null)} />
       </div>
     );
   }
@@ -300,13 +321,18 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   return (
     <div className="task-workspace-section">
       <div className="section-heading"><div><span className="eyebrow">备注</span><h2>记录决策与跟进信息</h2></div></div>
-      <MarkdownNote body={noteBody} onChange={setNoteBody} />
+      <MarkdownNote
+        body={noteBody}
+        onChange={setNoteBody}
+        onOpenExternal={(target) => setExternalTarget({ kind: 'url', target, title: '备注中的链接' })}
+      />
       <div className="note-actions">
         <Button
           variant="primary"
           onClick={() => void saveNote(task.id, noteBody).then((error) => notify(error ?? '备注已保存', error ? 'error' : 'success'))}
         >保存备注</Button>
       </div>
+      <ExternalTargetDialog target={externalTarget} onClose={() => setExternalTarget(null)} />
     </div>
   );
 }

@@ -1,60 +1,56 @@
+import { Bell, Check, ShieldCheck, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from './ui/Button';
 
-// FR-001/FR-002：首次启动引导——说明本地存储/托盘/Qoder/免证书，并询问开机自启
 export default function WelcomeView({ onDone }: { onDone: () => void }): React.JSX.Element {
   const [step, setStep] = useState<'intro' | 'autostart'>('intro');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const chooseAutostart = (v: boolean) => {
-    void window.api.setSetting('autostart', v ? '1' : '0');
-    void window.api.setSetting('onboarded', '1');
-    onDone();
-  };
-
-  const skip = () => {
-    void window.api.setSetting('onboarded', '1');
+  const finish = async (autostart: boolean) => {
+    setBusy(true);
+    setError(null);
+    const [autostartResult, onboardResult] = await Promise.all([
+      window.api.setSetting('autostart', autostart ? '1' : '0'),
+      window.api.setSetting('onboarded', '1')
+    ]);
+    setBusy(false);
+    if (!autostartResult.ok || !onboardResult.ok) {
+      setError(!autostartResult.ok ? autostartResult.error : !onboardResult.ok ? onboardResult.error : '保存失败');
+      return;
+    }
     onDone();
   };
 
   return (
     <div className="welcome-view">
-      <h2 className="welcome-title">欢迎使用采办岛</h2>
       {step === 'intro' ? (
         <>
-          <ul className="welcome-list">
-            <li>
-              <b>数据在本机</b>：任务、节点、链接与备注保存在 %APPDATA%\caiban-island\（绿色免安装，删除该目录即清除全部数据）。
-            </li>
-            <li>
-              <b>AI 拆分可选</b>：可在设置中配置 Qoder MCP（推荐）或内置 AI；AI 只生成草稿，由你逐节点审核确认后才生效。
-            </li>
-            <li>
-              <b>常驻托盘</b>：收起面板不退出应用；托盘图标提供"打开 / 暂停 / 退出"。
-            </li>
-            <li>
-              <b>免证书绿色版</b>：首次运行 SmartScreen 提示"仍要运行"是正常现象，并非病毒。
-            </li>
-          </ul>
-          <div className="welcome-actions">
-            <button className="btn primary" onClick={() => setStep('autostart')}>
-              下一步
-            </button>
+          <div className="welcome-copy">
+            <span className="eyebrow">欢迎来到采办岛</span>
+            <h2>把下一项采购动作放在眼前</h2>
           </div>
+          <div className="welcome-principles">
+            <span><ShieldCheck aria-hidden="true" size={19} /><strong>本机保存</strong><small>任务与资料留在你的电脑</small></span>
+            <span><Sparkles aria-hidden="true" size={19} /><strong>AI 只产草稿</strong><small>确认后才会写入正式任务</small></span>
+            <span><Bell aria-hidden="true" size={19} /><strong>常驻但不打扰</strong><small>收起后从顶部快速唤回</small></span>
+          </div>
+          <Button variant="primary" onClick={() => setStep('autostart')}>继续</Button>
         </>
       ) : (
-        <>
-          <p className="welcome-q">是否随 Windows 登录自动启动？</p>
-          <div className="welcome-actions">
-            <button className="btn primary" onClick={() => chooseAutostart(true)}>
-              是，开机自启
-            </button>
-            <button className="btn" onClick={() => chooseAutostart(false)}>
-              否
-            </button>
-            <button className="btn" onClick={skip}>
-              稍后再说
-            </button>
+        <div className="welcome-choice">
+          <div>
+            <span className="eyebrow">最后一步</span>
+            <h2>登录 Windows 后自动启动？</h2>
+            <p>开启后，采办岛会在顶部待命；你可以随时在设置里更改。</p>
           </div>
-        </>
+          <div className="welcome-actions">
+            <Button icon={Check} variant="primary" disabled={busy} onClick={() => void finish(true)}>自动启动</Button>
+            <Button disabled={busy} onClick={() => void finish(false)}>暂不启用</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setStep('intro')}>返回</Button>
+          </div>
+          {error && <p className="form-error" role="alert">{error}</p>}
+        </div>
       )}
     </div>
   );
