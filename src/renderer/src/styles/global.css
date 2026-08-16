@@ -1,19 +1,5 @@
 :root {
-  --surface-tint: rgba(8, 9, 11, 0.76);
-  --surface-fallback: #111216;
-  --surface-card: rgba(255, 255, 255, 0.08);
-  --surface-card-hover: rgba(255, 255, 255, 0.12);
-  --surface-card-pressed: rgba(255, 255, 255, 0.16);
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --text-primary: #f5f7fa;
-  --text-secondary: #b8bdc7;
-  --text-tertiary: #858b96;
-  --focus: #64d2ff;
-  --radius-island: 40px;
-  --radius-card: 18px;
-  --radius-control: 12px;
-  --radius-chip: 999px;
-  --font: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  color-scheme: light dark;
 }
 
 html,
@@ -25,7 +11,7 @@ body,
   height: 100%;
   overflow: hidden;
   background: transparent;
-  font-family: var(--font);
+  font-family: var(--font-ui);
   color: var(--text-primary);
   user-select: none;
   -webkit-user-select: none;
@@ -35,21 +21,28 @@ body,
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-}
-
-.app {
   position: relative;
+  --surface-card: var(--surface-raised);
+  --surface-card-hover: var(--surface-hover);
+  --surface-card-pressed: var(--surface-pressed);
+  --focus: var(--accent);
+  --radius-island: var(--radius-l2);
+  --radius-card: var(--radius-section);
+  --font: var(--font-ui);
+  --node-completed: var(--status-completed);
+  --node-in-progress: var(--status-in-progress);
+  --node-pending: var(--status-pending);
 }
 
 /* L1：胶囊固定 96×6 绘制在窗口顶部；窗口其余区域保持透明（Win 对透明小窗口有最小高度限制，多余区域透明+点击穿透） */
 .l1-strip {
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
   width: 96px;
   height: 6px;
   border-radius: var(--radius-chip);
-  background: rgba(8, 9, 11, 0.85);
+  background: var(--surface-fallback);
   border: 1px solid var(--border-subtle);
   box-sizing: border-box;
 }
@@ -66,6 +59,10 @@ body,
   border: 1px solid var(--border-subtle);
   background: var(--surface-tint);
   animation: fade-in 180ms ease-out;
+}
+
+.level-l3 .panel {
+  border-radius: var(--radius-l3);
 }
 
 .backdrop-fallback .panel {
@@ -1157,7 +1154,6 @@ body,
   user-select: text;
   -webkit-user-select: text;
 }
-
 
 
 

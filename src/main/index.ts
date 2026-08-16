@@ -5,13 +5,16 @@ import { registerIpc } from './ipc';
 import { createTray } from './tray';
 import { openDatabase } from './db';
 import { AppService } from './appService';
-import { SettingsService } from './settingsService';
 import { startMcpServer } from './mcpServer';
 import { FeishuService } from './feishuService';
 import { FullscreenDetector } from './fullscreenDetector';
+import { resolveUserDataPath } from './userData';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
-app.setPath('userData', path.join(app.getPath('appData'), 'caiban-island'));
+app.setPath(
+  'userData',
+  resolveUserDataPath(app.getPath('appData'), process.env['CAIBAN_TEST_USER_DATA_DIR'], app.isPackaged)
+);
 // FR-061：Toast 通知需要 AppUserModelID（无证书也可用）
 app.setAppUserModelId('caiban-island');
 
@@ -64,7 +67,7 @@ let fullscreenDetector: FullscreenDetector | null = null;
     async function createWindow(): Promise<void> {
       const win = new BrowserWindow({
         width: 96,
-        height: 6,
+        height: 35,
         x: 0,
         y: 0,
         frame: false,
@@ -100,7 +103,7 @@ let fullscreenDetector: FullscreenDetector | null = null;
       };
       appSvc.onChange(scheduleFeishu);
 
-      const settings = new SettingsService(db);
+      const settings = appSvc.settings;
       app.setLoginItemSettings({ openAtLogin: settings.get('autostart') === '1' });
 
       // P5：启动本机 MCP SSE 服务（Qoder 主通道）
@@ -112,7 +115,7 @@ let fullscreenDetector: FullscreenDetector | null = null;
         await win.loadFile(path.join(__dirname, '../renderer/index.html'));
       }
 
-      controller = new IslandWindowController(win);
+      controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       await controller.init();
       registerIpc(controller, appSvc, feishu);
       createTray(controller);

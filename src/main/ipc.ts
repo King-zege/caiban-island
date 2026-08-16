@@ -26,6 +26,7 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
     return true;
   });
   ipcMain.handle('app:getState', () => c.state());
+  ipcMain.handle('ui:getPreferences', () => c.uiPreferences());
   ipcMain.handle('ui:interacting', (_e: IpcMainInvokeEvent, v: boolean) => {
     c.setInteracting(v);
     return true;

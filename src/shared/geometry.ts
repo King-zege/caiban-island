@@ -3,7 +3,8 @@ import type { DisplayInfo, Rect } from './types';
 export const ISLAND = {
   L1_WIDTH: 96,
   L1_HEIGHT: 6,
-  L1_OFFSET_ABOVE: 2,      // 窗口向上偏移，仅露约 4px
+  L1_VISIBLE_HEIGHT: 4,
+  L1_NATIVE_HEIGHT: 35,    // Windows 无框窗口的安全最小逻辑高度；透明主体移到屏幕外
   L2_WIDTH: 760,
   L2_HEIGHT: 280,
   L2_HEIGHT_DETAIL: 480,
@@ -19,12 +20,13 @@ export const ISLAND = {
   HOTZONE_TOP: 10          // 顶部热区：屏幕顶边下 10px
 } as const;
 
-export function computeL1Bounds(display: DisplayInfo): Rect {
+export function computeL1Bounds(display: DisplayInfo, nativeHeight: number = ISLAND.L1_NATIVE_HEIGHT): Rect {
+  const height = Math.max(nativeHeight, ISLAND.L1_HEIGHT);
   return {
     x: display.x + Math.round((display.width - ISLAND.L1_WIDTH) / 2),
-    y: display.y - ISLAND.L1_OFFSET_ABOVE,
+    y: display.y - (height - ISLAND.L1_VISIBLE_HEIGHT),
     width: ISLAND.L1_WIDTH,
-    height: ISLAND.L1_HEIGHT
+    height
   };
 }
 

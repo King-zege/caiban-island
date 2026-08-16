@@ -16,11 +16,13 @@ import type {
   Task,
   TaskCard,
   TaskDetail,
-  TaskInput
+  TaskInput,
+  UiPreferences
 } from '../shared/types';
 
 const api = {
   getState: (): Promise<IslandState> => ipcRenderer.invoke('app:getState'),
+  getUiPreferences: (): Promise<UiPreferences> => ipcRenderer.invoke('ui:getPreferences'),
   setLevel: (level: IslandLevel): Promise<boolean> => ipcRenderer.invoke('window:setLevel', level),
   interacting: (v: boolean): Promise<boolean> => ipcRenderer.invoke('ui:interacting', v),
   togglePause: (): Promise<boolean> => ipcRenderer.invoke('island:togglePause'),
@@ -29,6 +31,9 @@ const api = {
   quit: (): Promise<boolean> => ipcRenderer.invoke('app:quit'),
   onState: (cb: (s: IslandState) => void): void => {
     ipcRenderer.on('window:state', (_e: IpcRendererEvent, s: IslandState) => cb(s));
+  },
+  onUiPreferences: (cb: (preferences: UiPreferences) => void): void => {
+    ipcRenderer.on('ui:preferences', (_e: IpcRendererEvent, preferences: UiPreferences) => cb(preferences));
   },
   debugSendKey: (text: string): Promise<boolean> => ipcRenderer.invoke('debug:sendKey', text),
   debugSendTab: (): Promise<boolean> => ipcRenderer.invoke('debug:sendTab'),

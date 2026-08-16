@@ -12,7 +12,8 @@
 | 语言 | TypeScript（strict） | 主进程/渲染层同语言 |
 | UI | React 19 + Vite（electron-vite） | 组件化、HMR 快 |
 | 状态 | Zustand | 轻量、配合 React 18/19 |
-| 动画 | motion（原 framer-motion） | spring 动画；只动 compositor 属性 |
+| 图标 | lucide-react | 用户锁定的单一线性图标家族；全局统一 1.75px stroke |
+| 动画 | 主进程窗口插值 + CSS compositor 动画 | 窗口形变在 main；renderer 只动画 transform/opacity/border-radius |
 | 数据库 | better-sqlite3 | 同步 API、快、WAL；主进程独占 |
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
 | MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
@@ -20,7 +21,7 @@
 | 飞书同步 | Node fetch（飞书多维表格 bitable v1 Open API）+ PersonalBaseToken | 个人令牌免管理员审批；无 CLI 依赖 |
 | Markdown | markdown-it（禁用 HTML）+ 自渲染 | 禁止原始 HTML 与脚本 |
 | 打包 | electron-builder（portable zip，可选 NSIS） | 免证书绿色分发 |
-| 测试 | Vitest（单测/集成） | 见 TEST_PLAN.md |
+| 测试 | Vitest + Testing Library + user-event + jsdom + axe + Electron 视觉回归 | 单元、交互、无障碍与确定性截图，见 TEST_PLAN.md |
 
 ## 3. 进程分层
 
@@ -28,6 +29,8 @@
 - **preload**：contextBridge 暴露白名单 API，不含业务逻辑。
 - **renderer（React UI）**：组件、面板、Zustand 状态；不直接访问 Node/DB/文件/网络，一切经 IPC。
 - **shared**：类型、IPC 通道名、设计 token 常量、schema 校验器（main 与测试复用）。
+
+设计 token 以 `src/shared/designTokens.ts` 为唯一来源。renderer 把语义 token 映射为根节点 CSS variables；组件不得维护第二份颜色、圆角或间距常量。
 
 ## 4. IPC 通道白名单
 
@@ -46,6 +49,7 @@
 | system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |
 | window:setLevel / setL2Detail / activate | renderer→main | 窗口三级控制、速览加高、焦点激活 |
 | ui:interacting / island:togglePause / app:quit | renderer→main | 交互态、暂停、退出 |
+| ui:getPreferences / ui:preferences | main→renderer | 只读 `UiPreferences`：系统明暗、高对比度、减少动画与实际 backdrop；系统设置变化时推送 |
 | debug:sendKey / sendTab（仅 ISLAND_DEBUG） | renderer→main | 自动化验证输入注入 |
 
 所有通道入参与出参类型在 shared 定义；renderer 收到的错误为可操作的中文消息；业务通道统一返回 { ok, data | error }。
@@ -164,6 +168,7 @@
 - 无代码签名：README 说明 SmartScreen"仍要运行"为正常现象，不尝试绕过；
 - 通知显示：启动时 app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标正确显示所需）；
 - 目标平台：Win10 1809+ x64、Win11 x64；Arm64 为后续评估项。
+- `CAIBAN_TEST_USER_DATA_DIR` 仅在未打包开发/测试运行时生效，且目标必须位于系统临时目录；生产包拒绝该覆盖。视觉与集成测试不得依赖 `%APPDATA%` 覆盖来隔离数据。
 
 ## 11. 目录结构（P1 建立）
 

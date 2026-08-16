@@ -1,6 +1,8 @@
 import koffi from 'koffi';
 import { ACRYLIC_TINT, buildGradientColor } from '../shared/acrylic';
+import type { ColorScheme } from '../shared/types';
 
+const ACCENT_DISABLED = 0;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
 const ACCENT_ENABLE_BLURBEHIND = 3;
 const WCA_ACCENT_POLICY = 19;
@@ -14,9 +16,10 @@ function hwndValue(hwnd: Buffer): number {
 
 // Win10 1803+ / Win11：为透明窗口启用系统 Acrylic 模糊；
 // 失败时级联到普通 Blur，再失败返回 false 由上层回退纯色。
-export function applyAcrylic(hwndBuffer: Buffer): boolean {
+function setAccent(hwndBuffer: Buffer, state: number, scheme: ColorScheme): boolean {
   const hwnd = hwndValue(hwndBuffer);
-  const gradient = buildGradientColor(ACRYLIC_TINT.a, ACRYLIC_TINT.b, ACRYLIC_TINT.g, ACRYLIC_TINT.r);
+  const tint = ACRYLIC_TINT[scheme];
+  const gradient = state === ACCENT_DISABLED ? 0 : buildGradientColor(tint.a, tint.b, tint.g, tint.r);
   try {
     const user32 = koffi.load('user32.dll');
     const AccentPolicy = koffi.struct('AccentPolicy', {
@@ -40,9 +43,18 @@ export function applyAcrylic(hwndBuffer: Buffer): boolean {
         Data: { AccentState: state, AccentFlags: 0, GradientColor: gradient, AnimationId: 0 },
         SizeOfData: koffi.sizeof(AccentPolicy)
       }) !== 0;
+    if (state === ACCENT_DISABLED) return call(ACCENT_DISABLED);
     if (call(ACCENT_ENABLE_ACRYLICBLURBEHIND)) return true;
     return call(ACCENT_ENABLE_BLURBEHIND);
   } catch {
     return false;
   }
+}
+
+export function applyAcrylic(hwndBuffer: Buffer, scheme: ColorScheme): boolean {
+  return setAccent(hwndBuffer, ACCENT_ENABLE_ACRYLICBLURBEHIND, scheme);
+}
+
+export function disableAcrylic(hwndBuffer: Buffer): boolean {
+  return setAccent(hwndBuffer, ACCENT_DISABLED, 'dark');
 }

@@ -8,12 +8,19 @@ const display: DisplayInfo = {
 };
 
 describe('computeL1Bounds', () => {
-  it('居中于主屏顶部中央，向上偏移 2px', () => {
+  it('使用 Windows 安全最小高度，并只让底部 4px 进入工作区', () => {
     const b = computeL1Bounds(display);
     expect(b.width).toBe(ISLAND.L1_WIDTH);
-    expect(b.height).toBe(ISLAND.L1_HEIGHT);
+    expect(b.height).toBe(ISLAND.L1_NATIVE_HEIGHT);
     expect(b.x).toBe(912);
-    expect(b.y).toBe(-2);
+    expect(b.y).toBe(-31);
+    expect(b.y + b.height - display.y).toBe(ISLAND.L1_VISIBLE_HEIGHT);
+  });
+
+  it('接受更高的 DPI/原生最小高度但可见区保持不变', () => {
+    const b = computeL1Bounds(display, 53);
+    expect(b.height).toBe(53);
+    expect(b.y + b.height - display.y).toBe(ISLAND.L1_VISIBLE_HEIGHT);
   });
 });
 

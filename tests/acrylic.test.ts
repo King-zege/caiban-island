@@ -9,10 +9,15 @@ describe('buildGradientColor', () => {
 
 describe('decideBackdrop', () => {
   it('磨砂可用且非高对比度 → acrylic', () => {
-    expect(decideBackdrop(true, false)).toBe('acrylic');
+    expect(decideBackdrop('l2', true, false, false, false)).toBe('acrylic');
   });
-  it('磨砂失败或高对比度 → fallback', () => {
-    expect(decideBackdrop(false, false)).toBe('fallback');
-    expect(decideBackdrop(true, true)).toBe('fallback');
+  it('L1 始终透明，不启用整窗磨砂', () => {
+    expect(decideBackdrop('l1', true, false, false, false)).toBe('transparent');
+  });
+  it('磨砂失败、高对比度、减少动画或用户关闭 → fallback', () => {
+    expect(decideBackdrop('l2', false, false, false, false)).toBe('fallback');
+    expect(decideBackdrop('l2', true, true, false, false)).toBe('fallback');
+    expect(decideBackdrop('l3', true, false, true, false)).toBe('fallback');
+    expect(decideBackdrop('l3', true, false, false, true)).toBe('fallback');
   });
 });

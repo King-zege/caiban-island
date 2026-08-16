@@ -1,10 +1,10 @@
-import { BrowserWindow, screen, nativeTheme } from 'electron';
-import { applyAcrylic } from './acrylicNative';
+import { BrowserWindow, screen, nativeTheme, systemPreferences } from 'electron';
+import { applyAcrylic, disableAcrylic } from './acrylicNative';
 import { dbg } from './debugLog';
 import { computeL1Bounds, computeL2Bounds, computeL3Bounds, isInHotZone } from '../shared/geometry';
 import { TIMING } from '../shared/stateMachine';
 import { decideBackdrop } from '../shared/acrylic';
-import type { BackdropMode, DisplayInfo, IslandLevel, IslandState, Rect } from '../shared/types';
+import type { BackdropMode, DisplayInfo, IslandLevel, IslandState, Rect, UiPreferences } from '../shared/types';
 
 export class IslandWindowController {
   readonly win: BrowserWindow;
@@ -18,8 +18,11 @@ export class IslandWindowController {
   private pollTimer: NodeJS.Timeout | null = null;
   private animTimer: NodeJS.Timeout | null = null;
   private interacting = false;
+  private readonly handleThemeUpdated = (): void => {
+    this.applyBackdrop();
+  };
 
-  constructor(win: BrowserWindow) {
+  constructor(win: BrowserWindow, private readonly isAcrylicDisabled: () => boolean = () => false) {
     this.win = win;
   }
 
@@ -31,6 +34,8 @@ export class IslandWindowController {
     setTimeout(() => {
       dbg('after1.5s bounds=' + JSON.stringify(this.win.getBounds()) + ' content=' + JSON.stringify(this.win.getContentBounds()) + ' visible=' + this.win.isVisible());
     }, 1500);
+    this.win.setIgnoreMouseEvents(true, { forward: true });
+    nativeTheme.on('updated', this.handleThemeUpdated);
     this.applyBackdrop();
     this.win.showInactive(); // 展开/显示不抢焦点
     this.startPolling();
@@ -43,16 +48,25 @@ export class IslandWindowController {
   }
 
   applyBackdrop(): void {
-    const ok = applyAcrylic(this.win.getNativeWindowHandle());
-    this.backdrop = decideBackdrop(ok, nativeTheme.shouldUseHighContrastColors);
-    dbg('backdrop=' + this.backdrop + ' acrylicOk=' + ok + ' highContrast=' + nativeTheme.shouldUseHighContrastColors);
-    this.win.webContents.send('window:state', this.state());
+    const scheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    const highContrast = nativeTheme.shouldUseHighContrastColors;
+    const reducedMotion = systemPreferences.getAnimationSettings().prefersReducedMotion;
+    const disabled = this.isAcrylicDisabled();
+    const shouldAttempt = this.level !== 'l1' && !highContrast && !reducedMotion && !disabled;
+    const ok = shouldAttempt
+      ? applyAcrylic(this.win.getNativeWindowHandle(), scheme)
+      : (disableAcrylic(this.win.getNativeWindowHandle()), false);
+    this.backdrop = decideBackdrop(this.level, ok, highContrast, reducedMotion, disabled);
+    dbg('backdrop=' + this.backdrop + ' acrylicOk=' + ok + ' highContrast=' + highContrast + ' reducedMotion=' + reducedMotion);
+    this.broadcastState();
+    this.broadcastPreferences();
   }
 
   setLevel(next: IslandLevel): void {
     if (next === this.level || this.paused) return;
     dbg('setLevel -> ' + next);
     this.level = next;
+    this.applyBackdrop();
     this.animateBounds(this.boundsFor(next));
     this.win.setIgnoreMouseEvents(next === 'l1', { forward: true });
     if (next !== 'l1' && !this.win.isVisible()) this.win.showInactive();
@@ -63,8 +77,21 @@ export class IslandWindowController {
     return { level: this.level, backdrop: this.backdrop, paused: this.paused };
   }
 
+  uiPreferences(): UiPreferences {
+    return {
+      colorScheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+      highContrast: nativeTheme.shouldUseHighContrastColors,
+      reducedMotion: systemPreferences.getAnimationSettings().prefersReducedMotion,
+      backdropMode: this.backdrop
+    };
+  }
+
   broadcastState(): void {
     if (!this.win.isDestroyed()) this.win.webContents.send('window:state', this.state());
+  }
+
+  broadcastPreferences(): void {
+    if (!this.win.isDestroyed()) this.win.webContents.send('ui:preferences', this.uiPreferences());
   }
 
   boundsFor(level: IslandLevel): Rect {
@@ -82,6 +109,10 @@ export class IslandWindowController {
 
   // Windows 无原生窗口动画，用主进程定时器做弹簧式形变
   private animateBounds(target: Rect): void {
+    if (systemPreferences.getAnimationSettings().prefersReducedMotion) {
+      this.win.setBounds(target);
+      return;
+    }
     const start = this.win.getBounds();
     const t0 = Date.now();
     const dur = TIMING.ANIMATION_MS;
@@ -164,5 +195,6 @@ export class IslandWindowController {
     for (const t of [this.dwellTimer, this.leaveTimer, this.pollTimer, this.animTimer]) {
       if (t) clearTimeout(t);
     }
+    nativeTheme.off('updated', this.handleThemeUpdated);
   }
 }
