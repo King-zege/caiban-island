@@ -7,6 +7,52 @@ const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
 const ACCENT_ENABLE_BLURBEHIND = 3;
 const WCA_ACCENT_POLICY = 19;
 
+interface AccentPolicyValue {
+  AccentState: number;
+  AccentFlags: number;
+  GradientColor: number;
+  AnimationId: number;
+}
+
+interface WcaDataValue {
+  Attribute: number;
+  Data: AccentPolicyValue;
+  SizeOfData: number;
+}
+
+interface NativeBindings {
+  accentPolicySize: number;
+  setWindowCompositionAttribute: (hwnd: number, data: WcaDataValue) => number;
+}
+
+let cachedBindings: NativeBindings | null | undefined;
+
+function nativeBindings(): NativeBindings | null {
+  if (cachedBindings !== undefined) return cachedBindings;
+  try {
+    const user32 = koffi.load('user32.dll');
+    const AccentPolicy = koffi.struct('AccentPolicy', {
+      AccentState: 'int32',
+      AccentFlags: 'uint32',
+      GradientColor: 'uint32',
+      AnimationId: 'int32'
+    });
+    const WCAData = koffi.struct('WCAData', {
+      Attribute: 'int32',
+      Data: 'AccentPolicy*',
+      SizeOfData: 'uint32'
+    });
+    koffi.sizeof(WCAData);
+    const nativeFunction = user32.func('int SetWindowCompositionAttribute(int64 hwnd, WCAData* data)');
+    cachedBindings = {
+      accentPolicySize: koffi.sizeof(AccentPolicy),
+      setWindowCompositionAttribute: nativeFunction as unknown as NativeBindings['setWindowCompositionAttribute']
+    };
+  } catch {
+    cachedBindings = null;
+  }
+  return cachedBindings;
+}
 
 // 注意：Electron getNativeWindowHandle() 返回的是句柄值的 Buffer，
 // 传给 koffi 时必须读出数值并按 int64 传递，不能把 Buffer 当指针。
@@ -21,27 +67,13 @@ function setAccent(hwndBuffer: Buffer, state: number, scheme: ColorScheme): bool
   const tint = ACRYLIC_TINT[scheme];
   const gradient = state === ACCENT_DISABLED ? 0 : buildGradientColor(tint.a, tint.b, tint.g, tint.r);
   try {
-    const user32 = koffi.load('user32.dll');
-    const AccentPolicy = koffi.struct('AccentPolicy', {
-      AccentState: 'int32',
-      AccentFlags: 'uint32',
-      GradientColor: 'uint32',
-      AnimationId: 'int32'
-    });
-    const WCAData = koffi.struct('WCAData', {
-      Attribute: 'int32',
-      Data: 'AccentPolicy*',
-      SizeOfData: 'uint32'
-    });
-    koffi.sizeof(WCAData); // 确保结构体已注册，func 签名按名称引用
-    const setWindowCompositionAttribute = user32.func(
-      'int SetWindowCompositionAttribute(int64 hwnd, WCAData* data)'
-    );
+    const bindings = nativeBindings();
+    if (!bindings) return false;
     const call = (state: number): boolean =>
-      setWindowCompositionAttribute(hwnd, {
+      bindings.setWindowCompositionAttribute(hwnd, {
         Attribute: WCA_ACCENT_POLICY,
         Data: { AccentState: state, AccentFlags: 0, GradientColor: gradient, AnimationId: 0 },
-        SizeOfData: koffi.sizeof(AccentPolicy)
+        SizeOfData: bindings.accentPolicySize
       }) !== 0;
     if (state === ACCENT_DISABLED) return call(ACCENT_DISABLED);
     if (call(ACCENT_ENABLE_ACRYLICBLURBEHIND)) return true;

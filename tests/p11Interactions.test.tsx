@@ -29,7 +29,7 @@ describe('P11 三级返回与交互锁', () => {
     setApi({
       listTasks: vi.fn(async () => ({ ok: true as const, data: [] })),
       getSettings: vi.fn(async () => ({ ok: true as const, data: { onboarded: true } })),
-      setL2Detail: vi.fn(async () => true),
+      setL2Detail: vi.fn(async () => ({ accepted: true })),
       interacting
     });
 
@@ -40,7 +40,7 @@ describe('P11 三级返回与交互锁', () => {
   });
 
   it('L3 提供可见返回速览按钮并返回 L2', async () => {
-    const setLevel = vi.fn(async () => true);
+    const setLevel = vi.fn(async () => ({ accepted: true }));
     setApi({
       listTasks: vi.fn(async () => ({ ok: true as const, data: [] })),
       interacting: vi.fn(async () => true),

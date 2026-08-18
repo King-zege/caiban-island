@@ -5,6 +5,11 @@ export interface CarouselPhysics {
   count: number;
 }
 
+export interface CarouselVisibleRange {
+  start: number;
+  end: number;
+}
+
 export function computeMaxOffset(p: CarouselPhysics): number {
   if (p.count <= 0) return 0;
   const content = p.item * p.count + p.gap * (p.count - 1);
@@ -43,4 +48,19 @@ export function snapOffsetWithVelocity(offset: number, velocity: number, p: Caro
 
 export function decayVelocity(v: number, dtMs: number, friction = 0.0018): number {
   return v * Math.max(0, 1 - friction * dtMs);
+}
+
+export function visibleCarouselRange(offset: number, p: CarouselPhysics, overscan = 2): CarouselVisibleRange {
+  if (p.count <= 0) return { start: 0, end: -1 };
+  const step = p.item + p.gap;
+  if (step <= 0) return { start: 0, end: Math.min(p.count - 1, overscan) };
+  const safeOverscan = Math.max(0, Math.floor(overscan));
+  const scrollLeft = Math.max(0, -offset);
+  const firstVisible = Math.max(0, Math.min(p.count - 1, Math.floor(scrollLeft / step)));
+  const visibleWidth = Math.max(1, p.viewport);
+  const lastVisible = Math.max(firstVisible, Math.min(p.count - 1, Math.floor((scrollLeft + visibleWidth - 1) / step)));
+  return {
+    start: Math.max(0, firstVisible - safeOverscan),
+    end: Math.min(p.count - 1, lastVisible + safeOverscan)
+  };
 }

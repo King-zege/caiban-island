@@ -16,6 +16,7 @@
 | P9 | 组件测试：L2 键盘浏览、设置直达、L3 分区、显式状态、5 秒撤销；axe 扫描 | 0/1/7/100 任务与长中文；键鼠/触摸完成核心采购流程 | 全部通过；axe 无 serious/critical |
 | P10 | 确定性 Electron 截图 + Impeccable detector + 全量 typecheck/test/build/package | Win10/Win11 × 100%/125%/150% DPI × 深/浅/高对比度/减少动画/200% 文本 | 矩阵全通过；机械检测 0 条未处理发现 |
 | P11 | 状态机/四态进度/永久删除单测 + L2 节点轴与菜单组件测试 + detector | L1 圆角方向、L2 离开自动收起、L3 返回按钮、窗口切换流畅度 | 全部通过；删除可撤销；机械检测 0 条未处理发现 |
+| P12 | 过渡状态机/GPU 分类/缓存/虚拟 Carousel 测试 + 隔离 Electron 性能基准 + detector | 独显/集显/软件渲染 × 三级切换 × 快速反向操作 | 每次切换最多一次 resize；100 任务最多 7 张卡；软件降级功能完整 |
 
 ## 2. 单元测试清单
 
@@ -28,6 +29,9 @@
 - UI 偏好：明暗、高对比度、减少动画与 backdrop 组合；系统变化后状态同步。
 - 窗口几何：Windows 最小原生高度下 L1 仍只进入工作区 4–6px；多 DPI 使用逻辑像素。
 - 撤销队列：5 秒内撤销不调用正式删除；超时只提交一次；失败恢复可见内容。
+- 过渡：阶段顺序、旧 id 忽略、80ms/280ms 超时、preparing 取消、动画中末次请求合并、显示器变化后落到新几何。
+- 渲染能力：GPU 状态分类为 composited/software/direct；未知状态保守降级；高对比度、减少动画和 GPU 进程异常强制 direct。
+- 虚拟 Carousel：0/1/7/100 项、可见范围与两侧 overscan、全局索引焦点、Home/End、触摸/滚轮后吸附。
 
 ## 3. 集成测试清单
 
@@ -39,6 +43,7 @@
 - 飞书：mock bitable server 建表/建字段/按任务ID upsert 幂等；令牌失效错误与重试；CSV/Markdown 导出格式。
 - Renderer：L2 方向键/Home/End/Enter、节点四态显式选择、任务更多菜单与 5 秒删除撤销；L3 任务/分区导航和返回速览；设置直达，Dialog 焦点锁定和恢复，Toast live region，凭据默认遮罩，外链确认。
 - 视觉测试进程必须使用位于系统临时目录的 `CAIBAN_TEST_USER_DATA_DIR` 和合成夹具；禁止读取真实用户数据。
+- 软件渲染测试使用隔离目录与 `CAIBAN_TEST_DISABLE_HARDWARE_ACCELERATION=1`；生产包不得接受该变量。
 
 ## 4. 手工矩阵（真机）
 
@@ -54,6 +59,8 @@
 - 展开/收起/滑动动画 60fps（devtools 性能面板核对，无明显掉帧）。
 - 冷启动 < 2s；常驻内存 < 250MB（Electron 基线）。
 - 100 个活跃任务时列表滚动与排序不卡顿。
+- 合成模式每次切换最多一次 resize，请求到首个视觉帧 ≤50ms，`animating` 至 `settling` 的视觉过渡 200±40ms；100 任务的 animating 阶段 rAF 间隔不得出现 >50ms、>20ms 间隔占比 <5%，完整切换由 Long Tasks API 验证无 >50ms 主线程长任务。使用 `npm run benchmark:transitions -- <CDP 端口> --assert` 验证；端口对应的 Electron 必须以隔离临时目录和 100 条合成任务启动。
+- 普通 L2 在 100 任务时 DOM ≤700、实际 TaskCard ≤7；软件/direct 模式允许降低动效，但启动、返回和全部采购操作必须可用。
 
 ## 6. 安全验收
 

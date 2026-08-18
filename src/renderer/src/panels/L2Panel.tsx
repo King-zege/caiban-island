@@ -23,7 +23,11 @@ interface PendingTaskAction {
 export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): React.JSX.Element {
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
+  const loadError = useTaskStore((state) => state.loadError);
   const load = useTaskStore((state) => state.load);
+  const onboarded = useTaskStore((state) => state.onboarded);
+  const setOnboarded = useTaskStore((state) => state.setOnboarded);
+  const prefetchDetail = useTaskStore((state) => state.prefetchDetail);
   const completeTask = useTaskStore((state) => state.complete);
   const cancelTask = useTaskStore((state) => state.cancel);
   const deleteTask = useTaskStore((state) => state.deleteTask);
@@ -34,18 +38,23 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
   const [showForm, setShowForm] = useState(false);
-  const [onboarded, setOnboarded] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [sortMode, setSortMode] = useState<SortMode>('deadline');
   const [pendingTaskAction, setPendingTaskAction] = useState<PendingTaskAction | null>(null);
   const [taskActionBusy, setTaskActionBusy] = useState(false);
+  const [cardRenderLimit, setCardRenderLimit] = useState(2);
 
   useEffect(() => {
-    void load();
-    void window.api.getSettings().then((result) => {
-      if (result.ok) setOnboarded((result.data as { onboarded: boolean }).onboarded === true);
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      setCardRenderLimit(4);
+      secondFrame = requestAnimationFrame(() => setCardRenderLimit(7));
     });
-  }, [load]);
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, []);
 
   useEffect(() => {
     void window.api.setL2Detail(showForm);
@@ -65,8 +74,16 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     if (activeIndex >= sortedTasks.length) setActiveIndex(Math.max(0, sortedTasks.length - 1));
   }, [activeIndex, sortedTasks.length]);
 
+  useEffect(() => {
+    const taskId = sortedTasks[activeIndex]?.task.id;
+    if (taskId) void prefetchDetail(taskId);
+  }, [activeIndex, prefetchDetail, sortedTasks]);
+
   const enterWorkspace = (taskId?: string) => {
-    if (taskId) openTask(taskId);
+    if (taskId) {
+      openTask(taskId);
+      void prefetchDetail(taskId);
+    }
     else openSection('tasks');
     void window.api.setLevel('l3');
   };
@@ -133,8 +150,15 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         </div>
       </header>
       <main className="l2-body">
-        {loading ? (
+        {loading || onboarded === null ? (
           <p className="loading-state">正在整理采购任务</p>
+        ) : loadError ? (
+          <EmptyState
+            icon={ClipboardList}
+            title="暂时无法读取任务"
+            description={loadError}
+            action={<Button variant="primary" onClick={() => void load()}>重试</Button>}
+          />
         ) : !onboarded ? (
           <WelcomeView onDone={() => setOnboarded(true)} />
         ) : sortedTasks.length === 0 ? (
@@ -145,8 +169,17 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
             action={<Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>}
           />
         ) : (
-          <Carousel itemWidth={248} gap={12} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} reducedMotion={reducedMotion}>
-            {sortedTasks.map((card, index) => (
+          <Carousel
+            itemWidth={248}
+            gap={12}
+            itemCount={sortedTasks.length}
+            activeIndex={activeIndex}
+            onActiveIndexChange={setActiveIndex}
+            reducedMotion={reducedMotion}
+            renderLimit={cardRenderLimit}
+            renderItem={(index) => {
+              const card = sortedTasks[index];
+              return (
               <TaskCard
                 key={card.task.id}
                 card={card}
@@ -156,8 +189,9 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                 onNodeStatus={changeNodeStatus}
                 onTaskAction={(action) => setPendingTaskAction({ action, taskId: card.task.id, taskName: card.task.name })}
               />
-            ))}
-          </Carousel>
+              );
+            }}
+          />
         )}
       </main>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}

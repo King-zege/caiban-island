@@ -22,9 +22,10 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
     };
   };
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
-    c.setLevel(level);
-    return true;
+    return c.setLevel(level);
   });
+  ipcMain.handle('window:transitionReady', (_e: IpcMainInvokeEvent, id: string) => c.transitionReady(id));
+  ipcMain.handle('window:transitionFinished', (_e: IpcMainInvokeEvent, id: string) => c.transitionFinished(id));
   ipcMain.handle('app:getState', () => c.state());
   ipcMain.handle('ui:getPreferences', () => c.uiPreferences());
   ipcMain.handle('ui:interacting', (_e: IpcMainInvokeEvent, v: boolean) => {
@@ -33,8 +34,7 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
   });
   ipcMain.handle('island:togglePause', () => c.togglePause());
   ipcMain.handle('window:setL2Detail', (_e: IpcMainInvokeEvent, v: boolean) => {
-    c.setL2Detail(v);
-    return true;
+    return c.setL2Detail(v);
   });
   ipcMain.handle('window:activate', () => {
     if (!c.win.isFocused()) c.win.focus();

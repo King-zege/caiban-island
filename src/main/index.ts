@@ -9,13 +9,17 @@ import { startMcpServer } from './mcpServer';
 import { FeishuService } from './feishuService';
 import { FullscreenDetector } from './fullscreenDetector';
 import { resolveUserDataPath } from './userData';
+import { classifyRenderMode } from '../shared/renderMode';
+import type { RenderMode } from '../shared/types';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 const testUserDataDir = process.env['CAIBAN_TEST_USER_DATA_DIR'];
-app.setPath(
-  'userData',
-  resolveUserDataPath(app.getPath('appData'), testUserDataDir, app.isPackaged)
-);
+const resolvedUserDataPath = resolveUserDataPath(app.getPath('appData'), testUserDataDir, app.isPackaged);
+const isolatedTestMode = !app.isPackaged && Boolean(testUserDataDir);
+app.setPath('userData', resolvedUserDataPath);
+if (isolatedTestMode && process.env['CAIBAN_TEST_DISABLE_HARDWARE_ACCELERATION'] === '1') {
+  app.disableHardwareAcceleration();
+}
 const testDebugPort = process.env['CAIBAN_TEST_REMOTE_DEBUGGING_PORT'];
 if (!app.isPackaged && testUserDataDir && testDebugPort && /^\d{4,5}$/.test(testDebugPort)) {
   const port = Number.parseInt(testDebugPort, 10);
@@ -32,6 +36,23 @@ let reminderTimer: NodeJS.Timeout | null = null;
 let feishuTimer: NodeJS.Timeout | null = null;
 let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
 let fullscreenDetector: FullscreenDetector | null = null;
+let detectedRenderMode: RenderMode = 'software';
+let gpuCrashed = false;
+
+function refreshRenderMode(): void {
+  detectedRenderMode = classifyRenderMode({
+    gpuCompositing: app.getGPUFeatureStatus().gpu_compositing,
+    gpuCrashed
+  });
+  controller?.setRenderMode(detectedRenderMode);
+}
+
+app.on('gpu-info-update', refreshRenderMode);
+app.on('child-process-gone', (_event, details) => {
+  if (details.type !== 'GPU') return;
+  gpuCrashed = true;
+  refreshRenderMode();
+});
 
 {
   const gotLock = app.requestSingleInstanceLock();
@@ -118,13 +139,16 @@ let fullscreenDetector: FullscreenDetector | null = null;
       // P5：启动本机 MCP SSE 服务（Qoder 主通道）
       mcpRuntime = await startMcpServer(appSvc, appSvc.settings);
 
+      controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
+      controller.setRenderMode(detectedRenderMode);
+      registerIpc(controller, appSvc, feishu);
+
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
       } else {
         await win.loadFile(path.join(__dirname, '../renderer/index.html'));
       }
 
-      controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       await controller.init();
       const testInitialLevel = process.env['CAIBAN_TEST_INITIAL_LEVEL'];
       if (
@@ -135,7 +159,6 @@ let fullscreenDetector: FullscreenDetector | null = null;
         controller.setLevel(testInitialLevel);
         if (process.env['CAIBAN_TEST_HOLD_LEVEL'] === '1') controller.setInteracting(true);
       }
-      registerIpc(controller, appSvc, feishu);
       createTray(controller);
       // P7：真正全屏前台应用出现时自动暂停岛（FR-018）
       fullscreenDetector = new FullscreenDetector(controller);

@@ -121,11 +121,15 @@ describe('P9 核心界面控件', () => {
     function Harness(): React.JSX.Element {
       const [active, setActive] = useState(0);
       return (
-        <Carousel itemWidth={248} gap={12} activeIndex={active} onActiveIndexChange={setActive}>
-          {[0, 1, 2].map((index) => (
-            <button key={index} type="button" data-carousel-card="true" tabIndex={index === active ? 0 : -1}>任务 {index + 1}</button>
-          ))}
-        </Carousel>
+        <Carousel
+          itemWidth={248}
+          gap={12}
+          itemCount={3}
+          activeIndex={active}
+          onActiveIndexChange={setActive}
+          reducedMotion
+          renderItem={(index) => <button type="button" data-carousel-card="true" tabIndex={index === active ? 0 : -1}>任务 {index + 1}</button>}
+        />
       );
     }
 
@@ -149,9 +153,15 @@ describe('P9 核心界面控件', () => {
     function Harness(): React.JSX.Element {
       const [active, setActive] = useState(0);
       return (
-        <Carousel itemWidth={248} gap={12} activeIndex={active} onActiveIndexChange={setActive} reducedMotion>
-          {[0, 1].map((index) => <button key={index} type="button" data-carousel-card="true">任务 {index + 1}</button>)}
-        </Carousel>
+        <Carousel
+          itemWidth={248}
+          gap={12}
+          itemCount={2}
+          activeIndex={active}
+          onActiveIndexChange={setActive}
+          reducedMotion
+          renderItem={(index) => <button type="button" data-carousel-card="true">任务 {index + 1}</button>}
+        />
       );
     }
     render(<Harness />);

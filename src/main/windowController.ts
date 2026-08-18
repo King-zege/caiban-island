@@ -1,10 +1,27 @@
+import { randomUUID } from 'node:crypto';
 import { BrowserWindow, screen, nativeTheme, systemPreferences } from 'electron';
 import { applyAcrylic, disableAcrylic } from './acrylicNative';
 import { dbg } from './debugLog';
 import { computeL1Bounds, computeL2Bounds, computeL3Bounds, isInHotZone } from '../shared/geometry';
 import { TIMING } from '../shared/stateMachine';
 import { decideBackdrop } from '../shared/acrylic';
-import type { BackdropMode, DisplayInfo, IslandLevel, IslandState, Rect, UiPreferences } from '../shared/types';
+import { isExpanding, transitionDuration } from '../shared/transition';
+import type {
+  BackdropMode,
+  DisplayInfo,
+  IslandLevel,
+  IslandState,
+  IslandTransitionState,
+  Rect,
+  RenderMode,
+  TransitionReason,
+  TransitionRequestResult,
+  UiPreferences
+} from '../shared/types';
+
+function sameBounds(left: Rect, right: Rect): boolean {
+  return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height;
+}
 
 export class IslandWindowController {
   readonly win: BrowserWindow;
@@ -12,15 +29,18 @@ export class IslandWindowController {
   backdrop: BackdropMode = 'fallback';
   paused = false;
   private l2Detail = false;
-
+  private baseRenderMode: RenderMode = 'software';
+  private transitionState: IslandTransitionState | null = null;
+  private pendingLevel: IslandLevel | null = null;
   private dwellTimer: NodeJS.Timeout | null = null;
   private leaveTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
-  private animTimer: NodeJS.Timeout | null = null;
+  private prepareTimer: NodeJS.Timeout | null = null;
+  private finishTimer: NodeJS.Timeout | null = null;
+  private resizeCommittedId: string | null = null;
   private interacting = false;
-  private readonly handleThemeUpdated = (): void => {
-    this.applyBackdrop();
-  };
+  private readonly handleThemeUpdated = (): void => this.applyBackdrop();
+  private readonly handleDisplayChanged = (): void => this.reconcileDisplayBounds();
 
   constructor(win: BrowserWindow, private readonly isAcrylicDisabled: () => boolean = () => false) {
     this.win = win;
@@ -31,13 +51,13 @@ export class IslandWindowController {
     const l1 = computeL1Bounds(d);
     this.win.setBounds(l1);
     dbg('init display=' + JSON.stringify(d) + ' l1=' + JSON.stringify(l1) + ' content=' + JSON.stringify(this.win.getContentBounds()) + ' scale=' + screen.getPrimaryDisplay().scaleFactor);
-    setTimeout(() => {
-      dbg('after1.5s bounds=' + JSON.stringify(this.win.getBounds()) + ' content=' + JSON.stringify(this.win.getContentBounds()) + ' visible=' + this.win.isVisible());
-    }, 1500);
     this.win.setIgnoreMouseEvents(true, { forward: true });
     nativeTheme.on('updated', this.handleThemeUpdated);
+    screen.on('display-metrics-changed', this.handleDisplayChanged);
+    screen.on('display-added', this.handleDisplayChanged);
+    screen.on('display-removed', this.handleDisplayChanged);
     this.applyBackdrop();
-    this.win.showInactive(); // 展开/显示不抢焦点
+    this.win.showInactive();
     this.startPolling();
     this.broadcastState();
   }
@@ -47,43 +67,184 @@ export class IslandWindowController {
     return { x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height, workArea: { ...d.workArea } };
   }
 
+  private effectiveRenderMode(): RenderMode {
+    if (nativeTheme.shouldUseHighContrastColors || systemPreferences.getAnimationSettings().prefersReducedMotion) return 'direct';
+    return this.baseRenderMode;
+  }
+
+  setRenderMode(mode: RenderMode): void {
+    if (this.baseRenderMode === mode) return;
+    this.baseRenderMode = mode;
+    if (mode === 'direct' && this.transitionState) this.commitTransition(this.transitionState.id);
+    this.broadcastPreferences();
+  }
+
+  currentOrTargetLevel(): IslandLevel {
+    return this.pendingLevel ?? this.transitionState?.to ?? this.level;
+  }
+
   applyBackdrop(broadcast = true): void {
     const scheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
     const highContrast = nativeTheme.shouldUseHighContrastColors;
     const reducedMotion = systemPreferences.getAnimationSettings().prefersReducedMotion;
     const disabled = this.isAcrylicDisabled();
-    const shouldAttempt = this.level !== 'l1' && !highContrast && !reducedMotion && !disabled;
-    const ok = shouldAttempt
-      ? applyAcrylic(this.win.getNativeWindowHandle(), scheme)
-      : (disableAcrylic(this.win.getNativeWindowHandle()), false);
-    this.backdrop = decideBackdrop(this.level, ok, highContrast, reducedMotion, disabled);
-    dbg('backdrop=' + this.backdrop + ' acrylicOk=' + ok + ' highContrast=' + highContrast + ' reducedMotion=' + reducedMotion);
+    if (this.transitionState) {
+      disableAcrylic(this.win.getNativeWindowHandle());
+      this.backdrop = 'fallback';
+    } else {
+      const shouldAttempt = this.level !== 'l1' && !highContrast && !reducedMotion && !disabled;
+      const ok = shouldAttempt
+        ? applyAcrylic(this.win.getNativeWindowHandle(), scheme)
+        : (disableAcrylic(this.win.getNativeWindowHandle()), false);
+      this.backdrop = decideBackdrop(this.level, ok, highContrast, reducedMotion, disabled);
+      dbg('backdrop=' + this.backdrop + ' acrylicOk=' + ok + ' highContrast=' + highContrast + ' reducedMotion=' + reducedMotion);
+    }
     if (broadcast) {
       this.broadcastState();
       this.broadcastPreferences();
     }
   }
 
-  setLevel(next: IslandLevel): void {
-    if (next === this.level || this.paused) return;
-    dbg('setLevel -> ' + next);
-    const previous = this.level;
-    this.level = next;
+  setLevel(next: IslandLevel): TransitionRequestResult {
+    if (this.paused) return { accepted: false };
+    const active = this.transitionState;
+    if (active) {
+      if (active.phase === 'preparing' && next === active.from) {
+        this.cancelPreparing(active.id);
+        return { accepted: true, transitionId: active.id };
+      }
+      if (next === active.to) return { accepted: false, transitionId: active.id };
+      this.pendingLevel = next;
+      return { accepted: true, transitionId: active.id };
+    }
+    if (next === this.level) return { accepted: false };
+    return this.beginTransition(next, 'level', this.boundsFor(next));
+  }
+
+  private beginTransition(next: IslandLevel, reason: TransitionReason, target: Rect): TransitionRequestResult {
     if (this.leaveTimer) {
       clearTimeout(this.leaveTimer);
       this.leaveTimer = null;
     }
-    const crossesCollapsedBoundary = previous === 'l1' || next === 'l1';
-    if (crossesCollapsedBoundary) this.applyBackdrop(false);
-    this.animateBounds(this.boundsFor(next));
-    this.win.setIgnoreMouseEvents(next === 'l1', { forward: true });
-    if (next !== 'l1' && !this.win.isVisible()) this.win.showInactive();
+    const id = randomUUID();
+    const renderMode = this.effectiveRenderMode();
+    const transition: IslandTransitionState = {
+      id,
+      from: this.level,
+      to: next,
+      phase: 'preparing',
+      fromBounds: this.win.getBounds(),
+      toBounds: target,
+      durationMs: transitionDuration(renderMode),
+      renderMode,
+      reason
+    };
+    this.transitionState = transition;
+    dbg('transition preparing ' + transition.from + ' -> ' + transition.to + ' mode=' + renderMode);
+    disableAcrylic(this.win.getNativeWindowHandle());
+    this.backdrop = 'fallback';
+    this.win.setIgnoreMouseEvents(true, { forward: true });
+    if (!this.win.isVisible()) this.win.showInactive();
+    this.broadcastTransition();
     this.broadcastState();
-    if (crossesCollapsedBoundary) this.broadcastPreferences();
+    this.broadcastPreferences();
+
+    if (renderMode === 'direct' || sameBounds(transition.fromBounds, transition.toBounds)) {
+      this.commitTransition(id);
+    } else {
+      this.prepareTimer = setTimeout(() => this.transitionReady(id), TIMING.PREPARE_TIMEOUT_MS);
+    }
+    return { accepted: true, transitionId: id };
+  }
+
+  transitionReady(id: string): boolean {
+    const transition = this.transitionState;
+    if (!transition || transition.id !== id || transition.phase !== 'preparing') return false;
+    if (this.resizeCommittedId === id) return false;
+    if (this.prepareTimer) clearTimeout(this.prepareTimer);
+    this.prepareTimer = null;
+    if (isExpanding(transition.fromBounds, transition.toBounds)) {
+      this.resizeCommittedId = id;
+      this.win.setBounds(transition.toBounds);
+      this.prepareTimer = setTimeout(() => this.startAnimating(id), TIMING.RESIZE_SETTLE_MS);
+      return true;
+    }
+    this.startAnimating(id);
+    return true;
+  }
+
+  private startAnimating(id: string): void {
+    const transition = this.transitionState;
+    if (!transition || transition.id !== id || transition.phase !== 'preparing') return;
+    if (this.prepareTimer) clearTimeout(this.prepareTimer);
+    this.prepareTimer = null;
+    this.transitionState = { ...transition, phase: 'animating' };
+    this.broadcastTransition();
+    this.broadcastState();
+    this.finishTimer = setTimeout(() => this.commitTransition(id), TIMING.FINISH_TIMEOUT_MS);
+  }
+
+  transitionFinished(id: string): boolean {
+    const transition = this.transitionState;
+    if (!transition || transition.id !== id || transition.phase !== 'animating') return false;
+    if (this.finishTimer) clearTimeout(this.finishTimer);
+    this.transitionState = { ...transition, phase: 'settling' };
+    this.broadcastTransition();
+    this.broadcastState();
+    const resizeBeforeFinalize = (): void => {
+      const active = this.transitionState;
+      if (!active || active.id !== id || active.phase !== 'settling') return;
+      if (!sameBounds(this.win.getBounds(), transition.toBounds)) this.win.setBounds(transition.toBounds);
+      this.finishTimer = setTimeout(() => this.commitTransition(id), TIMING.FINALIZE_SETTLE_MS);
+    };
+    if (sameBounds(this.win.getBounds(), transition.toBounds)) {
+      this.finishTimer = setTimeout(() => this.commitTransition(id), TIMING.FINALIZE_SETTLE_MS);
+    } else {
+      this.finishTimer = setTimeout(resizeBeforeFinalize, TIMING.RESIZE_SETTLE_MS);
+    }
+    return true;
+  }
+
+  private commitTransition(id: string): void {
+    const transition = this.transitionState;
+    if (!transition || transition.id !== id) return;
+    this.clearTransitionTimers();
+    if (!sameBounds(this.win.getBounds(), transition.toBounds)) this.win.setBounds(transition.toBounds);
+    this.level = transition.to;
+    this.transitionState = null;
+    this.win.setIgnoreMouseEvents(this.level === 'l1', { forward: true });
+    this.applyBackdrop(false);
+    this.broadcastTransition();
+    this.broadcastState();
+    this.broadcastPreferences();
+    const queued = this.pendingLevel;
+    this.pendingLevel = null;
+    if (queued && queued !== this.level && !this.paused) queueMicrotask(() => this.setLevel(queued));
+  }
+
+  private cancelPreparing(id: string): void {
+    const transition = this.transitionState;
+    if (!transition || transition.id !== id || transition.phase !== 'preparing') return;
+    this.clearTransitionTimers();
+    this.transitionState = null;
+    this.pendingLevel = null;
+    this.win.setIgnoreMouseEvents(this.level === 'l1', { forward: true });
+    this.applyBackdrop(false);
+    this.broadcastTransition();
+    this.broadcastState();
+    this.broadcastPreferences();
+  }
+
+  private clearTransitionTimers(): void {
+    if (this.prepareTimer) clearTimeout(this.prepareTimer);
+    if (this.finishTimer) clearTimeout(this.finishTimer);
+    this.prepareTimer = null;
+    this.finishTimer = null;
+    this.resizeCommittedId = null;
   }
 
   state(): IslandState {
-    return { level: this.level, backdrop: this.backdrop, paused: this.paused };
+    return { level: this.level, backdrop: this.backdrop, paused: this.paused, transition: this.transitionState };
   }
 
   uiPreferences(): UiPreferences {
@@ -91,12 +252,17 @@ export class IslandWindowController {
       colorScheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
       highContrast: nativeTheme.shouldUseHighContrastColors,
       reducedMotion: systemPreferences.getAnimationSettings().prefersReducedMotion,
-      backdropMode: this.backdrop
+      backdropMode: this.backdrop,
+      renderMode: this.effectiveRenderMode()
     };
   }
 
   broadcastState(): void {
     if (!this.win.isDestroyed()) this.win.webContents.send('window:state', this.state());
+  }
+
+  broadcastTransition(): void {
+    if (!this.win.isDestroyed()) this.win.webContents.send('window:transition', this.transitionState);
   }
 
   broadcastPreferences(): void {
@@ -110,45 +276,18 @@ export class IslandWindowController {
     return computeL3Bounds(d);
   }
 
-  setL2Detail(v: boolean): void {
-    if (this.l2Detail === v) return;
-    this.l2Detail = v;
-    if (this.level === 'l2') this.animateBounds(this.boundsFor('l2'));
+  setL2Detail(value: boolean): TransitionRequestResult {
+    if (this.l2Detail === value) return { accepted: false };
+    this.l2Detail = value;
+    if (this.currentOrTargetLevel() !== 'l2' || this.transitionState) return { accepted: true };
+    return this.beginTransition('l2', 'l2-detail', this.boundsFor('l2'));
   }
 
-  // Windows 无原生窗口动画，用主进程定时器做弹簧式形变
-  private animateBounds(target: Rect): void {
-    if (systemPreferences.getAnimationSettings().prefersReducedMotion) {
-      this.win.setBounds(target);
-      return;
-    }
-    const start = this.win.getBounds();
-    const t0 = Date.now();
-    const dur = TIMING.ANIMATION_MS;
-    const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
-    if (this.animTimer) clearInterval(this.animTimer);
-    let lastBounds = start;
-    this.animTimer = setInterval(() => {
-      const p = Math.min(1, (Date.now() - t0) / dur);
-      const e = easeOutCubic(p);
-      const nextBounds = {
-        x: Math.round(start.x + (target.x - start.x) * e),
-        y: Math.round(start.y + (target.y - start.y) * e),
-        width: Math.round(start.width + (target.width - start.width) * e),
-        height: Math.round(start.height + (target.height - start.height) * e)
-      };
-      if (
-        nextBounds.x !== lastBounds.x || nextBounds.y !== lastBounds.y ||
-        nextBounds.width !== lastBounds.width || nextBounds.height !== lastBounds.height
-      ) {
-        this.win.setBounds(nextBounds);
-        lastBounds = nextBounds;
-      }
-      if (p >= 1 && this.animTimer) {
-        clearInterval(this.animTimer);
-        this.animTimer = null;
-      }
-    }, TIMING.ANIMATION_FRAME_MS);
+  private reconcileDisplayBounds(): void {
+    const targetLevel = this.currentOrTargetLevel();
+    if (this.transitionState) this.commitTransition(this.transitionState.id);
+    const target = this.boundsFor(targetLevel);
+    if (!sameBounds(this.win.getBounds(), target)) this.beginTransition(targetLevel, 'display-change', target);
   }
 
   private startPolling(): void {
@@ -161,7 +300,6 @@ export class IslandWindowController {
           if (!this.dwellTimer) {
             this.dwellTimer = setTimeout(() => {
               this.dwellTimer = null;
-              dbg('hoverDwell fired');
               if (this.level === 'l1' && !this.paused) this.setLevel('l2');
             }, TIMING.HOVER_DWELL_MS);
           }
@@ -171,9 +309,7 @@ export class IslandWindowController {
         }
       } else if (this.level === 'l2') {
         const b = this.win.getBounds();
-        const inside =
-          cursor.x >= b.x && cursor.x <= b.x + b.width &&
-          cursor.y >= b.y && cursor.y <= b.y + b.height;
+        const inside = cursor.x >= b.x && cursor.x <= b.x + b.width && cursor.y >= b.y && cursor.y <= b.y + b.height;
         if (!inside && !this.interacting) {
           if (!this.leaveTimer) {
             this.leaveTimer = setTimeout(() => {
@@ -192,9 +328,9 @@ export class IslandWindowController {
     }, TIMING.POLL_INTERVAL_MS);
   }
 
-  setInteracting(v: boolean): void {
-    this.interacting = v;
-    if (v && this.leaveTimer) {
+  setInteracting(value: boolean): void {
+    this.interacting = value;
+    if (value && this.leaveTimer) {
       clearTimeout(this.leaveTimer);
       this.leaveTimer = null;
     }
@@ -205,16 +341,20 @@ export class IslandWindowController {
     if (this.paused) this.win.hide();
     else {
       this.win.showInactive();
-      if (this.level === 'l1') this.setLevel('l2');
+      if (this.currentOrTargetLevel() === 'l1') this.setLevel('l2');
     }
     this.broadcastState();
     return this.paused;
   }
 
   dispose(): void {
-    for (const t of [this.dwellTimer, this.leaveTimer, this.pollTimer, this.animTimer]) {
-      if (t) clearTimeout(t);
+    this.clearTransitionTimers();
+    for (const timer of [this.dwellTimer, this.leaveTimer, this.pollTimer]) {
+      if (timer) clearTimeout(timer);
     }
     nativeTheme.off('updated', this.handleThemeUpdated);
+    screen.off('display-metrics-changed', this.handleDisplayChanged);
+    screen.off('display-added', this.handleDisplayChanged);
+    screen.off('display-removed', this.handleDisplayChanged);
   }
 }

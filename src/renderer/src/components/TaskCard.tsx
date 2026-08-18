@@ -127,6 +127,7 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tab
         className="task-card-open"
         aria-label={a11y}
         data-carousel-card="true"
+        data-task-id={task.id}
         tabIndex={tabIndex}
         onFocus={onFocus}
         onClick={onOpen}

@@ -14,6 +14,6 @@ export function createTray(c: IslandWindowController): Tray {
       { label: '退出', click: () => app.quit() }
     ])
   );
-  tray.on('double-click', () => c.setLevel(c.level === 'l1' ? 'l2' : 'l1'));
+  tray.on('double-click', () => c.setLevel(c.currentOrTargetLevel() === 'l1' ? 'l2' : 'l1'));
   return tray;
 }

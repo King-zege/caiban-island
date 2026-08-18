@@ -13,7 +13,7 @@
 | UI | React 19 + Vite（electron-vite） | 组件化、HMR 快 |
 | 状态 | Zustand | 轻量、配合 React 18/19 |
 | 图标 | lucide-react | 用户锁定的单一线性图标家族；全局统一 1.75px stroke |
-| 动画 | 主进程合并窗口插值 + CSS compositor 动画 | 窗口形变在 main；L2/L3 共用 backdrop，避免重复 DWM 切换；renderer 只动画 transform/opacity/border-radius |
+| 动画 | 单次原生 resize + CSS compositor 视觉壳 | main 协调 preparing/animating/settling；renderer 只动画 transform/opacity/border-radius；软件渲染自动简化或直切 |
 | 数据库 | better-sqlite3 | 同步 API、快、WAL；主进程独占 |
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
 | MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
@@ -59,7 +59,9 @@
 | feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出（P6） |
 | mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置（P5） |
 | system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |
-| window:setLevel / setL2Detail / activate | renderer→main | 窗口三级控制、速览加高、焦点激活 |
+| window:setLevel / setL2Detail / activate | renderer→main | 请求窗口三级控制、速览加高、焦点激活；层级请求返回 `TransitionRequestResult` |
+| window:transitionReady / transitionFinished | renderer→main | renderer 完成目标层准备与 compositor 动画后确认当前 transition id |
+| window:transition | main→renderer | 推送 `IslandTransitionState` 阶段、源/目标几何、时长与渲染模式 |
 | ui:interacting / island:togglePause / app:quit | renderer→main | 交互态、暂停、退出 |
 | ui:getPreferences / ui:preferences | main→renderer | 只读 `UiPreferences`：系统明暗、高对比度、减少动画与实际 backdrop；系统设置变化时推送 |
 | debug:sendKey / sendTab（仅 ISLAND_DEBUG） | renderer→main | 自动化验证输入注入 |
@@ -185,6 +187,7 @@
 - `CAIBAN_TEST_USER_DATA_DIR` 仅在未打包开发/测试运行时生效，且目标必须位于系统临时目录；生产包拒绝该覆盖。视觉与集成测试不得依赖 `%APPDATA%` 覆盖来隔离数据。
 - `CAIBAN_TEST_INITIAL_LEVEL` 仅在上述隔离目录已生效且应用未打包时接受 `l2`/`l3`，用于确定性截图，不改变生产启动层级。
 - `CAIBAN_TEST_HOLD_LEVEL=1`、`CAIBAN_TEST_REMOTE_DEBUGGING_PORT` 与 `CAIBAN_TEST_COLOR_SCHEME=dark` 同样要求未打包且隔离目录已启用，只用于保持截图层级、开放本机 CDP 和确定性主题；生产包忽略它们。
+- `CAIBAN_TEST_DISABLE_HARDWARE_ACCELERATION=1` 仅在未打包且隔离目录已生效时于 app ready 前禁用硬件加速，用于验证软件渲染降级；生产包拒绝该覆盖。
 
 ## 11. 目录结构（P1 建立）
 
@@ -209,3 +212,13 @@
 - **同步语义**：按"采办岛任务ID"字段检索（records/search，operator is）→ 存在则 batch_update、否则 batch_create（每批 ≤50）；重复同步幂等；仅同步活跃任务；自动同步（设置开关）在任务变更后防抖 3s 触发。
 - **错误处理**：令牌失效（99991668 等）给出可操作错误；限流自动失败不阻塞本地使用。
 - **开发钩子**：ISLAND_DEBUG=1 时 settings 键 feishu_base_url 可覆盖 API 基址（对接本地 mock 测试）。
+
+## 13. P12 窗口过渡与渲染能力
+
+- `IslandWindowController` 保存已经稳定的 `level`，并以唯一 transition id 协调 `preparing → animating → settling`。展开先提交一次目标原生尺寸，收起先完成视觉缩放再提交一次目标尺寸；禁止定时循环调用 `setBounds`。
+- renderer 在 preparing 阶段保留稳定的源层；所有跨层级目标均由轻量同骨架预览层承接动画，完整 L2/L3 在 settling 后渐进挂载。main 在 80ms 后可强制进入动画。renderer 在动画结束确认 finished；main 在 280ms 后可强制收尾。旧 id 的确认全部忽略。
+- 动画期间 `setIgnoreMouseEvents(true, { forward: true })`，目标落定后才恢复交互。preparing 阶段反向请求取消；其余并发请求仅保留最后目标。
+- `RenderMode` 根据 `gpu-info-update` 后的 `gpu_compositing` 状态分类：`composited` 使用 200ms 完整形变，`software` 使用 120ms 淡入淡出，`direct` 单帧完成。高对比度、减少动画或 GPU 进程异常固定为 direct；未知状态保守使用 software。
+- 不读取、记录或持久化显卡型号；不强制绕过 Chromium GPU blocklist。Acrylic 过渡期间使用纯色 fallback，Koffi/user32/SetWindowCompositionAttribute 绑定按进程惰性缓存。
+- `scripts/benchmark-transitions.mjs` 只连接显式传入的本机 CDP 端口，输出首帧、稳定耗时、rAF、Long Tasks、resize、DOM 与 TaskCard 数量，并在 `--assert` 下执行确定性门禁；启动进程仍必须使用系统临时目录中的隔离数据。
+- task store 在 App 生命周期内缓存任务列表、onboarded 设置与按任务 ID 的详情；L2 Carousel 保留完整逻辑轨道，但只挂载可见范围和两侧 overscan，最多 7 张 TaskCard。

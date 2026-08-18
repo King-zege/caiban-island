@@ -80,6 +80,91 @@ select:disabled {
   height: 100%;
 }
 
+.island-motion-stage,
+.island-motion-shell,
+.island-transition-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.island-motion-stage {
+  overflow: hidden;
+}
+
+.island-motion-stage.layout-frozen {
+  content-visibility: hidden;
+}
+
+.island-motion-shell {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.island-motion-shell.motion-started {
+  background: var(--surface-fallback);
+  transition:
+    transform var(--island-transition-duration) cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius var(--island-transition-duration) cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.island-transition-layer {
+  opacity: 1;
+}
+
+.island-transition-source.source-suppressed {
+  content-visibility: hidden;
+}
+
+.island-transition-target {
+  opacity: 0;
+}
+
+.transition-preview-panel {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  background: var(--surface-fallback);
+  box-shadow: none;
+}
+
+.transition-preview-panel > span:nth-child(2) {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.transition-preview-panel strong {
+  max-width: min(560px, 70%);
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-started .island-transition-source {
+  opacity: 0;
+  transition: opacity 80ms ease-out;
+}
+
+.motion-started .island-transition-target {
+  opacity: 1;
+  transition: opacity calc(var(--island-transition-duration) - 60ms) ease-out 60ms;
+}
+
+[data-render-mode='software'] .island-motion-shell.motion-started {
+  transition-property: none;
+  will-change: auto;
+}
+
+[data-transitioning='true'] .task-workspace-section,
+[data-transitioning='true'] .standalone-section,
+[data-transitioning='true'] .settings-section {
+  animation: none;
+}
+
 .panel {
   width: 100%;
   height: 100%;
@@ -369,9 +454,16 @@ select:disabled {
 }
 
 .carousel-track {
-  display: flex;
+  position: relative;
   height: 100%;
   will-change: transform;
+}
+
+.carousel-item {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  contain: layout paint style;
 }
 
 .task-card {
@@ -683,10 +775,15 @@ select:disabled {
   overflow-y: auto;
 }
 
-.task-switcher > p {
+.task-switcher-empty {
   padding: var(--space-3);
   color: var(--text-tertiary);
   font-size: 11px;
+}
+
+.task-switcher-track {
+  position: relative;
+  width: 100%;
 }
 
 .task-switcher button,
@@ -702,6 +799,14 @@ select:disabled {
   color: var(--text-secondary);
   text-align: left;
   background: transparent;
+}
+
+.task-switcher button {
+  position: absolute;
+  left: 0;
+  height: var(--task-switcher-row);
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--control-min);
 }
 
 .task-switcher button:hover,

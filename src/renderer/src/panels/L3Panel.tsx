@@ -9,6 +9,7 @@ import ArchiveView from '../components/ArchiveView';
 import SettingsView from '../components/SettingsView';
 import DraftsPanel from '../components/DraftsPanel';
 import NewTaskForm from '../components/NewTaskForm';
+import VirtualTaskSwitcher from '../components/VirtualTaskSwitcher';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 
@@ -26,12 +27,14 @@ const WORKSPACE_NAV: Array<{ id: Exclude<WorkspaceSection, 'tasks'>; label: stri
   { id: 'settings', label: '设置', icon: Settings }
 ];
 
-export default function L3Panel(): React.JSX.Element {
+export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): React.JSX.Element {
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
+  const loadError = useTaskStore((state) => state.loadError);
   const load = useTaskStore((state) => state.load);
   const detail = useTaskStore((state) => state.detail);
   const detailLoading = useTaskStore((state) => state.detailLoading);
+  const detailError = useTaskStore((state) => state.detailError);
   const openDetail = useTaskStore((state) => state.openDetail);
   const section = useWorkspaceStore((state) => state.section);
   const taskSection = useWorkspaceStore((state) => state.taskSection);
@@ -42,10 +45,28 @@ export default function L3Panel(): React.JSX.Element {
   const setTaskSection = useWorkspaceStore((state) => state.setTaskSection);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  const [mountStage, setMountStage] = useState(0);
+  const compact = (layoutWidth ?? windowWidth) <= 760;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      setMountStage(1);
+      secondFrame = requestAnimationFrame(() => setMountStage(2));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (layoutWidth !== undefined) return;
+    const update = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [layoutWidth]);
 
   useEffect(() => {
     void window.api.interacting(false);
@@ -90,7 +111,7 @@ export default function L3Panel(): React.JSX.Element {
         </div>
       </header>
 
-      <div className="l3-mobile-picker">
+      {mountStage >= 1 && compact && <div className="l3-mobile-picker">
         <label className={section === 'tasks' ? 'active' : ''}>
           <span className="sr-only">选择任务</span>
           <select value={selectedTaskId ?? ''} onChange={(event) => selectTask(event.target.value)}>
@@ -116,28 +137,17 @@ export default function L3Panel(): React.JSX.Element {
             );
           })}
         </nav>
-      </div>
+      </div>}
 
       <div className="l3-shell">
-        <aside className="workspace-sidebar" aria-label="任务与工作区导航">
+        {mountStage === 0 && !compact && <div className="workspace-sidebar-placeholder" aria-hidden="true" />}
+        {mountStage >= 1 && !compact && <aside className="workspace-sidebar" aria-label="任务与工作区导航">
           <div className="sidebar-search">
             <Search aria-hidden="true" size={17} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索任务" aria-label="搜索任务" />
           </div>
           <div className="sidebar-label"><span>活跃任务</span><span>{tasks.length}</span></div>
-          <nav className="task-switcher" aria-label="活跃任务">
-            {filteredTasks.length === 0 ? <p>没有匹配的任务</p> : filteredTasks.map((card) => (
-              <button
-                key={card.task.id}
-                className={section === 'tasks' && selectedTaskId === card.task.id ? 'active' : ''}
-                aria-current={section === 'tasks' && selectedTaskId === card.task.id ? 'page' : undefined}
-                onClick={() => selectTask(card.task.id)}
-              >
-                <span className={'task-indicator urgency-' + card.task.urgency} aria-hidden="true" />
-                <span><strong>{card.task.name}</strong><small>{card.progress.nextTitle ?? (card.progress.total === 0 ? '待拆分采购节点' : '采购链路已完成')}</small></span>
-              </button>
-            ))}
-          </nav>
+          <VirtualTaskSwitcher tasks={filteredTasks} selectedTaskId={selectedTaskId} active={section === 'tasks'} onSelect={selectTask} />
           <nav className="workspace-nav" aria-label="其他工作区">
             {WORKSPACE_NAV.map((item) => {
               const Icon = item.icon;
@@ -148,18 +158,20 @@ export default function L3Panel(): React.JSX.Element {
               );
             })}
           </nav>
-        </aside>
+        </aside>}
 
-        <main className="workspace-main">
+        {mountStage < 2 ? <main className="workspace-main"><p className="loading-state">正在准备任务工作台</p></main> : <main className="workspace-main">
           {section === 'tasks' && (
-            loading ? <p className="loading-state">正在加载任务</p> : tasks.length === 0 ? (
+            loading ? <p className="loading-state">正在加载任务</p> : loadError ? (
+              <EmptyState icon={ClipboardList} title="暂时无法读取任务" description={loadError} action={<Button variant="primary" onClick={() => void load()}>重试</Button>} />
+            ) : tasks.length === 0 ? (
               <EmptyState icon={ClipboardList} title="还没有活跃任务" description="创建一项采购任务，工作台会把下一步动作放在最前面。" action={<Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>} />
             ) : (
               <>
                 <div className="workspace-task-head">
                   <div>
                     <span className="eyebrow">当前任务</span>
-                    <h1>{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
+                    <h1 tabIndex={-1} data-transition-focus="l3">{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
                   </div>
                   <span className={'workspace-urgency urgency-' + (currentTask?.task.urgency ?? detail?.task.urgency ?? 'normal')}>
                     {currentTask?.overdue ? '已逾期' : currentTask?.task.urgency === 'critical' ? '紧急' : currentTask?.task.urgency === 'high' ? '高优先级' : currentTask?.task.urgency === 'low' ? '低优先级' : '普通'}
@@ -183,7 +195,14 @@ export default function L3Panel(): React.JSX.Element {
                   })}
                 </nav>
                 <div className="workspace-scroll" role="tabpanel">
-                  {detailLoading || !detail || detail.task.id !== selectedTaskId ? <p className="loading-state">正在打开任务</p> : <TaskEditor detail={detail} section={taskSection} />}
+                  {detailLoading ? <p className="loading-state">正在打开任务</p> : detailError || !detail || detail.task.id !== selectedTaskId ? (
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="暂时无法打开任务"
+                      description={detailError ?? '任务详情尚未准备好'}
+                      action={selectedTaskId ? <Button variant="primary" onClick={() => void openDetail(selectedTaskId)}>重试</Button> : undefined}
+                    />
+                  ) : <TaskEditor detail={detail} section={taskSection} />}
                 </div>
               </>
             )
@@ -191,7 +210,7 @@ export default function L3Panel(): React.JSX.Element {
           {section === 'drafts' && <div className="workspace-scroll standalone-section"><DraftsPanel /></div>}
           {section === 'archive' && <div className="workspace-scroll standalone-section"><ArchiveView /></div>}
           {section === 'settings' && <div className="workspace-scroll standalone-section"><SettingsView /></div>}
-        </main>
+        </main>}
       </div>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
     </div>
