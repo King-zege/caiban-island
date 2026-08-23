@@ -1,6 +1,7 @@
 import type { TaskInput } from './taskContracts';
+import type { AgentActionDraftPayload } from './agentContracts';
 
-export type DraftSource = 'mcp' | 'api';
+export type DraftSource = 'mcp' | 'api' | 'pi';
 export type DraftState = 'pending' | 'confirmed' | 'discarded';
 
 export interface DraftNodeProposal {
@@ -24,7 +25,7 @@ export interface NodesDraftPayload {
   warnings: string[];
 }
 
-export type DraftPayload = TaskDraftPayload | NodesDraftPayload;
+export type DraftPayload = TaskDraftPayload | NodesDraftPayload | AgentActionDraftPayload;
 
 export interface DraftRecord {
   id: string;

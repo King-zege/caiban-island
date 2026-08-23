@@ -2014,6 +2014,32 @@ select:disabled {
 .sync-readout { padding: var(--space-3); border-left: 2px solid var(--status-completed); color: var(--text-secondary); background: var(--surface-raised); }
 .sync-readout.error { border-left-color: var(--danger); }
 
+.agent-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 560px; border: 1px solid var(--border-subtle); border-radius: var(--radius-panel); overflow: hidden; background: var(--surface-sunken); }
+.agent-sessions { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-right: 1px solid var(--border-subtle); }
+.agent-sessions-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); color: var(--text-secondary); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.agent-sessions-head button { min-height: 28px; padding: 0 var(--space-2); border: 0; color: var(--text-tertiary); background: transparent; }
+.agent-sessions > button { display: flex; flex-direction: column; gap: 4px; min-height: 56px; padding: var(--space-3); border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text-secondary); text-align: left; background: transparent; }
+.agent-sessions > button:hover { background: var(--surface-hover); }
+.agent-sessions > button.active { border-color: var(--border-strong); color: var(--text-primary); background: var(--surface-raised); }
+.agent-sessions > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-sessions > button small { color: var(--text-tertiary); }
+.agent-conversation { display: grid; min-width: 0; grid-template-rows: auto minmax(280px, 1fr) auto auto; }
+.agent-toolbar { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle); color: var(--text-tertiary); font-size: 12px; }
+.agent-toolbar > div { display: flex; align-items: center; gap: var(--space-1); }
+.agent-messages { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); overflow: auto; }
+.agent-message { max-width: 82%; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-panel); background: var(--surface-raised); }
+.agent-message.user { align-self: flex-end; border-color: color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-raised)); }
+.agent-message.tool { max-width: 100%; align-self: stretch; padding-block: var(--space-2); border-style: dashed; color: var(--text-secondary); background: transparent; }
+.agent-message > span { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-size: 11px; }
+.agent-message p { margin: 0; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-message.streaming { border-color: var(--accent); }
+.agent-working { color: var(--text-tertiary); }
+.agent-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); padding: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.agent-composer textarea { min-height: 72px; max-height: 160px; resize: vertical; }
+.agent-action-diff { padding: var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-raised); }
+.agent-action-diff p { margin: var(--space-2) 0; color: var(--text-primary); }
+.agent-action-diff small { color: var(--text-tertiary); }
+
 [data-high-contrast='true'] .panel,
 [data-high-contrast='true'] button,
 [data-high-contrast='true'] input,
@@ -2057,6 +2083,11 @@ select:disabled {
   .inline-composer,
   .reminder-options,
   .drafts-layout { grid-template-columns: 1fr; }
+  .agent-layout { grid-template-columns: 1fr; }
+  .agent-sessions { max-height: 150px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--border-subtle); }
+  .agent-heading { gap: var(--space-3); }
+  .agent-toolbar { align-items: flex-start; flex-direction: column; }
+  .agent-message { max-width: 94%; }
   .standalone-heading,
   .welcome-choice,
   .archive-toolbar,

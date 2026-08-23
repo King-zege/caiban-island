@@ -5,6 +5,12 @@ import type {
   DraftRecord,
   MCPConfig,
   AiStatus,
+  AgentRunEvent,
+  AgentRunRequest,
+  AgentSessionDetail,
+  AgentSessionSummary,
+  DeepSeekModel,
+  DeepSeekStatus,
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
@@ -107,7 +113,23 @@ const api = {
   getAiStatus: (): Promise<IpcResult<AiStatus>> => ipcRenderer.invoke('ai:status'),
   saveAiConfig: (baseUrl: string, model: string, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('ai:saveConfig', baseUrl, model, key),
   testAi: (): Promise<IpcResult<string>> => ipcRenderer.invoke('ai:test'),
-  aiBreakdown: (description: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('ai:breakdown', description)
+  aiBreakdown: (description: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('ai:breakdown', description),
+  agentStart: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:start', request),
+  agentSend: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:send', request),
+  agentCancel: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:cancel'),
+  listAgentSessions: (): Promise<IpcResult<AgentSessionSummary[]>> => ipcRenderer.invoke('agent:listSessions'),
+  getAgentSession: (id: string): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:getSession', id),
+  deleteAgentSession: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:deleteSession', id),
+  clearAgentSessions: (): Promise<IpcResult<number>> => ipcRenderer.invoke('agent:clearSessions'),
+  exportAgentSession: (id: string, format: 'json' | 'markdown'): Promise<IpcResult<string>> => ipcRenderer.invoke('agent:exportSession', id, format),
+  onAgentEvent: (cb: (event: AgentRunEvent) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, value: AgentRunEvent) => cb(value);
+    ipcRenderer.on('agent:event', listener);
+    return () => ipcRenderer.removeListener('agent:event', listener);
+  },
+  getDeepSeekStatus: (): Promise<IpcResult<DeepSeekStatus>> => ipcRenderer.invoke('deepseek:status'),
+  saveDeepSeekConfig: (model: DeepSeekModel, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('deepseek:saveConfig', model, key),
+  testDeepSeek: (): Promise<IpcResult<string>> => ipcRenderer.invoke('deepseek:test')
 };
 
 contextBridge.exposeInMainWorld('api', api);

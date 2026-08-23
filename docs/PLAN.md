@@ -2,7 +2,7 @@
 
 ## 1. 背景
 
-旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书免安装分发、灵动岛三级面板、Qoder MCP 智能拆解节点、飞书多维表格同步。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
+旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书免安装分发、灵动岛三级面板、原生 Pi Agent 规划、Qoder MCP 兼容与飞书多维表格同步。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
 
 ## 2. 决策记录
 
@@ -11,7 +11,7 @@
 | 技术栈 | Electron + TypeScript + React 19 + Vite + Node `node:sqlite` | Electron 内置 Node 24；无需原生 SQLite 扩展重编译 |
 | 分发 | 免证书独立运行 EXE；zip 仅用于本地验收 | 用户要求 GitHub Release 保持单一、清晰、可信的下载项；SmartScreen 提示可接受 |
 | 界面 | 岛内三级 L1/L2/L3，无独立主窗口 | 用户确认；托盘承接常驻控制 |
-| AI 主通道 | Qoder（独立桌面 IDE）MCP：SSE 为主 + STDIO 备用 | Qoder 官方支持 STDIO/SSE 两种 MCP 模式；用户仅能用 Qoder 企业账号 |
+| AI 兼容通道 | Qoder（独立桌面 IDE）MCP：SSE 为主 + STDIO 备用 | P5 已交付，P14 后继续作为无需 API Key 的兼容与故障回退 |
 | AI 兜底 | 内置 OpenAI-compatible API（未配 Key 时入口隐藏） | 用户选择：Qoder 为主 + 兜底通道 |
 | 节点色 | 已完成=绿、进行中=蓝、待完成=黄、已取消=中性灰 | P11 用户确认增加取消状态；取消节点排除进度与下一步 |
 | 折叠形态 | 96×6px 仅露约 4px 提示条 | 用户确认不遮挡浏览器标签/窗口按钮 |

@@ -42,3 +42,4 @@ export interface UiPreferences {
 
 export * from './taskContracts';
 export * from './draftContracts';
+export * from './agentContracts';

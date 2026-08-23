@@ -104,7 +104,8 @@ describe('P10 完整界面与安全交互', () => {
       getSettings: vi.fn(async () => ({ ok: true as const, data: { reminder_default_offsets: [], autostart: false, acrylic_disabled: true } })),
       getMcpConfig: vi.fn(async () => ({ ok: true as const, data: { url: 'http://127.0.0.1:3210/sse?token=session-secret', token: 'session-secret', stdioCommand: 'node bridge session-secret' } })),
       getFeishuStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, autoSync: false, target: null } })),
-      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } }))
+      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } })),
+      getDeepSeekStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: 'https://api.deepseek.com' as const, model: 'deepseek-v4-flash' as const } }))
     });
     const { container } = render(<SettingsView />);
     await screen.findByRole('tab', { name: 'AI 与 Qoder' });
@@ -122,7 +123,8 @@ describe('P10 完整界面与安全交互', () => {
       getSettings: vi.fn(async () => ({ ok: true as const, data: { reminder_default_offsets: [], autostart: false, acrylic_disabled: true } })),
       getMcpConfig: vi.fn(async () => ({ ok: true as const, data: { url: 'http://127.0.0.1:3210/sse?token=masked', token: 'masked', stdioCommand: 'node bridge' } })),
       getFeishuStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, autoSync: false, target: null } })),
-      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } }))
+      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } })),
+      getDeepSeekStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: 'https://api.deepseek.com' as const, model: 'deepseek-v4-flash' as const } }))
     });
     const { container } = render(<SettingsView />);
     await screen.findByRole('tab', { name: '常用' });

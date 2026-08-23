@@ -1,6 +1,6 @@
 import { Bot, Cloud, Copy, Database, Download, Eye, EyeOff, FolderOpen, Pause, Play, RefreshCw, Save, Settings2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { AiStatus, MCPConfig } from '../../../shared/types';
+import type { AiStatus, DeepSeekModel, DeepSeekStatus, MCPConfig } from '../../../shared/types';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import { AsyncFeedback } from './ui/AsyncFeedback';
 import { Button, IconButton } from './ui/Button';
@@ -51,6 +51,10 @@ export default function SettingsView(): React.JSX.Element {
   const [aiModel, setAiModel] = useState('');
   const [aiKey, setAiKey] = useState('');
   const [aiKeyVisible, setAiKeyVisible] = useState(false);
+  const [deepSeekStatus, setDeepSeekStatus] = useState<DeepSeekStatus | null>(null);
+  const [deepSeekModel, setDeepSeekModel] = useState<DeepSeekModel>('deepseek-v4-flash');
+  const [deepSeekKey, setDeepSeekKey] = useState('');
+  const [deepSeekKeyVisible, setDeepSeekKeyVisible] = useState(false);
 
   const [feishuToken, setFeishuToken] = useState('');
   const [feishuTokenVisible, setFeishuTokenVisible] = useState(false);
@@ -59,14 +63,15 @@ export default function SettingsView(): React.JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setInitialError(null);
-    const [settingsResult, mcpResult, feishuResult, aiResult] = await Promise.all([
+    const [settingsResult, mcpResult, feishuResult, aiResult, deepSeekResult] = await Promise.all([
       window.api.getSettings(),
       window.api.getMcpConfig(),
       window.api.getFeishuStatus(),
-      window.api.getAiStatus()
+      window.api.getAiStatus(),
+      window.api.getDeepSeekStatus()
     ]);
     setLoading(false);
-    const failed = [settingsResult, mcpResult, feishuResult, aiResult].find((result) => !result.ok);
+    const failed = [settingsResult, mcpResult, feishuResult, aiResult, deepSeekResult].find((result) => !result.ok);
     if (failed && !failed.ok) setInitialError(failed.error);
     if (settingsResult.ok) {
       const settings = settingsResult.data as { reminder_default_offsets: number[]; autostart: boolean; acrylic_disabled: boolean };
@@ -80,6 +85,10 @@ export default function SettingsView(): React.JSX.Element {
       setAiStatus(aiResult.data);
       setAiBase(aiResult.data.baseUrl);
       setAiModel(aiResult.data.model);
+    }
+    if (deepSeekResult.ok) {
+      setDeepSeekStatus(deepSeekResult.data);
+      setDeepSeekModel(deepSeekResult.data.model);
     }
   }, []);
 
@@ -147,6 +156,26 @@ export default function SettingsView(): React.JSX.Element {
     setBusyAction(null);
     if (result.ok) showSuccess(result.data);
     else showError(result.error, () => void testAi());
+  };
+
+  const saveDeepSeek = async () => {
+    setBusyAction('deepseek-save');
+    const result = await window.api.saveDeepSeekConfig(deepSeekModel, deepSeekKey);
+    setBusyAction(null);
+    if (!result.ok) { showError(result.error, () => void saveDeepSeek()); return; }
+    setDeepSeekKey('');
+    setDeepSeekKeyVisible(false);
+    const status = await window.api.getDeepSeekStatus();
+    if (status.ok) setDeepSeekStatus(status.data);
+    showSuccess('DeepSeek 配置已安全保存');
+  };
+
+  const testDeepSeek = async () => {
+    setBusyAction('deepseek-test');
+    const result = await window.api.testDeepSeek();
+    setBusyAction(null);
+    if (result.ok) showSuccess(result.data);
+    else showError(result.error, () => void testDeepSeek());
   };
 
   const refreshFeishu = async () => {
@@ -226,9 +255,18 @@ export default function SettingsView(): React.JSX.Element {
 
       {section === 'ai' && (
         <div className="settings-section" role="tabpanel">
-          <div className="section-heading"><div><span className="eyebrow">AI 与 Qoder</span><h2>草稿生成通道</h2></div></div>
+          <div className="section-heading"><div><span className="eyebrow">AI 与 Qoder</span><h2>原生 Agent 与兼容通道</h2></div></div>
           <div className="connection-block">
-            <div className="connection-head"><span><strong>Qoder 连接</strong><small>推荐使用。Qoder 只能创建待审核草稿。</small></span><span className="connection-status configured">已就绪</span></div>
+            <div className="connection-head"><span><strong>Pi Agent · DeepSeek</strong><small>默认原生 Agent。只连接 DeepSeek 官方 API，正式修改必须逐次确认。</small></span><span className={'connection-status ' + (deepSeekStatus?.configured ? 'configured' : '')}>{deepSeekStatus?.configured ? '已配置' : '未配置'}</span></div>
+            <div className="settings-form-grid">
+              <label className="ui-field"><span className="ui-field-label">官方服务地址</span><input value="https://api.deepseek.com" disabled aria-label="DeepSeek 官方服务地址" /></label>
+              <label className="ui-field"><span className="ui-field-label">模型</span><select value={deepSeekModel} onChange={(event) => setDeepSeekModel(event.target.value as DeepSeekModel)}><option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></select></label>
+              <Field label="DeepSeek API Key" type={deepSeekKeyVisible ? 'text' : 'password'} value={deepSeekKey} placeholder="留空表示不修改" onChange={(event) => setDeepSeekKey(event.target.value)} trailing={<IconButton icon={deepSeekKeyVisible ? EyeOff : Eye} label={deepSeekKeyVisible ? '隐藏 DeepSeek API Key' : '显示 DeepSeek API Key'} onClick={() => setDeepSeekKeyVisible((value) => !value)} />} />
+            </div>
+            <div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'deepseek-save'} onClick={() => void saveDeepSeek()}>{busyAction === 'deepseek-save' ? '正在保存' : '保存配置'}</Button><Button disabled={busyAction === 'deepseek-test' || !deepSeekStatus?.configured} onClick={() => void testDeepSeek()}>{busyAction === 'deepseek-test' ? '正在测试' : '测试连接'}</Button></div>
+          </div>
+          <div className="connection-block">
+            <div className="connection-head"><span><strong>Qoder 连接</strong><small>兼容通道。Qoder 只能创建待审核草稿。</small></span><span className="connection-status configured">已就绪</span></div>
             <div className="credential-box">
               <span>连接地址与会话凭据</span>
               <code>{mcpVisible && mcpConfig ? mcpConfig.url : '••••••••••••••••••••••••'}</code>

@@ -16,6 +16,7 @@ export default function DraftsPanel(): React.JSX.Element {
   const reloadTasks = useTaskStore((state) => state.load);
   const openSection = useWorkspaceStore((state) => state.openSection);
   const notify = useWorkspaceStore((state) => state.notify);
+  const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [taskNames, setTaskNames] = useState<Record<string, string>>({});
@@ -25,6 +26,7 @@ export default function DraftsPanel(): React.JSX.Element {
   const [description, setDescription] = useState('');
   const [aiConfigured, setAiConfigured] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [deleteActionOpen, setDeleteActionOpen] = useState(false);
 
   const refresh = async (keepSelected = false) => {
     setLoading(true);
@@ -70,11 +72,12 @@ export default function DraftsPanel(): React.JSX.Element {
   };
 
   const editNode = (index: number, patch: Partial<DraftNodeProposal>) => {
-    mutatePayload((payload) => ({ ...payload, nodes: payload.nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...patch } : node) }));
+    mutatePayload((payload) => payload.type === 'action' ? payload : ({ ...payload, nodes: payload.nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...patch } : node) }));
   };
 
   const moveNode = (index: number, direction: -1 | 1) => {
     mutatePayload((payload) => {
+      if (payload.type === 'action') return payload;
       const nodes = [...payload.nodes];
       const target = index + direction;
       if (target < 0 || target >= nodes.length) return payload;
@@ -99,6 +102,10 @@ export default function DraftsPanel(): React.JSX.Element {
 
   const confirmDraft = async () => {
     if (!selected) return;
+    if (selected.payload.type === 'action' && selected.payload.action.kind === 'delete_node') {
+      setDeleteActionOpen(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     const result = await window.api.confirmDraft(selected.id);
@@ -109,7 +116,31 @@ export default function DraftsPanel(): React.JSX.Element {
     }
     await refresh();
     await reloadTasks();
-    notify(selected.payload.type === 'task' ? '草稿已创建为正式任务' : '节点已添加到正式任务', 'success');
+    notify(selected.payload.type === 'task' ? '草稿已创建为正式任务' : selected.payload.type === 'nodes' ? '节点已添加到正式任务' : '轻量操作已应用', 'success');
+  };
+
+  const scheduleDeleteAction = () => {
+    if (!selected || selected.payload.type !== 'action' || selected.payload.action.kind !== 'delete_node') return;
+    const draftId = selected.id;
+    const title = selected.payload.action.before.title;
+    const scheduled = scheduleUndo({
+      id: draftId,
+      kind: 'node',
+      label: '节点「' + title + '」',
+      commit: async () => {
+        const result = await window.api.confirmDraft(draftId);
+        if (!result.ok) return result.error;
+        await reloadTasks();
+        await refresh();
+        return null;
+      }
+    });
+    setDeleteActionOpen(false);
+    if (scheduled) {
+      setDrafts((list) => list.filter((draft) => draft.id !== draftId));
+      setSelectedId(null);
+      notify('节点删除将在 5 秒后应用，可撤销', 'info');
+    }
   };
 
   const discardDraft = async () => {
@@ -128,7 +159,9 @@ export default function DraftsPanel(): React.JSX.Element {
 
   const titleOf = (draft: DraftRecord) => draft.payload.type === 'task'
     ? draft.payload.taskInput.name || '未命名任务'
-    : '为“' + (taskNames[draft.payload.taskId] ?? '当前任务') + '”添加节点';
+    : draft.payload.type === 'nodes'
+      ? '为“' + (taskNames[draft.payload.taskId] ?? '当前任务') + '”添加节点'
+      : draft.payload.summary;
 
   return (
     <div className="drafts-panel">
@@ -154,9 +187,9 @@ export default function DraftsPanel(): React.JSX.Element {
             <div className="list-heading"><strong>待审核</strong><span>{drafts.length}</span></div>
             {drafts.map((draft) => (
               <button key={draft.id} className={'draft-item' + (draft.id === selectedId ? ' active' : '')} aria-current={draft.id === selectedId ? 'page' : undefined} onClick={() => setSelectedId(draft.id)}>
-                <span className="draft-source">{draft.source === 'mcp' ? 'Qoder' : '内置 AI'}</span>
+                <span className="draft-source">{draft.source === 'mcp' ? 'Qoder' : draft.source === 'pi' ? 'Pi Agent' : '内置 AI'}</span>
                 <strong>{titleOf(draft)}</strong>
-                <small>{draft.payload.nodes.length} 个节点 · {draft.createdAt.slice(5, 16).replace('T', ' ')}</small>
+                <small>{draft.payload.type === 'action' ? '待逐次确认的轻量操作' : draft.payload.nodes.length + ' 个节点'} · {draft.createdAt.slice(5, 16).replace('T', ' ')}</small>
               </button>
             ))}
           </nav>
@@ -172,26 +205,33 @@ export default function DraftsPanel(): React.JSX.Element {
                 </div>
               )}
 
-              <ol className="draft-nodes">
+              {selected.payload.type === 'action' ? (
+                <div className="agent-action-diff" role="status">
+                  <strong>具体变更</strong>
+                  <p>{selected.payload.summary}</p>
+                  <small>确认时会再次核对原值；任务数据已变化则拒绝执行。</small>
+                </div>
+              ) : <ol className="draft-nodes">
                 {selected.payload.nodes.map((node, index) => (
                   <li key={index} className="draft-node-row">
                     <span className="draft-node-idx">{index + 1}</span>
                     <input value={node.title} aria-label={'节点 ' + (index + 1)} placeholder={'节点 ' + (index + 1)} onChange={(event) => editNode(index, { title: event.target.value })} />
                     <span className="row-actions">
                       <IconButton icon={ArrowUp} label="上移节点" disabled={index === 0} onClick={() => moveNode(index, -1)} />
-                      <IconButton icon={ArrowDown} label="下移节点" disabled={index === selected.payload.nodes.length - 1} onClick={() => moveNode(index, 1)} />
-                      <IconButton icon={Trash2} label="删除节点" variant="danger" onClick={() => mutatePayload((payload) => ({ ...payload, nodes: payload.nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} />
+                      <IconButton icon={ArrowDown} label="下移节点" disabled={index === (selected.payload.type === 'action' ? 0 : selected.payload.nodes.length - 1)} onClick={() => moveNode(index, 1)} />
+                      <IconButton icon={Trash2} label="删除节点" variant="danger" onClick={() => mutatePayload((payload) => payload.type === 'action' ? payload : ({ ...payload, nodes: payload.nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} />
                     </span>
                   </li>
                 ))}
-              </ol>
-              <Button icon={Plus} variant="ghost" onClick={() => mutatePayload((payload) => ({ ...payload, nodes: [...payload.nodes, { title: '', description: '', startUtc: null, endUtc: null }] }))}>添加节点</Button>
+              </ol>}
+              {selected.payload.type !== 'action' && <Button icon={Plus} variant="ghost" onClick={() => mutatePayload((payload) => payload.type === 'action' ? payload : ({ ...payload, nodes: [...payload.nodes, { title: '', description: '', startUtc: null, endUtc: null }] }))}>添加节点</Button>}
               {selected.payload.warnings.length > 0 && <div className="draft-warnings"><strong>需要留意</strong><p>{selected.payload.warnings.join('；')}</p></div>}
               <div className="draft-actions">
                 <Button variant="danger" disabled={busy} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button>
-                <Button variant="primary" disabled={busy || selected.payload.nodes.some((node) => node.title.trim().length === 0) || (selected.payload.type === 'task' && selected.payload.taskInput.name.trim().length === 0)} onClick={() => void confirmDraft()}>{busy ? '正在应用' : selected.payload.type === 'task' ? '创建正式任务' : '添加到正式任务'}</Button>
+                <Button variant="primary" disabled={busy || (selected.payload.type !== 'action' && selected.payload.nodes.some((node) => node.title.trim().length === 0)) || (selected.payload.type === 'task' && selected.payload.taskInput.name.trim().length === 0)} onClick={() => void confirmDraft()}>{busy ? '正在应用' : selected.payload.type === 'task' ? '创建正式任务' : selected.payload.type === 'nodes' ? '添加到正式任务' : '确认并应用此操作'}</Button>
               </div>
               <Dialog open={discardOpen} title="丢弃这份草稿？" description="此操作不会影响正式任务。" onClose={() => setDiscardOpen(false)} actions={<><Button variant="ghost" onClick={() => setDiscardOpen(false)}>返回</Button><Button variant="danger" onClick={() => void discardDraft()}>确认丢弃</Button></>}><p>草稿内容将无法恢复。</p></Dialog>
+              <Dialog open={deleteActionOpen} title="确认删除这个节点？" description="删除会在 5 秒后执行，期间可以撤销。" onClose={() => setDeleteActionOpen(false)} actions={<><Button variant="ghost" onClick={() => setDeleteActionOpen(false)}>返回</Button><Button variant="danger" onClick={scheduleDeleteAction}>确认并进入撤销倒计时</Button></>}><p>确认时还会核对节点内容与位置，避免覆盖刚发生的修改。</p></Dialog>
             </div>
           )}
         </div>

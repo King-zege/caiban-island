@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type WorkspaceSection = 'tasks' | 'drafts' | 'archive' | 'settings';
+export type WorkspaceSection = 'tasks' | 'agent' | 'drafts' | 'archive' | 'settings';
 export type TaskWorkspaceSection = 'overview' | 'nodes' | 'materials' | 'reminders' | 'notes';
 
 export interface PendingUndoAction {

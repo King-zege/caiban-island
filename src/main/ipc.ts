@@ -6,10 +6,20 @@ import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
 import type { McpTokenVault } from './mcpTokenVault';
+import type { AgentService } from './agentService';
+import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
+import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
-export function registerIpc(c: IslandWindowController, appSvc: AppService, feishu: FeishuService, tokenVault: McpTokenVault): void {
+export function registerIpc(
+  c: IslandWindowController,
+  appSvc: AppService,
+  feishu: FeishuService,
+  tokenVault: McpTokenVault,
+  agent: AgentService,
+  deepSeek: DeepSeekConfigService
+): void {
   const mcpConfig = () => {
     const port = Number(appSvc.settings.get('mcp_port') ?? 0);
     const token = tokenVault.current();
@@ -154,6 +164,24 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  // —— 原生 Pi Agent / DeepSeek ——
+  ipcMain.handle('agent:start', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.start(request)));
+  ipcMain.handle('agent:send', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.send(request)));
+  ipcMain.handle('agent:cancel', () => wrap(() => agent.cancel()));
+  ipcMain.handle('agent:listSessions', () => wrap(() => agent.listSessions()));
+  ipcMain.handle('agent:getSession', (_e: IpcMainInvokeEvent, id: string) => wrap(() => agent.getSession(id)));
+  ipcMain.handle('agent:deleteSession', (_e: IpcMainInvokeEvent, id: string) => wrap(() => { agent.deleteSession(id); return true; }));
+  ipcMain.handle('agent:clearSessions', () => wrap(() => agent.clearSessions()));
+  ipcMain.handle('agent:exportSession', (_e: IpcMainInvokeEvent, id: string, format: 'json' | 'markdown') =>
+    wrap(() => agent.exportSession(id, format)));
+  ipcMain.handle('deepseek:status', () => wrap(() => deepSeek.status()));
+  ipcMain.handle('deepseek:saveConfig', (_e: IpcMainInvokeEvent, model: DeepSeekModel, key: string) =>
+    wrap(() => { deepSeek.save(model, key); return true; }));
+  ipcMain.handle('deepseek:test', async () => {
+    try { return { ok: true as const, data: await deepSeek.test() }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
   });
 
   // —— 飞书同步（P6） ——

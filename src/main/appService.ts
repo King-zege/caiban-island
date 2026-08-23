@@ -141,7 +141,7 @@ export class AppService {
     this.emitChanged();
   }
 
-  confirmDraft(id: string): { type: 'task' | 'nodes'; taskId: string } {
+  confirmDraft(id: string): { type: 'task' | 'nodes' | 'action'; taskId: string } {
     const result = this.drafts.confirm(id);
     if (result.type === 'task') {
       const task = this.tasks.getTask(result.taskId);

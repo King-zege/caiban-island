@@ -66,6 +66,29 @@ const SCHEMA_V1 = [
   'CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)'
 ];
 
+const SCHEMA_V2 = [
+  `CREATE TABLE agent_sessions(
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    model TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE agent_messages(
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tool_name TEXT,
+    sequence INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE UNIQUE INDEX agent_messages_session_sequence ON agent_messages(session_id, sequence)'
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -84,6 +107,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 1) {
       for (const stmt of SCHEMA_V1) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)').run(new Date().toISOString());
+    }
+    if (current < 2) {
+      for (const stmt of SCHEMA_V2) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {
