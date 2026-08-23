@@ -80,6 +80,10 @@ select:disabled {
   height: 100%;
 }
 
+.app-overlay-root {
+  display: contents;
+}
+
 .island-motion-stage,
 .island-motion-shell,
 .island-transition-layer {

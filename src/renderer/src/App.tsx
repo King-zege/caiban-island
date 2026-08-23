@@ -218,6 +218,7 @@ export default function App(): React.JSX.Element {
           ) : null}
         </div>
       </div>
+      <div className="app-overlay-root" data-app-overlay-root="true" />
       <ToastHost />
     </div>
   );

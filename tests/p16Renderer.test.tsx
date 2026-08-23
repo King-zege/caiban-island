@@ -183,6 +183,8 @@ describe('P16 节点快捷时间与提醒', () => {
   });
 
   it('节点菜单支持方向键和 Esc，关闭后焦点返回原节点', async () => {
+    const escapedToWindow = vi.fn();
+    window.addEventListener('keydown', escapedToWindow);
     setApi({
       setL2Detail: vi.fn(async () => ({ accepted: true })),
       interacting: vi.fn(async () => true),
@@ -194,9 +196,29 @@ describe('P16 节点快捷时间与提醒', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: '待完成' }));
     await userEvent.keyboard('{ArrowDown}');
     expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: '进行中' }));
+    escapedToWindow.mockClear();
     await userEvent.keyboard('{Escape}');
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     expect(document.activeElement).toBe(node);
+    expect(escapedToWindow).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', escapedToWindow);
+  });
+
+  it('节点菜单挂载到应用弹层根节点并继承主题上下文', async () => {
+    setApi({
+      setL2Detail: vi.fn(async () => ({ accepted: true })),
+      interacting: vi.fn(async () => true),
+      taskDetail: vi.fn(async () => ({ ok: false as const, error: '仅预取' }))
+    });
+    render(
+      <div>
+        <L2Panel reducedMotion />
+        <div data-app-overlay-root="true" />
+      </div>
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /确认技术参数，待完成/ }));
+    const menu = screen.getByRole('menu');
+    expect(menu.closest('[data-app-overlay-root="true"]')).not.toBeNull();
   });
 
   it('打开的节点菜单没有 serious 或 critical 的无障碍问题', async () => {

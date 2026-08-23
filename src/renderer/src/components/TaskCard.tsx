@@ -39,6 +39,7 @@ const NODE_MENU_WIDTH = Number.parseFloat(DESIGN_TOKENS.dark.nodeMenuWidth);
 const CONTROL_MIN = Number.parseFloat(DESIGN_TOKENS.dark.controlMin);
 const VIEWPORT_GUTTER = Number.parseFloat(DESIGN_TOKENS.dark.space2);
 const NODE_MENU_HEIGHT = CONTROL_MIN * 5 + Number.parseFloat(DESIGN_TOKENS.dark.space4);
+const APP_OVERLAY_ROOT_SELECTOR = '[data-app-overlay-root="true"]';
 
 export type TaskCardAction = 'complete' | 'cancel' | 'delete';
 
@@ -175,6 +176,7 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
   const handleMenuKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       closeNodeMenu();
       return;
     }
@@ -277,6 +279,7 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
         if (!node) return null;
         const inactive = node.status === 'completed' || node.status === 'cancelled';
         const timeText = formatUtcInTimeZone(node.startUtc, task.tzId);
+        const overlayRoot = document.querySelector<HTMLElement>(APP_OVERLAY_ROOT_SELECTOR) ?? document.body;
         return createPortal(
           <div
             ref={nodeMenu}
@@ -328,7 +331,7 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
               </span>
             </button>
           </div>,
-          document.body
+          overlayRoot
         );
       })()}
     </article>
