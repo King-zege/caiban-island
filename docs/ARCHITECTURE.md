@@ -14,12 +14,12 @@
 | 状态 | Zustand | 轻量、配合 React 18/19 |
 | 图标 | lucide-react | 用户锁定的单一线性图标家族；全局统一 1.75px stroke |
 | 动画 | 单次原生 resize + CSS compositor 视觉壳 | main 协调 preparing/animating/settling；renderer 只动画 transform/opacity/border-radius；软件渲染自动简化或直切 |
-| 数据库 | better-sqlite3 | 同步 API、快、WAL；主进程独占 |
+| 数据库 | Node `node:sqlite`（DatabaseSync） | Electron 内置、同步 API、WAL；主进程独占，无原生扩展重编译 |
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
 | MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
 | 内置 LLM | Node fetch（OpenAI-compatible） | function call 结构化输出 |
 | 飞书同步 | Node fetch（飞书多维表格 bitable v1 Open API）+ PersonalBaseToken | 个人令牌免管理员审批；无 CLI 依赖 |
-| Markdown | markdown-it（禁用 HTML）+ 自渲染 | 禁止原始 HTML 与脚本 |
+| Markdown | react-markdown（不启用 rehype-raw） | 禁止原始 HTML、脚本与远程嵌入 |
 | 打包 | electron-builder（portable EXE + 验收用 zip） | 免证书、免安装；GitHub Release 仅发布单一推荐 EXE |
 | 测试 | Vitest + Testing Library + user-event + jsdom + axe + Electron 视觉回归 | 单元、交互、无障碍与确定性截图，见 TEST_PLAN.md |
 
@@ -34,6 +34,17 @@
 | axe-core | 4.13.0 | MPL-2.0 | serious/critical 无障碍问题自动检查 |
 
 上述依赖只用于图标呈现或测试，不跨越 renderer/main 边界；安装时 `npm audit` 为 0 个已知漏洞。
+
+### 2.2 P13 Pi 上游与依赖准入（2026-08-23）
+
+P14 只准引入官方 Pi `v0.81.1`（提交 `20be4b18d4c57487f8993d2762bace129f0cf7c6`）中的以下两个 MIT 包，并精确锁定版本：
+
+| 依赖 | 版本 | 许可证 | 用途与边界 |
+| --- | --- | --- | --- |
+| @earendil-works/pi-agent-core | 0.81.1 | MIT | main 中的模型/工具循环；不得直接依赖 renderer、IPC 或正式数据服务 |
+| @earendil-works/pi-ai | 0.81.1 | MIT | DeepSeek provider 与流式协议；仅允许官方 API 端点 |
+
+两个包要求 Node ≥22.19；Electron 43.4.0 内置 Node 24.18.1。禁止引入 `pi-coding-agent`、TUI、文件/终端工具与 Pi 会话目录。安装使用 `--ignore-scripts`，保留 lockfile integrity，并检查 `@google/genai`、`protobufjs` 的脚本标记、许可证与最终打包体积。最小依赖组合审计为 0 个已知漏洞。
 
 ## 3. 进程分层
 
@@ -135,11 +146,11 @@
       created_at TEXT NOT NULL
     );
 
-规则：WAL + foreign_keys=ON；schema 变更走版本化迁移（migrations 目录）；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
+规则：WAL + foreign_keys=ON；schema 变更只走 `db.ts` 中按版本登记的迁移；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
 
 ## 6. MCP 契约（Qoder 主通道）
 
-- **传输 1（SSE，主）**：GUI 启动后监听 http://127.0.0.1:<随机端口>/sse?token=<随机令牌>（经典 SSE，Qoder 桌面 IDE 的 SSE 模式）；仅绑定回环地址；token 为 24 字节随机 base64url，可在设置页复制/重置。
+- **传输 1（SSE，主）**：GUI 启动后监听 http://127.0.0.1:<随机端口>/sse?token=<随机令牌>（经典 SSE，Qoder 桌面 IDE 的 SSE 模式）；仅绑定回环地址；token 为 24 字节随机 base64url，在内存中使用并以 safeStorage 密文保存，可在设置页复制/重置。旧版 SQLite 明文值在启动时迁移并删除；解密/迁移失败则删除旧值并重新生成。
 - **传输 2（Streamable HTTP）**：http://127.0.0.1:<随机端口>/mcp?token=<随机令牌>（Qoder CLI -t http 使用；原始握手已验证）。
 - **传输 3（STDIO，备）**：`node "<应用目录>/scripts/caiban-stdio.mjs"` 桥接脚本，把 stdio JSON-RPC 转发到 GUI 的 SSE 端点；GUI 未运行时自动拉起。注意：Windows GUI 子系统程序没有可用 stdio 管道，不能用 exe 直接做 stdio MCP（已踩坑记录）。
 - **鉴权**：仅"创建会话"的请求校验 token（错误 token 返回 401）；携带 sessionId 的后续请求以随机会话 ID 本身为凭据（SDK 客户端从 endpoint 事件拿到的地址不含原 URL 的 token）。
@@ -165,8 +176,9 @@
 
 - API Key 仅经 safeStorage 加密保存；禁止写入日志、快照、备份、测试夹具与源代码。
 - PersonalBaseToken 与 API Key 同级待遇（safeStorage、日志脱敏、不进快照/备份/测试夹具）。
-- MCP 仅 127.0.0.1 + token；重置 token 使旧连接立即失效。
-- 草稿原则：任何 AI 输出不得直接落正式数据；确认走单事务。
+- MCP 仅 127.0.0.1 + token；token 只以 safeStorage 密文落盘，重置后新会话立即拒绝旧 token。
+- 草稿原则：任何 AI 输出不得直接落正式数据；创建、编辑与确认复用 shared 校验，确认前最终校验任务仍有效，确认走单事务。
+- 正式任务、节点、链接、备注、提醒和草稿确认统一由 `AppService` 编排；事务提交后才发送变更通知，供飞书自动同步等后置逻辑消费。
 - Markdown 渲染禁用原始 HTML/脚本；打开外部链接前显示实际目标。
 - 备份与快照不含凭据；日志脱敏（无 Authorization、无请求正文）。
 

@@ -5,7 +5,15 @@ import { LlmService } from './llmService';
 import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
-import type { Task, TaskInput } from '../shared/taskContracts';
+import type {
+  LinkInput,
+  NodeInput,
+  NodeStatus,
+  Task,
+  TaskInput,
+  TaskLink,
+  TaskNode
+} from '../shared/taskContracts';
 
 // 组合根：任务/归档/提醒/设置/AI 的跨服务事务编排
 export class AppService {
@@ -86,5 +94,61 @@ export class AppService {
 
   setReminders(taskId: string, offsets: number[]): void {
     this.reminders.setOffsets(taskId, offsets);
+    this.emitChanged();
+  }
+
+  addNode(taskId: string, input: NodeInput): TaskNode {
+    const node = this.tasks.addNode(taskId, input);
+    this.emitChanged();
+    return node;
+  }
+
+  updateNode(nodeId: string, input: NodeInput): TaskNode {
+    const node = this.tasks.updateNode(nodeId, input);
+    this.emitChanged();
+    return node;
+  }
+
+  removeNode(nodeId: string): void {
+    this.tasks.removeNode(nodeId);
+    this.emitChanged();
+  }
+
+  setNodeStatus(nodeId: string, status: NodeStatus): TaskNode {
+    const node = this.tasks.setNodeStatus(nodeId, status);
+    this.emitChanged();
+    return node;
+  }
+
+  reorderNodes(taskId: string, orderedIds: string[]): void {
+    this.tasks.reorderNodes(taskId, orderedIds);
+    this.emitChanged();
+  }
+
+  addLink(taskId: string, input: LinkInput): TaskLink {
+    const link = this.tasks.addLink(taskId, input);
+    this.emitChanged();
+    return link;
+  }
+
+  removeLink(linkId: string): void {
+    this.tasks.removeLink(linkId);
+    this.emitChanged();
+  }
+
+  saveNote(taskId: string, body: string): void {
+    this.tasks.saveNote(taskId, body);
+    this.emitChanged();
+  }
+
+  confirmDraft(id: string): { type: 'task' | 'nodes'; taskId: string } {
+    const result = this.drafts.confirm(id);
+    if (result.type === 'task') {
+      const task = this.tasks.getTask(result.taskId);
+      const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
+      if (task?.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(result.taskId, defaults);
+    }
+    this.emitChanged();
+    return result;
   }
 }

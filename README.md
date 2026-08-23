@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**v0.2.0，已完成至 P12**：在完整采购任务能力之上，界面已重构为“精密采购工作台”，三级切换改为单次原生 resize，并支持集显、软件渲染自动降级。
+**v0.2.0，已完成至 P13**：在完整采购任务能力之上，界面已重构为“精密采购工作台”，三级切换采用单次原生 resize；MCP 凭据已改为系统加密存储，草稿在编辑与确认时会再次校验。Pi Agent 原生集成将在 P14–P15 提供。
 
 - GitHub Release 只提供一个推荐下载：`Caiban-Island-0.2.0-Windows-x64.exe`（Windows x64 免安装独立运行版）；本地 `release/` 仍会生成同名 ZIP 用于打包验收，不上传 Release；
 - 开发运行：`npm run dev`；构建：`npm run build` + `npm start`；

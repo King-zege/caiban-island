@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { APP_VERSION } from '../shared/appVersion';
 import type { TaskDetail } from '../shared/taskContracts';
 
 export interface ArchivedItem {
@@ -52,7 +53,7 @@ export class ArchiveService {
     const json = {
       format_version: 1,
       exported_at: now,
-      app_version: '0.1.0',
+      app_version: APP_VERSION,
       task,
       nodes: detail.nodes,
       links: detail.links,

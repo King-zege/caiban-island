@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { app, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -6,13 +5,14 @@ import type { IslandWindowController } from './windowController';
 import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
+import type { McpTokenVault } from './mcpTokenVault';
 import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
 
-export function registerIpc(c: IslandWindowController, appSvc: AppService, feishu: FeishuService): void {
+export function registerIpc(c: IslandWindowController, appSvc: AppService, feishu: FeishuService, tokenVault: McpTokenVault): void {
   const mcpConfig = () => {
     const port = Number(appSvc.settings.get('mcp_port') ?? 0);
-    const token = appSvc.settings.get('mcp_token') ?? '';
+    const token = tokenVault.current();
     const bridge = path.join(app.getAppPath(), 'scripts', 'caiban-stdio.mjs');
     return {
       url: 'http://127.0.0.1:' + port + '/mcp?token=' + token,
@@ -66,16 +66,16 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
   ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.deleteTask(id)));
 
-  ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => tasks.addNode(taskId, input)));
-  ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => tasks.updateNode(nodeId, input)));
-  ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => tasks.removeNode(nodeId)));
-  ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => tasks.setNodeStatus(nodeId, status)));
-  ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => tasks.reorderNodes(taskId, orderedIds)));
+  ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => appSvc.addNode(taskId, input)));
+  ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => appSvc.updateNode(nodeId, input)));
+  ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => appSvc.removeNode(nodeId)));
+  ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => appSvc.setNodeStatus(nodeId, status)));
+  ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => appSvc.reorderNodes(taskId, orderedIds)));
 
-  ipcMain.handle('links:add', (_e: IpcMainInvokeEvent, taskId: string, input: LinkInput) => wrap(() => tasks.addLink(taskId, input)));
-  ipcMain.handle('links:remove', (_e: IpcMainInvokeEvent, linkId: string) => wrap(() => tasks.removeLink(linkId)));
+  ipcMain.handle('links:add', (_e: IpcMainInvokeEvent, taskId: string, input: LinkInput) => wrap(() => appSvc.addLink(taskId, input)));
+  ipcMain.handle('links:remove', (_e: IpcMainInvokeEvent, linkId: string) => wrap(() => appSvc.removeLink(linkId)));
 
-  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, taskId: string, body: string) => wrap(() => tasks.saveNote(taskId, body)));
+  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, taskId: string, body: string) => wrap(() => appSvc.saveNote(taskId, body)));
 
   // —— 提醒 ——
   ipcMain.handle('reminders:list', (_e: IpcMainInvokeEvent, taskId: string) => wrap(() => reminders.offsetsForTask(taskId)));
@@ -120,13 +120,12 @@ export function registerIpc(c: IslandWindowController, appSvc: AppService, feish
   ipcMain.handle('drafts:list', () => wrap(() => appSvc.drafts.listPending()));
   ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
   ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
-  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.confirm(id)));
+  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.confirmDraft(id)));
 
   // —— MCP 配置 ——
   ipcMain.handle('mcp:getConfig', () => wrap(() => mcpConfig()));
   ipcMain.handle('mcp:resetToken', () => {
-    const token = randomBytes(24).toString('base64url');
-    appSvc.settings.set('mcp_token', token);
+    tokenVault.reset();
     return { ok: true, data: mcpConfig() };
   });
 

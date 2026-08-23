@@ -17,6 +17,9 @@
 | P10 | 确定性 Electron 截图 + Impeccable detector + 全量 typecheck/test/build/package | Win10/Win11 × 100%/125%/150% DPI × 深/浅/高对比度/减少动画/200% 文本 | 矩阵全通过；机械检测 0 条未处理发现 |
 | P11 | 状态机/四态进度/永久删除单测 + L2 节点轴与菜单组件测试 + detector | L1 圆角方向、L2 离开自动收起、L3 返回按钮、窗口切换流畅度 | 全部通过；删除可撤销；机械检测 0 条未处理发现 |
 | P12 | 过渡状态机/GPU 分类/缓存/虚拟 Carousel 测试 + 隔离 Electron 性能基准 + detector | 独显/集显/软件渲染 × 三级切换 × 快速反向操作 | 每次切换最多一次 resize；100 任务最多 7 张卡；软件降级功能完整 |
+| P13 | 版本常量、MCP 明文迁移/密文损坏/重置、草稿编辑与确认最终校验、AppService 通知测试 + 全量门禁 | 升级含旧明文 token 的隔离数据目录；确认旧地址失效；草稿损坏恢复提示 | SQLite 无明文 token；非法草稿不落正式数据；正式变更提交后通知一次 |
+| P14 | Pi faux/mock provider 多轮工具循环、allowlist、轮次/超时/取消、会话恢复、操作提案并发前置条件与 renderer 交互测试 | 使用临时 DeepSeek Key 验证 Flash/Pro、限流/断网/取消；Key 不记录；L1/L2/L3 性能 | 草稿/操作确认前不生效；逐次确认且仅执行一次；会话可删除/导出；package 成功 |
+| P15 | 记忆容量/去重/安全扫描、提案审核、FTS5 会话召回与 renderer 无障碍测试 | 审核画像/业务记忆；重载会话验证快照注入；清空与删除 | 未确认内容不注入；敏感内容拒绝；容量不静默淘汰；package 成功 |
 
 ## 2. 单元测试清单
 
@@ -64,7 +67,7 @@
 
 ## 6. 安全验收
 
-- 全仓扫描：无明文 API Key / MCP token / PersonalBaseToken / Authorization（grep + 提交前检查）。
+- 全仓与测试数据目录扫描：无明文 API Key / MCP token / PersonalBaseToken / Authorization（grep + 提交前检查）；MCP token 只允许以 safeStorage 密文存在。
 - 日志无请求正文与敏感路径；快照与备份无凭据。
 - MCP 端点仅绑定 127.0.0.1；token 重置后旧地址立即失效。
 

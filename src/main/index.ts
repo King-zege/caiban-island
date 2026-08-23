@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, Notification } from 'electron';
+import { app, BrowserWindow, nativeTheme, Notification, safeStorage } from 'electron';
 import path from 'node:path';
 import { IslandWindowController } from './windowController';
 import { registerIpc } from './ipc';
@@ -8,6 +8,7 @@ import { AppService } from './appService';
 import { startMcpServer } from './mcpServer';
 import { FeishuService } from './feishuService';
 import { FullscreenDetector } from './fullscreenDetector';
+import { McpTokenVault } from './mcpTokenVault';
 import { resolveUserDataPath } from './userData';
 import { classifyRenderMode } from '../shared/renderMode';
 import type { RenderMode } from '../shared/types';
@@ -120,6 +121,7 @@ app.on('child-process-gone', (_event, details) => {
 
       const db = openDatabase(path.join(app.getPath('userData'), 'island.db'));
       const appSvc = new AppService(db, app.getPath('userData'));
+      const mcpTokenVault = new McpTokenVault(appSvc.settings, safeStorage);
 
       // P6：飞书同步（手动按钮 + 变更后自动同步，防抖 3s）
       const feishu = new FeishuService(appSvc.tasks, appSvc.settings);
@@ -137,11 +139,11 @@ app.on('child-process-gone', (_event, details) => {
       app.setLoginItemSettings({ openAtLogin: settings.get('autostart') === '1' });
 
       // P5：启动本机 MCP SSE 服务（Qoder 主通道）
-      mcpRuntime = await startMcpServer(appSvc, appSvc.settings);
+      mcpRuntime = await startMcpServer(appSvc, appSvc.settings, mcpTokenVault);
 
       controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       controller.setRenderMode(detectedRenderMode);
-      registerIpc(controller, appSvc, feishu);
+      registerIpc(controller, appSvc, feishu, mcpTokenVault);
 
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);

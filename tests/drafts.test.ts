@@ -57,6 +57,36 @@ describe('草稿审核（FR-043~048）', () => {
     expect(detail.nodes).toHaveLength(1);
   });
 
+  it('编辑和确认都重新校验，损坏 payload 不能写入正式数据', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'caiban-draft-corrupt-'));
+    dirs.push(dir);
+    const db = openDatabase(path.join(dir, 'island.db'));
+    const app = new AppService(db, dir);
+    const d = app.drafts.create('mcp', taskDraft());
+    const invalid = { ...taskDraft(), taskInput: { ...taskDraft().taskInput, name: ' ' } };
+    expect(() => app.drafts.updatePayload(d.id, invalid)).toThrow('任务字段校验失败');
+    db.prepare('UPDATE drafts SET payload = ? WHERE id = ?').run(JSON.stringify(invalid), d.id);
+    expect(() => app.confirmDraft(d.id)).toThrow('任务字段校验失败');
+    expect(app.tasks.listActive()).toHaveLength(0);
+    expect(app.drafts.get(d.id).state).toBe('pending');
+  });
+
+  it('正式变更经 AppService 提交后统一通知', () => {
+    const app = fresh();
+    let changes = 0;
+    app.onChange(() => { changes += 1; });
+    const task = app.createTask({ name: '通知测试', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    const node = app.addNode(task.id, { title: '节点', description: '', startUtc: null, endUtc: null });
+    app.setNodeStatus(node.id, 'in_progress');
+    app.saveNote(task.id, '备注');
+    app.setReminders(task.id, []);
+    const draft = app.drafts.create('api', {
+      type: 'nodes', taskId: task.id, nodes: [{ title: '草稿节点', description: '', startUtc: null, endUtc: null }], warnings: []
+    });
+    app.confirmDraft(draft.id);
+    expect(changes).toBe(6);
+  });
+
   it('丢弃草稿', () => {
     const app = fresh();
     const d = app.drafts.create('mcp', taskDraft());

@@ -14,6 +14,10 @@ export class SettingsService {
       .run(key, value);
   }
 
+  delete(key: string): void {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  }
+
   getJson<T>(key: string, fallback: T): T {
     const v = this.get(key);
     if (v === null) return fallback;

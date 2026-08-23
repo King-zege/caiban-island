@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -6,7 +6,9 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { AppService } from './appService';
 import type { SettingsService } from './settingsService';
+import type { McpTokenVault } from './mcpTokenVault';
 import type { DraftNodeProposal } from '../shared/draftContracts';
+import { APP_VERSION } from '../shared/appVersion';
 const NODE_SCHEMA = {
   type: 'object',
   properties: {
@@ -25,7 +27,7 @@ function textResult(obj: unknown) {
 
 export function createMcpServer(appSvc: AppService): Server {
   const server = new Server(
-    { name: 'caiban-island', version: '0.1.0' },
+    { name: 'caiban-island', version: APP_VERSION },
     { capabilities: { tools: {} } }
   );
 
@@ -171,13 +173,9 @@ interface SessionEntry {
 // /mcp → Streamable HTTP（Qoder CLI -t http）；/sse → 经典 SSE（Qoder 桌面 IDE SSE 模式）
 // 注意：每个会话必须使用独立的 Server 实例（Server 只能连接一个传输，重复 connect 会返回
 // 400 "Server already initialized"）。
-export function startMcpServer(appSvc: AppService, settings: SettingsService): Promise<McpRuntime> {
+export function startMcpServer(appSvc: AppService, settings: SettingsService, tokenVault: McpTokenVault): Promise<McpRuntime> {
   return new Promise((resolve, reject) => {
-    let token = settings.get('mcp_token');
-    if (!token) {
-      token = randomBytes(24).toString('base64url');
-      settings.set('mcp_token', token);
-    }
+    const token = tokenVault.initialize();
     const sessions = new Map<string, SessionEntry>();
     const noSession = (res: http.ServerResponse) => {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
@@ -189,7 +187,7 @@ export function startMcpServer(appSvc: AppService, settings: SettingsService): P
       const sid = url.searchParams.get('sessionId');
       // 仅"创建会话"的请求需要 token；带 sessionId 的请求以随机会话 ID 本身为凭据
       // （SDK 客户端从 endpoint 事件得到的新地址不会携带原 URL 的 token）
-      if (!sid && !checkToken(req, token as string)) {
+      if (!sid && !checkToken(req, tokenVault.current())) {
         res.writeHead(401, { 'Content-Type': 'text/plain' });
         res.end('unauthorized');
         return;

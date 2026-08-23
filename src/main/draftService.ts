@@ -7,10 +7,57 @@ export class DraftError extends Error {}
 
 function parsePayload(raw: string): DraftPayload {
   try {
-    return JSON.parse(raw) as DraftPayload;
+    const value: unknown = JSON.parse(raw);
+    assertPayloadShape(value);
+    return value;
   } catch {
     throw new DraftError('草稿数据损坏');
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function assertNodeShape(value: unknown): void {
+  if (
+    !isRecord(value) ||
+    typeof value.title !== 'string' ||
+    typeof value.description !== 'string' ||
+    !isNullableString(value.startUtc) ||
+    !isNullableString(value.endUtc)
+  ) {
+    throw new DraftError('草稿数据损坏');
+  }
+}
+
+function assertPayloadShape(value: unknown): asserts value is DraftPayload {
+  if (!isRecord(value) || !Array.isArray(value.nodes) || !Array.isArray(value.warnings)) {
+    throw new DraftError('草稿数据损坏');
+  }
+  if (!value.warnings.every((warning) => typeof warning === 'string')) throw new DraftError('草稿数据损坏');
+  value.nodes.forEach(assertNodeShape);
+  if (value.type === 'task') {
+    if (!isRecord(value.taskInput)) throw new DraftError('草稿数据损坏');
+    const input = value.taskInput;
+    if (
+      typeof input.name !== 'string' ||
+      typeof input.description !== 'string' ||
+      typeof input.kind !== 'string' ||
+      typeof input.urgency !== 'string' ||
+      !isNullableString(input.deadlineUtc) ||
+      typeof input.tzId !== 'string'
+    ) {
+      throw new DraftError('草稿数据损坏');
+    }
+    return;
+  }
+  if (value.type === 'nodes' && typeof value.taskId === 'string') return;
+  throw new DraftError('草稿数据损坏');
 }
 
 // FR-043~048：AI 输出永远是草稿；确认走单事务；校验失败可修复一次
@@ -18,6 +65,22 @@ export class DraftService {
   constructor(private readonly db: DatabaseSync) {}
 
   create(source: DraftSource, payload: DraftPayload): DraftRecord {
+    this.validatePayload(payload);
+    const record: DraftRecord = {
+      id: randomUUID(),
+      source,
+      payload,
+      state: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    this.db
+      .prepare('INSERT INTO drafts(id, source, payload, state, created_at) VALUES(?,?,?,?,?)')
+      .run(record.id, record.source, JSON.stringify(record.payload), record.state, record.createdAt);
+    return record;
+  }
+
+  private validatePayload(payload: unknown): asserts payload is DraftPayload {
+    assertPayloadShape(payload);
     if (payload.type === 'task') {
       const v = validateTaskInput(payload.taskInput);
       if (!v.ok) throw new DraftError('任务字段校验失败：' + v.errors.join('；'));
@@ -33,17 +96,6 @@ export class DraftService {
       const v = validateNodeInput(n);
       if (!v.ok) throw new DraftError('节点校验失败：' + v.errors.join('；'));
     }
-    const record: DraftRecord = {
-      id: randomUUID(),
-      source,
-      payload,
-      state: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    this.db
-      .prepare('INSERT INTO drafts(id, source, payload, state, created_at) VALUES(?,?,?,?,?)')
-      .run(record.id, record.source, JSON.stringify(record.payload), record.state, record.createdAt);
-    return record;
   }
 
   listPending(): DraftRecord[] {
@@ -76,6 +128,7 @@ export class DraftService {
   updatePayload(id: string, payload: DraftPayload): DraftRecord {
     const row = this.db.prepare("SELECT id FROM drafts WHERE id = ? AND state = 'pending'").get(id) as { id: string } | undefined;
     if (!row) throw new DraftError('草稿不存在或已处理');
+    this.validatePayload(payload);
     this.db.prepare('UPDATE drafts SET payload = ? WHERE id = ?').run(JSON.stringify(payload), id);
     return this.get(id);
   }
@@ -89,6 +142,7 @@ export class DraftService {
   confirm(id: string): { type: 'task' | 'nodes'; taskId: string } {
     const draft = this.get(id);
     if (draft.state !== 'pending') throw new DraftError('草稿已处理');
+    this.validatePayload(draft.payload);
     this.db.exec('BEGIN');
     try {
       let taskId: string;
