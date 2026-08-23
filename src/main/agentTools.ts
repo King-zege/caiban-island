@@ -3,10 +3,14 @@ import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { AppService } from './appService';
 import { AgentActionService } from './agentActionService';
 import type { AgentActionRequest } from '../shared/agentContracts';
+import type { MemoryProposalRequest } from '../shared/agentContracts';
 import type { DraftNodeProposal } from '../shared/draftContracts';
+import type { MemoryService } from './memoryService';
+import type { AgentSessionService } from './agentSessionService';
 
 interface ToolDetails {
   draftId?: string;
+  memoryProposalId?: string;
 }
 
 const EmptySchema = Type.Object({}, { additionalProperties: false });
@@ -41,6 +45,17 @@ const ActionSchema = Type.Object({
   node: Type.Optional(NodeSchema),
   orderedNodeIds: Type.Optional(Type.Array(Type.String()))
 }, { additionalProperties: false });
+const MemorySchema = Type.Object({
+  operation: Type.Union([Type.Literal('add'), Type.Literal('replace'), Type.Literal('remove')]),
+  category: Type.Union([Type.Literal('profile'), Type.Literal('work')]),
+  fact: Type.String(),
+  evidenceMessageId: Type.String(),
+  targetMemoryId: Type.Optional(Type.String())
+}, { additionalProperties: false });
+const SearchSessionsSchema = Type.Object({
+  query: Type.String({ minLength: 1, maxLength: 200 }),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 }))
+}, { additionalProperties: false });
 
 function text(value: unknown, details: ToolDetails = {}): { content: [{ type: 'text'; text: string }]; details: ToolDetails } {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], details };
@@ -59,7 +74,12 @@ function normalizeNode(node: { title: string; description?: string; startUtc?: s
   };
 }
 
-export function createAgentTools(appSvc: AppService, sessionId: string): AgentTool[] {
+export function createAgentTools(
+  appSvc: AppService,
+  sessionId: string,
+  sessions?: AgentSessionService,
+  memories?: MemoryService
+): AgentTool[] {
   const actions = new AgentActionService(appSvc);
   const list: AgentTool<typeof EmptySchema, ToolDetails> = {
     name: 'list_active_tasks', label: '读取活跃任务', description: '列出活跃任务及进度，不修改数据', parameters: EmptySchema,
@@ -129,7 +149,40 @@ export function createAgentTools(appSvc: AppService, sessionId: string): AgentTo
       return text({ draftId: draft.id, status: 'pending', summary: draft.payload.type === 'action' ? draft.payload.summary : '' }, { draftId: draft.id });
     }
   };
-  return [list, detail, taskDraft, nodeDraft, action];
+  const tools: AgentTool[] = [list, detail, taskDraft, nodeDraft, action];
+  if (memories) {
+    const memory: AgentTool<typeof MemorySchema, ToolDetails> = {
+      name: 'propose_memory', label: '提出长期记忆',
+      description: '提议新增、替换或移除一条用户画像/工作记忆；必须引用当前会话中的可见证据消息，用户确认前不会生效',
+      parameters: MemorySchema, executionMode: 'sequential',
+      execute: async (_id, params, signal) => {
+        checkCancelled(signal);
+        const request: MemoryProposalRequest = {
+          operation: params.operation, category: params.category, fact: params.fact,
+          evidenceMessageId: params.evidenceMessageId, targetMemoryId: params.targetMemoryId
+        };
+        const proposal = memories.propose(sessionId, request);
+        return text({ proposalId: proposal.id, status: 'pending', warning: proposal.capacityWarning }, { memoryProposalId: proposal.id });
+      }
+    };
+    tools.push(memory);
+  }
+  if (sessions) {
+    const search: AgentTool<typeof SearchSessionsSchema, ToolDetails> = {
+      name: 'search_sessions', label: '搜索历史会话',
+      description: '只读搜索本机历史会话的用户/Agent 可见消息，返回有限片段与摘要，不返回内部推理或原始工具输出',
+      parameters: SearchSessionsSchema,
+      execute: async (_id, params, signal) => {
+        checkCancelled(signal);
+        return text(sessions.search(params.query, params.limit ?? 5));
+      }
+    };
+    tools.push(search);
+  }
+  return tools;
 }
 
-export const AGENT_TOOL_NAMES = ['list_active_tasks', 'get_task_detail', 'propose_task_draft', 'propose_node_draft', 'propose_task_action'] as const;
+export const AGENT_TOOL_NAMES = [
+  'list_active_tasks', 'get_task_detail', 'propose_task_draft', 'propose_node_draft', 'propose_task_action',
+  'propose_memory', 'search_sessions'
+] as const;

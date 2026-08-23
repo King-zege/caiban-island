@@ -2039,6 +2039,20 @@ select:disabled {
 .agent-action-diff { padding: var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-raised); }
 .agent-action-diff p { margin: var(--space-2) 0; color: var(--text-primary); }
 .agent-action-diff small { color: var(--text-tertiary); }
+.memory-panel { display: flex; flex-direction: column; gap: var(--space-6); }
+.memory-heading { gap: var(--space-4); }
+.memory-proposals { display: flex; flex-direction: column; gap: var(--space-4); }
+.memory-grid, .memory-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.memory-category { display: flex; min-width: 0; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-panel); background: var(--surface-sunken); }
+.memory-capacity, .memory-card-head, .memory-card-foot, .memory-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.memory-capacity span, .memory-card small { color: var(--text-tertiary); font-size: 12px; }
+.memory-meter { height: var(--space-1); overflow: hidden; border-radius: var(--radius-control); background: var(--surface-hover); }
+.memory-meter span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--motion-fast) var(--ease-standard); }
+.memory-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--surface-raised); }
+.memory-card.proposal { border-color: var(--border-strong); }
+.memory-card textarea { min-height: calc(var(--control-min) * 2); resize: vertical; }
+.memory-card-foot > div { display: flex; align-items: center; gap: var(--space-1); }
+.memory-warning { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.5; }
 
 [data-high-contrast='true'] .panel,
 [data-high-contrast='true'] button,
@@ -2088,6 +2102,7 @@ select:disabled {
   .agent-heading { gap: var(--space-3); }
   .agent-toolbar { align-items: flex-start; flex-direction: column; }
   .agent-message { max-width: 94%; }
+  .memory-grid, .memory-columns { grid-template-columns: 1fr; }
   .standalone-heading,
   .welcome-choice,
   .archive-toolbar,

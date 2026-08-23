@@ -1,4 +1,4 @@
-import { Download, MessageSquarePlus, Play, Send, Square, Trash2 } from 'lucide-react';
+import { Brain, Download, MessageSquarePlus, Play, Send, Square, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentMessageDto, AgentRunState, AgentSessionDetail, AgentSessionSummary } from '../../../shared/types';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -136,7 +136,7 @@ export default function AgentPanel(): React.JSX.Element {
         <section className="agent-conversation" aria-label="Agent 对话" aria-busy={isRunning}>
           <div className="agent-toolbar">
             <span>{detail?.session.model ?? 'deepseek-v4-flash'} · {state === 'running' ? '运行中' : state === 'cancelling' ? '正在取消' : '本地保存'}</span>
-            {detail && <div><Button variant="ghost" onClick={() => openSection('drafts')}>查看待确认草稿</Button><IconButton icon={Download} label="导出 JSON" onClick={() => void exportSession('json')} /><IconButton icon={Download} label="导出 Markdown" onClick={() => void exportSession('markdown')} /><IconButton icon={Trash2} label="删除会话" variant="danger" onClick={() => setDeleteOpen(true)} /></div>}
+            {detail && <div><Button icon={Brain} variant="ghost" onClick={() => openSection('memory')}>审核记忆</Button><Button variant="ghost" onClick={() => openSection('drafts')}>查看待确认草稿</Button><IconButton icon={Download} label="导出 JSON" onClick={() => void exportSession('json')} /><IconButton icon={Download} label="导出 Markdown" onClick={() => void exportSession('markdown')} /><IconButton icon={Trash2} label="删除会话" variant="danger" onClick={() => setDeleteOpen(true)} /></div>}
           </div>
           <div className="agent-messages" aria-live="polite">
             {!detail && !isRunning ? <EmptyState icon={Play} title="告诉 Agent 你想完成什么" description="例如：查看近期采购任务，规划下一步；或把某个节点改为进行中。" /> : detail?.messages.map((message) => <MessageBubble key={message.id} message={message} />)}

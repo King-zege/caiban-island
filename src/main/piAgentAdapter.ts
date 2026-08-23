@@ -9,7 +9,7 @@ export type PiAdapterEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'assistant_message'; text: string; inputTokens: number; outputTokens: number }
   | { type: 'tool_start'; toolCallId: string; toolName: string }
-  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; draftId?: string };
+  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; draftId?: string; memoryProposalId?: string };
 
 export interface PiRunOptions {
   sessionId: string;
@@ -141,7 +141,8 @@ export class PiAgentAdapter implements PiAgentRunner {
         const raw: unknown = event.result;
         const details = isRecord(raw) && isRecord(raw.details) ? raw.details : null;
         const draftId = details && typeof details.draftId === 'string' ? details.draftId : undefined;
-        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId });
+        const memoryProposalId = details && typeof details.memoryProposalId === 'string' ? details.memoryProposalId : undefined;
+        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId, memoryProposalId });
       }
     });
 

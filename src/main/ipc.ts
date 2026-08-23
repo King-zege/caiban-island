@@ -8,6 +8,7 @@ import type { FeishuService } from './feishuService';
 import type { McpTokenVault } from './mcpTokenVault';
 import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
+import type { MemoryService } from './memoryService';
 import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
 import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
@@ -18,7 +19,8 @@ export function registerIpc(
   feishu: FeishuService,
   tokenVault: McpTokenVault,
   agent: AgentService,
-  deepSeek: DeepSeekConfigService
+  deepSeek: DeepSeekConfigService,
+  memories: MemoryService
 ): void {
   const mcpConfig = () => {
     const port = Number(appSvc.settings.get('mcp_port') ?? 0);
@@ -183,6 +185,17 @@ export function registerIpc(
     try { return { ok: true as const, data: await deepSeek.test() }; }
     catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
   });
+
+  // —— 用户确认的长期记忆 ——
+  ipcMain.handle('memory:list', () => wrap(() => memories.list()));
+  ipcMain.handle('memory:listProposals', () => wrap(() => memories.listProposals()));
+  ipcMain.handle('memory:confirmProposal', (_e: IpcMainInvokeEvent, id: string, editedFact?: string) =>
+    wrap(() => memories.confirmProposal(id, editedFact)));
+  ipcMain.handle('memory:discardProposal', (_e: IpcMainInvokeEvent, id: string) =>
+    wrap(() => { memories.discardProposal(id); return true; }));
+  ipcMain.handle('memory:update', (_e: IpcMainInvokeEvent, id: string, fact: string) => wrap(() => memories.update(id, fact)));
+  ipcMain.handle('memory:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => { memories.delete(id); return true; }));
+  ipcMain.handle('memory:clear', () => wrap(() => memories.clear()));
 
   // —— 飞书同步（P6） ——
   const feishuStatus = () => ({

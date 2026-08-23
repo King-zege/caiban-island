@@ -11,6 +11,7 @@ import { AgentActionService } from '../src/main/agentActionService';
 import { AgentService } from '../src/main/agentService';
 import { createAgentTools, AGENT_TOOL_NAMES } from '../src/main/agentTools';
 import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
+import { MemoryService } from '../src/main/memoryService';
 import type { SafeStorageAdapter } from '../src/main/mcpTokenVault';
 import type { PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
 import { PiAgentAdapter, visibleDeltaFromPiEvent } from '../src/main/piAgentAdapter';
@@ -36,8 +37,9 @@ function fresh() {
   const app = new AppService(db, dir);
   const sessions = new AgentSessionService(db, dir);
   const deepSeek = new DeepSeekConfigService(app.settings, new FakeSafeStorage());
+  const memories = new MemoryService(db);
   deepSeek.save('deepseek-v4-flash', 'test-api-key');
-  return { dir, dbPath, db, app, sessions, deepSeek };
+  return { dir, dbPath, db, app, sessions, deepSeek, memories };
 }
 
 afterEach(() => {
@@ -83,7 +85,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     const restored = new AgentSessionService(reopened, f.dir).get(session.id);
     expect(restored.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
     const version = reopened.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(2);
+    expect(version.version).toBe(3);
     const service = new AgentSessionService(reopened, f.dir);
     service.delete(session.id);
     expect(service.list()).toHaveLength(0);
@@ -107,11 +109,11 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     expect(() => f.deepSeek.save('unsupported' as 'deepseek-v4-pro', '')).toThrow('不支持');
   });
 
-  it('Agent 单次运行持久化可见消息与用量，且只暴露五个 allowlist 工具', async () => {
+  it('Agent 单次运行持久化可见消息与用量，且只暴露七个 allowlist 工具', async () => {
     const f = fresh();
     const events: AgentRunEvent[] = [];
     const runner = new CompletingRunner();
-    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), runner);
+    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), runner, f.memories);
     const started = service.start({ input: '看看当前任务' });
     await service.waitForIdle();
 
@@ -127,7 +129,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
   it('全局只允许一个活跃 run，取消会中止 provider 并保留输入', async () => {
     const f = fresh();
     const events: AgentRunEvent[] = [];
-    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), new BlockingRunner());
+    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), new BlockingRunner(), f.memories);
     const started = service.start({ input: '持续规划' });
     expect(() => service.start({ input: '第二个运行' })).toThrow('已有 Agent 任务');
     expect(service.cancel()).toBe(true);
@@ -139,7 +141,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
   it('达到模型轮次上限时保留会话并发出可重试状态', async () => {
     const f = fresh();
     const events: AgentRunEvent[] = [];
-    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), new CompletingRunner('limit_reached'));
+    const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), new CompletingRunner('limit_reached'), f.memories);
     service.start({ input: '复杂规划' });
     await service.waitForIdle();
     expect(events.some((event) => event.type === 'state' && event.state === 'limit_reached')).toBe(true);
@@ -150,7 +152,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
 describe('P14 工具与轻量操作提案', () => {
   it('工具集不含文件、shell、URL 或正式写入工具', () => {
     const f = fresh();
-    const names = createAgentTools(f.app, 'session-1').map((tool) => tool.name);
+    const names = createAgentTools(f.app, 'session-1', f.sessions, f.memories).map((tool) => tool.name);
     expect(names).toEqual(AGENT_TOOL_NAMES);
     expect(names.some((name) => /(file|shell|url|archive|delete_task)/i.test(name))).toBe(false);
   });
@@ -229,7 +231,7 @@ describe('Pi 事件可见性映射', () => {
     const events: string[] = [];
     const result = await adapter.run({
       sessionId: 'faux-session', input: '读取任务', history: [], model: 'deepseek-v4-flash', apiKey: 'test-only',
-      systemPrompt: '只使用提供的工具。', tools: createAgentTools(f.app, 'faux-session'), signal: new AbortController().signal,
+      systemPrompt: '只使用提供的工具。', tools: createAgentTools(f.app, 'faux-session', f.sessions, f.memories), signal: new AbortController().signal,
       onEvent: (event) => { events.push(event.type); }
     });
     expect(result).toBe('completed');

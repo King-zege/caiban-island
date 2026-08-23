@@ -47,11 +47,13 @@ P14 已引入官方 Pi `v0.81.1`（提交 `20be4b18d4c57487f8993d2762bace129f0cf
 
 两个包要求 Node ≥22.19；Electron 43.4.0 内置 Node 24.18.1。未引入 `pi-coding-agent`、TUI、文件/终端工具与 Pi 会话目录。安装使用 `--ignore-scripts`，lockfile 保留 integrity；`@google/genai` / `protobufjs` 仅作为 Pi AI 的传递依赖，安装脚本未执行。`resources/THIRD_PARTY_NOTICES.md` 随包分发；生产依赖审计为 0 个已知漏洞。
 
-P14 Windows x64 打包实测：portable EXE 88,796,920 字节、ZIP 144,258,091 字节；相较 P13 分别增加约 3.54 MB 与 9.64 MB。asar 已核对包含两个 Pi 包、DeepSeek provider 与第三方声明。Pi AI 的其它 provider 文件随其正式 npm 包进入 asar，但应用只注册 DeepSeek provider，相关 API 实现按 Pi lazy loader 在调用时加载。
+P14 Windows x64 最终打包实测：portable EXE 88,791,531 字节、ZIP 144,258,164 字节。asar 已核对包含两个 Pi 包、DeepSeek provider 与第三方声明。Pi AI 的其它 provider 文件随其正式 npm 包进入 asar，但应用只注册 DeepSeek provider，相关 API 实现按 Pi lazy loader 在调用时加载。
+
+P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,435,158 字节、asar 111,931,434 字节；Pi/DeepSeek/lazy provider chunk/许可证资源完整，真实 Key、私有绝对路径与自动化伪凭据扫描无命中。修复版 portable 双击启动冒烟通过。
 
 ## 3. 进程分层
 
-- **main（主进程）**：窗口、SQLite、归档、提醒、MCP、Pi Agent/DeepSeek、旧 LLM、safeStorage 与系统集成。`AgentService` 编排 run，`PiAgentAdapter` 只处理 Pi 协议，`AgentSessionService` 只处理可见会话；Pi 不依赖 renderer、IPC 或正式任务服务。
+- **main（主进程）**：窗口、SQLite、归档、提醒、MCP、Pi Agent/DeepSeek、旧 LLM、safeStorage 与系统集成。`AgentService` 编排 run，`PiAgentAdapter` 只处理 Pi 协议，`AgentSessionService` 处理可见会话与 FTS5 召回，`MemoryService` 处理提案/确认/安全扫描；Pi 不依赖 renderer、IPC 或正式任务服务。
 - **preload**：contextBridge 暴露白名单 API，不含业务逻辑。
 - **renderer（React UI）**：组件、面板、Zustand 状态；不直接访问 Node/DB/文件/网络，一切经 IPC。
 - **shared**：类型、IPC 通道名、设计 token 常量、schema 校验器（main 与测试复用）。
@@ -76,6 +78,8 @@ P14 Windows x64 打包实测：portable EXE 88,796,920 字节、ZIP 144,258,091 
 | agent:listSessions / getSession / deleteSession / clearSessions / exportSession | renderer→main | 本机会话读取、删除、清空与导出（P14） |
 | agent:event | main→renderer | 流式可见文本、脱敏工具状态、消息与 run 状态；不含 reasoning |
 | deepseek:status / saveConfig / test | renderer→main | 固定官方 Base URL；模型选择与 safeStorage Key（P14） |
+| memory:list / listProposals / confirmProposal / discardProposal | renderer→main | 读取与审核长期记忆提案（P15） |
+| memory:update / delete / clear | renderer→main | 用户直接维护已确认记忆（P15） |
 | system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |
 | window:setLevel / setL2Detail / activate | renderer→main | 请求窗口三级控制、速览加高、焦点激活；层级请求返回 `TransitionRequestResult` |
 | window:transitionReady / transitionFinished | renderer→main | renderer 完成目标层准备与 compositor 动画后确认当前 transition id |
@@ -167,6 +171,21 @@ P14 Windows x64 打包实测：portable EXE 88,796,920 字节、ZIP 144,258,091 
       sequence INTEGER NOT NULL,            -- 会话内严格顺序；唯一索引(session_id, sequence)
       created_at TEXT NOT NULL
     );
+    -- migration v3
+    CREATE TABLE memories(
+      id TEXT PRIMARY KEY, category TEXT NOT NULL, fact TEXT NOT NULL,
+      source_session_id TEXT NOT NULL, source_message_id TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE memory_proposals(
+      id TEXT PRIMARY KEY, operation TEXT NOT NULL, category TEXT NOT NULL, fact TEXT NOT NULL,
+      evidence_message_id TEXT NOT NULL, source_session_id TEXT NOT NULL, target_memory_id TEXT,
+      state TEXT NOT NULL DEFAULT 'pending', capacity_warning TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE VIRTUAL TABLE agent_messages_fts USING fts5(
+      content, content='agent_messages', content_rowid='rowid', tokenize='unicode61'
+    );
 
 规则：WAL + foreign_keys=ON；schema 变更只走 `db.ts` 中按版本登记的迁移；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
 
@@ -199,11 +218,20 @@ P14 Windows x64 打包实测：portable EXE 88,796,920 字节、ZIP 144,258,091 
 固定数据流：`L3 Agent UI → preload 白名单 IPC → AgentService → PiAgentAdapter → allowlist 工具 → 草稿/操作提案 → 用户逐次确认 → AppService 事务写入`。
 
 - provider：Pi `deepseekProvider()`；Base URL 固定 `https://api.deepseek.com`，模型只允许 `deepseek-v4-flash` / `deepseek-v4-pro`，Key 单独以 safeStorage 密文保存。
+- 打包：Pi Core / Pi AI 的 npm `exports` 只提供 ESM `import` 条件，因此 main 构建必须将这两个包排除出 dependency externalization；禁止生成 `require("@earendil-works/pi-*")`。DeepSeek API 实现保留为随 asar 收集的 lazy chunk。
 - 生命周期：进程内只允许一个活跃 run；provider 请求超时 60 秒、run 超时 3 分钟、最多 12 轮。取消信号贯穿 provider 与工具；L3 卸载和应用退出释放订阅与队列。
 - 会话：migration v2 保存可见用户/assistant 文本、脱敏工具状态、模型、摘要和 token 用量。本机长期保留，支持单删、全清与 JSON/Markdown 导出。
 - 可见性：只映射 Pi `text_delta`；`thinking_*` 永不进入 IPC、SQLite 或导出。工具结果只保存“读取完成/已生成草稿/失败”状态，不保存原始正文。
-- 工具：固定 5 个 allowlist 工具。文件链接目标对模型脱敏为 `[本地文件]`；无 shell、文件读取、URL 请求或任意网络能力。
+- 工具：P14 五个任务工具加 P15 `propose_memory`、`search_sessions`，共固定 7 个 allowlist 工具。文件链接目标对模型脱敏为 `[本地文件]`；无 shell、文件读取、URL 请求或任意网络能力。
 - 操作提案：`action` 草稿不可编辑，保存服务端快照的预期旧值；确认事务先做乐观并发检查。操作写入与草稿状态/审计事件同事务，`AppService` 在提交后通知后置逻辑。节点删除由 renderer 增加二次确认和 5 秒撤销。
+
+## 7.2 长期记忆与会话召回（P15）
+
+- `MemoryService` 维护 `profile`（1,375 字符）与 `work`（2,200 字符）两类短事实；80% 起返回整理警告，超限拒绝，绝不静默淘汰。
+- `propose_memory` 只写 `memory_proposals`。确认时重新验证证据消息归属，并执行长度、规范化去重、不可见 Unicode、提示注入、凭据和私人路径扫描；add/replace/remove 与提案状态在同一事务完成。
+- `MemoryContextProvider` 实现通用 `AgentContextProvider`。`AgentService` 为每个已加载会话缓存一次已确认记忆快照；新建或经 `agent:getSession` 重新载入后才刷新，快照明确标记为背景事实而非指令。
+- `search_sessions` 查询 migration v3 的 external-content FTS5 索引，并在 SQL 层过滤 `tool` 消息；最多返回 8 个匹配、每个 3 条可见上下文以及受限长度的首尾摘要/片段。
+- 未来私人知识库只能新增独立 context provider，并另行设计文件授权、来源追踪、分块、全文/向量检索、删除同步和敏感内容策略；不得复用 `memories` 表保存文档块。
 
 ## 8. 安全
 

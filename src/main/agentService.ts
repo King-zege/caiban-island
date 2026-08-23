@@ -3,6 +3,8 @@ import type { AgentSessionService } from './agentSessionService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import { createAgentTools } from './agentTools';
 import { PiAgentAdapter, type PiAdapterEvent, type PiAgentRunner } from './piAgentAdapter';
+import type { AgentContextProvider } from './agentContext';
+import type { MemoryService } from './memoryService';
 import type {
   AgentRunEvent,
   AgentRunRequest,
@@ -32,13 +34,16 @@ interface ActiveRun {
 
 export class AgentService {
   private active: ActiveRun | null = null;
+  private readonly contextCache = new Map<string, string>();
 
   constructor(
     private readonly appSvc: AppService,
     private readonly sessions: AgentSessionService,
     private readonly deepSeek: DeepSeekConfigService,
     private readonly emit: (event: AgentRunEvent) => void,
-    private readonly runner: PiAgentRunner = new PiAgentAdapter()
+    private readonly runner: PiAgentRunner = new PiAgentAdapter(),
+    private readonly memories?: MemoryService,
+    private readonly contextProviders: AgentContextProvider[] = []
   ) {}
 
   start(request: AgentRunRequest): AgentSessionDetail {
@@ -65,16 +70,23 @@ export class AgentService {
   }
 
   listSessions(): AgentSessionSummary[] { return this.sessions.list(); }
-  getSession(id: string): AgentSessionDetail { return this.sessions.get(id); }
+  getSession(id: string): AgentSessionDetail {
+    const detail = this.sessions.get(id);
+    this.contextCache.delete(id);
+    return detail;
+  }
 
   deleteSession(id: string): void {
     if (this.active?.sessionId === id) throw new AgentRunError('当前会话正在运行，请先取消');
     this.sessions.delete(id);
+    this.contextCache.delete(id);
   }
 
   clearSessions(): number {
     if (this.active) throw new AgentRunError('Agent 正在运行，请先取消');
-    return this.sessions.clear();
+    const cleared = this.sessions.clear();
+    this.contextCache.clear();
+    return cleared;
   }
 
   exportSession(id: string, format: 'json' | 'markdown'): string { return this.sessions.export(id, format); }
@@ -114,13 +126,20 @@ export class AgentService {
     };
     this.active = active;
     this.emit({ type: 'state', sessionId: session.id, state: 'running' });
-    active.promise = this.execute(active, session, input, key, existing).finally(() => {
+    active.promise = this.execute(active, session, input, key, existing, userMessage).finally(() => {
       clearTimeout(active.timer);
       if (this.active === active) this.active = null;
     });
   }
 
-  private async execute(active: ActiveRun, session: AgentSessionSummary, input: string, key: string, history: AgentSessionDetail['messages']): Promise<void> {
+  private async execute(
+    active: ActiveRun,
+    session: AgentSessionSummary,
+    input: string,
+    key: string,
+    history: AgentSessionDetail['messages'],
+    currentMessage: AgentSessionDetail['messages'][number]
+  ): Promise<void> {
     try {
       const result = await this.runner.run({
         sessionId: session.id,
@@ -128,8 +147,8 @@ export class AgentService {
         history,
         model: session.model,
         apiKey: key,
-        systemPrompt: SYSTEM_PROMPT,
-        tools: createAgentTools(this.appSvc, session.id),
+        systemPrompt: this.systemPrompt(session.id, [...history, currentMessage]),
+        tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories),
         signal: active.controller.signal,
         onEvent: (event) => this.handleRunnerEvent(session.id, event)
       });
@@ -164,9 +183,26 @@ export class AgentService {
       this.emit({ type: 'tool_start', sessionId, toolCallId: event.toolCallId, toolName: event.toolName });
       return;
     }
-    const label = event.isError ? '执行失败' : event.draftId ? '已生成待确认草稿' : '读取完成';
+    const label = event.isError ? '执行失败' : event.draftId ? '已生成待确认草稿' : event.memoryProposalId ? '已生成待审核记忆' : '读取完成';
     const message = this.sessions.append(sessionId, 'tool', `${event.toolName}：${label}`, event.toolName);
     this.emit({ type: 'message', sessionId, message });
-    this.emit({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId });
+    this.emit({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId, memoryProposalId: event.memoryProposalId });
+  }
+
+  private systemPrompt(sessionId: string, messages: AgentSessionDetail['messages']): string {
+    let context = this.contextCache.get(sessionId);
+    if (context === undefined) {
+      context = this.contextProviders.map((provider) => {
+        const snapshot = provider.snapshot(sessionId);
+        return `[上下文：${snapshot.id}]\n${snapshot.content}`;
+      }).join('\n\n');
+      this.contextCache.set(sessionId, context);
+    }
+    const evidence = messages
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .slice(-12)
+      .map((message) => `- ${message.id}（${message.role}）：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`)
+      .join('\n');
+    return `${SYSTEM_PROMPT}\n6. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n7. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[当前会话可引用证据]\n${evidence}`;
   }
 }

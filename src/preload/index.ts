@@ -11,6 +11,8 @@ import type {
   AgentSessionSummary,
   DeepSeekModel,
   DeepSeekStatus,
+  MemoryProposal,
+  MemoryRecord,
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
@@ -129,7 +131,15 @@ const api = {
   },
   getDeepSeekStatus: (): Promise<IpcResult<DeepSeekStatus>> => ipcRenderer.invoke('deepseek:status'),
   saveDeepSeekConfig: (model: DeepSeekModel, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('deepseek:saveConfig', model, key),
-  testDeepSeek: (): Promise<IpcResult<string>> => ipcRenderer.invoke('deepseek:test')
+  testDeepSeek: (): Promise<IpcResult<string>> => ipcRenderer.invoke('deepseek:test'),
+  listMemories: (): Promise<IpcResult<MemoryRecord[]>> => ipcRenderer.invoke('memory:list'),
+  listMemoryProposals: (): Promise<IpcResult<MemoryProposal[]>> => ipcRenderer.invoke('memory:listProposals'),
+  confirmMemoryProposal: (id: string, editedFact?: string): Promise<IpcResult<MemoryRecord | null>> =>
+    ipcRenderer.invoke('memory:confirmProposal', id, editedFact),
+  discardMemoryProposal: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('memory:discardProposal', id),
+  updateMemory: (id: string, fact: string): Promise<IpcResult<MemoryRecord>> => ipcRenderer.invoke('memory:update', id, fact),
+  deleteMemory: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('memory:delete', id),
+  clearMemories: (): Promise<IpcResult<number>> => ipcRenderer.invoke('memory:clear')
 };
 
 contextBridge.exposeInMainWorld('api', api);

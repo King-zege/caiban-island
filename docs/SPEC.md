@@ -2,7 +2,7 @@
 
 | 属性 | 值 |
 | --- | --- |
-| 状态 | Implemented through P14；原生 Pi Agent、DeepSeek 与短期会话完成，P15 待实施 |
+| 状态 | Implemented through P15；原生 Pi Agent、短期会话、长期记忆与本地会话召回完成 |
 | 工作名称 | 采办岛（Caiban Island，工程标识 caiban-island） |
 | 平台 | Windows 10 1809+ 与 Windows 11（x64 优先，Arm64 后续评估） |
 | 用户范围 | 单机、单用户、本地优先 |
@@ -190,15 +190,27 @@ v1 成功标准（对应用户原始需求与飞书同步需求）：
 - FR-102 L3 Agent 工作区支持本机会话列表、多轮对话、流式文本、取消、失败重试、删除、全部清空和 JSON/Markdown 导出；L1/L2 不承载长对话。
 - FR-103 全局同时只运行一个 Agent run；单个 provider 请求 60 秒超时，整次 run 最长 3 分钟，最多 12 个模型轮次。收起 L3、切换工作区、用户取消或退出应用时中止运行。
 - FR-104 只持久化用户可见文本、脱敏工具状态、模型、摘要与使用量；不得保存或显示模型内部 reasoning、完整工具原始结果、API Key 或 Authorization。
-- FR-105 任务工具 allowlist 固定为 `list_active_tasks`、`get_task_detail`、`propose_task_draft`、`propose_node_draft`、`propose_task_action`；不得提供文件、shell、URL 请求或额外网络工具。
+- FR-105 任务数据工具固定为 `list_active_tasks`、`get_task_detail`、`propose_task_draft`、`propose_node_draft`、`propose_task_action`；不得提供文件、shell、URL 请求或额外网络工具。
 - FR-106 `propose_task_action` 一次只产生一个操作提案，只允许节点四态、提醒增删及节点新增、修改、删除、重排；禁止修改任务名称、说明、deadline、紧急度，禁止完成、取消、归档、恢复和永久删除任务。
 - FR-107 每个轻量操作显示前后差异并逐次确认；提案保存预期旧值，确认时乐观并发检查。数据变化、重复确认、过期或非法 payload 均拒绝执行并要求重新规划。
 - FR-108 节点删除在操作提案确认之外额外二次确认，并提供 5 秒撤销；所有确认与审计事件在同一事务提交，提交后才发送正式数据变更通知。
+
+### 4.12 长期记忆与跨会话召回
+
+- FR-109 长期记忆分为“用户画像”和“工作 / 业务记忆”。Agent 只能调用 `propose_memory` 提议 add/replace/remove，并引用当前会话中的用户可见证据消息；用户可编辑、确认或拒绝。
+- FR-110 未确认提案永不进入系统提示。已确认记忆只在新建会话或重新载入既有会话时获取一次快照；当前已加载会话不会在后台静默改变上下文。
+- FR-111 用户画像容量 1,375 字符，工作 / 业务记忆容量 2,200 字符；达到 80% 显示合并/删除建议，超过上限拒绝确认，禁止静默淘汰。
+- FR-112 确认或直接编辑已确认记忆前必须执行规范化去重、不可见 Unicode、提示注入、凭据/Authorization 和私人/临时路径扫描；单条事实最多 360 字符。
+- FR-113 每条确认记忆保留来源会话、证据消息、创建与最后修改时间；支持编辑、单条删除和全部清空。清除记忆不影响正式任务与会话历史。
+- FR-114 `search_sessions` 只读工具使用本地 FTS5 搜索用户/Agent 可见消息，只返回匹配片段、首尾摘要与有限上下文；不返回 reasoning、工具原始输出、凭据或文件内容。
+- FR-115 Pi 工具 allowlist 在 FR-105 五项基础上增加 `propose_memory` 与 `search_sessions`；仍不得访问任意文件、shell、URL 或额外网络。
+- FR-116 P15 不导入或索引用户文档；任务、记忆、历史会话和未来知识库通过独立 `AgentContextProvider` 注入，知识库不得与短小行为记忆共表。
 
 ## 5. 数据与存储
 
 - 主库：%APPDATA%\caiban-island\island.db（SQLite、WAL、外键、版本化迁移）；
 - Agent 会话：同一主库的 `agent_sessions` / `agent_messages`（本机长期保留，用户可删除、清空或导出）；
+- 长期记忆：同一主库的 `memories` / `memory_proposals`；会话可见消息由本地 `agent_messages_fts` 索引；
 - 快照：%APPDATA%\caiban-island\archive\YYYY-MM\任务名\task.md 与 task.json；
 - 自动备份：启动时备份 island.db 至 backups\，保留最近 7 份；
 - task.json 结构：format_version、exported_at、app_version、task、nodes、links、notes、change_events；
@@ -233,3 +245,4 @@ v1 成功标准（对应用户原始需求与飞书同步需求）：
 - AC-11 主题跟随系统；键盘可完成任务浏览、分区导航、显式状态选择和撤销；正文与控件满足 WCAG AA。
 - AC-12 100 个任务时 L2 最多挂载 7 张任务卡；每次层级切换最多一次原生 resize；集显、软件渲染和 GPU 进程异常降级后三级界面仍全部可达。
 - AC-13 Pi Agent 可完成多轮任务读取与草稿规划；轻量操作确认前不生效，确认后只执行一次；取消、超时和轮次上限保留输入与会话，reasoning 与 Key 不进入存储或导出。
+- AC-14 记忆提案确认前不注入；安全扫描、去重和有界容量生效；重载会话后注入最新确认快照；FTS5 召回不包含 reasoning 或工具原始输出。

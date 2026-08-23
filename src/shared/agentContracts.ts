@@ -14,7 +14,7 @@ export type AgentRunEvent =
   | { type: 'state'; sessionId: string; state: AgentRunState }
   | { type: 'text_delta'; sessionId: string; delta: string }
   | { type: 'tool_start'; sessionId: string; toolCallId: string; toolName: string }
-  | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; draftId?: string }
+  | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; draftId?: string; memoryProposalId?: string }
   | { type: 'message'; sessionId: string; message: AgentMessageDto }
   | { type: 'error'; sessionId: string; message: string; retryable: boolean };
 
@@ -77,4 +77,58 @@ export interface AgentActionRequest {
   offsets?: number[];
   node?: NodeInput;
   orderedNodeIds?: string[];
+}
+
+export type MemoryCategory = 'profile' | 'work';
+export type MemoryOperation = 'add' | 'replace' | 'remove';
+export type MemoryProposalState = 'pending' | 'confirmed' | 'discarded';
+
+export interface MemoryRecord {
+  id: string;
+  category: MemoryCategory;
+  fact: string;
+  sourceSessionId: string;
+  sourceMessageId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryProposal {
+  id: string;
+  operation: MemoryOperation;
+  category: MemoryCategory;
+  fact: string;
+  evidenceMessageId: string;
+  sourceSessionId: string;
+  targetMemoryId: string | null;
+  state: MemoryProposalState;
+  capacityWarning: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryProposalRequest {
+  operation: MemoryOperation;
+  category: MemoryCategory;
+  fact: string;
+  evidenceMessageId: string;
+  targetMemoryId?: string;
+}
+
+export interface MemoryCapacity {
+  category: MemoryCategory;
+  used: number;
+  limit: number;
+  ratio: number;
+  needsReview: boolean;
+}
+
+export interface SessionSearchMatch {
+  sessionId: string;
+  title: string;
+  summary: string;
+  firstExcerpt: string;
+  lastExcerpt: string;
+  matchExcerpt: string;
+  context: Array<{ role: 'user' | 'assistant'; content: string }>;
 }

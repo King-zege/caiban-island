@@ -89,6 +89,44 @@ const SCHEMA_V2 = [
   'CREATE UNIQUE INDEX agent_messages_session_sequence ON agent_messages(session_id, sequence)'
 ];
 
+const SCHEMA_V3 = [
+  `CREATE TABLE memories(
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL CHECK(category IN ('profile','work')),
+    fact TEXT NOT NULL,
+    source_session_id TEXT NOT NULL,
+    source_message_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE memory_proposals(
+    id TEXT PRIMARY KEY,
+    operation TEXT NOT NULL CHECK(operation IN ('add','replace','remove')),
+    category TEXT NOT NULL CHECK(category IN ('profile','work')),
+    fact TEXT NOT NULL,
+    evidence_message_id TEXT NOT NULL,
+    source_session_id TEXT NOT NULL,
+    target_memory_id TEXT,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','confirmed','discarded')),
+    capacity_warning TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX memory_proposals_state_created ON memory_proposals(state, created_at)',
+  "CREATE VIRTUAL TABLE agent_messages_fts USING fts5(content, content='agent_messages', content_rowid='rowid', tokenize='unicode61')",
+  `CREATE TRIGGER agent_messages_fts_insert AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+  END`,
+  `CREATE TRIGGER agent_messages_fts_delete AFTER DELETE ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(agent_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+  END`,
+  `CREATE TRIGGER agent_messages_fts_update AFTER UPDATE OF content ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(agent_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+    INSERT INTO agent_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+  END`,
+  "INSERT INTO agent_messages_fts(agent_messages_fts) VALUES('rebuild')"
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -111,6 +149,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 2) {
       for (const stmt of SCHEMA_V2) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)').run(new Date().toISOString());
+    }
+    if (current < 3) {
+      for (const stmt of SCHEMA_V3) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {

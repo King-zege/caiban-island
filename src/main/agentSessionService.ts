@@ -7,7 +7,8 @@ import type {
   AgentMessageRole,
   AgentSessionDetail,
   AgentSessionSummary,
-  DeepSeekModel
+  DeepSeekModel,
+  SessionSearchMatch
 } from '../shared/agentContracts';
 
 export class AgentSessionError extends Error {}
@@ -109,6 +110,47 @@ export class AgentSessionService {
   clear(): number {
     const result = this.db.prepare('DELETE FROM agent_sessions').run();
     return Number(result.changes);
+  }
+
+  search(rawQuery: string, rawLimit = 5): SessionSearchMatch[] {
+    if (rawQuery.length > 200) throw new AgentSessionError('会话搜索词不能超过 200 字符');
+    const terms = rawQuery.normalize('NFKC').match(/[\p{L}\p{N}_]+/gu)?.slice(0, 8) ?? [];
+    if (terms.length === 0) throw new AgentSessionError('请输入有效的会话搜索词');
+    const query = [...new Set(terms)].map((term) => `"${term.replace(/"/g, '""')}"*`).join(' AND ');
+    const limit = Math.min(8, Math.max(1, Math.trunc(rawLimit)));
+    const matches = this.db.prepare(
+      `SELECT m.session_id AS sessionId, m.sequence,
+              snippet(agent_messages_fts, 0, '【', '】', '…', 18) AS matchExcerpt,
+              s.title, s.summary
+       FROM agent_messages_fts
+       JOIN agent_messages m ON m.rowid = agent_messages_fts.rowid
+       JOIN agent_sessions s ON s.id = m.session_id
+       WHERE agent_messages_fts MATCH ? AND m.role IN ('user','assistant')
+       ORDER BY bm25(agent_messages_fts), s.updated_at DESC
+       LIMIT ?`
+    ).all(query, limit) as unknown as Array<{ sessionId: string; sequence: number; matchExcerpt: string; title: string; summary: string }>;
+    return matches.map((match) => {
+      const edges = this.db.prepare(
+        `SELECT
+          (SELECT content FROM agent_messages WHERE session_id = ? AND role IN ('user','assistant') ORDER BY sequence, id LIMIT 1) AS firstExcerpt,
+          (SELECT content FROM agent_messages WHERE session_id = ? AND role IN ('user','assistant') ORDER BY sequence DESC, id DESC LIMIT 1) AS lastExcerpt`
+      ).get(match.sessionId, match.sessionId) as { firstExcerpt: string; lastExcerpt: string };
+      const nearby = this.db.prepare(
+        `SELECT role, content, sequence FROM agent_messages
+         WHERE session_id = ? AND role IN ('user','assistant')
+         ORDER BY ABS(sequence - ?), sequence LIMIT 3`
+      ).all(match.sessionId, match.sequence) as unknown as Array<{ role: 'user' | 'assistant'; content: string; sequence: number }>;
+      nearby.sort((a, b) => a.sequence - b.sequence);
+      return {
+        sessionId: match.sessionId,
+        title: match.title,
+        summary: match.summary.slice(0, 760),
+        firstExcerpt: edges.firstExcerpt.slice(0, 240),
+        lastExcerpt: edges.lastExcerpt.slice(0, 240),
+        matchExcerpt: match.matchExcerpt.slice(0, 320),
+        context: nearby.map(({ role, content }) => ({ role, content: content.slice(0, 260) }))
+      };
+    });
   }
 
   export(id: string, format: 'json' | 'markdown'): string {

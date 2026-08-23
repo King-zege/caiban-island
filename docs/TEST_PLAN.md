@@ -44,7 +44,11 @@
 - MCP：mock client 经 SSE 调用全部 4 个工具；错误 token 返回 401；非回环来源拒绝；草稿不落正式数据。
 - 内置 LLM：mock OpenAI-compatible server；function call 解析；修复一次逻辑；失败草稿可编辑。
 - Pi Agent：Pi faux provider 完成真实多轮工具循环；mock runner 验证单 run、取消、上限、流式映射与会话持久化；不使用真实 Key。
+- Pi 打包：构建配置必须内联两个纯 ESM Pi 包；最终 main bundle 不得残留 `require("@earendil-works/pi-*")`，portable 双击启动不得出现 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
 - 轻量操作：allowlist/schema、确认前不生效、重复确认、过期/旧值冲突、节点增改删排与提醒提案；删除二次确认和撤销。
+- 长期记忆：add/replace/remove 提案确认前不生效；编辑确认、拒绝、直接维护、来源时间、1,375/2,200 字符容量与 80% 警告。
+- 记忆安全：规范化重复、不可见 Unicode、提示注入、凭据/Authorization、私人/临时路径和单条长度均在写入前拒绝。
+- 会话召回：FTS5 迁移/索引、首尾摘要、有限上下文、tool 消息过滤；会话新建/重载才刷新确认记忆快照。
 - 飞书：mock bitable server 建表/建字段/按任务ID upsert 幂等；令牌失效错误与重试；CSV/Markdown 导出格式。
 - Renderer：L2 方向键/Home/End/Enter、节点四态显式选择、任务更多菜单与 5 秒删除撤销；L3 任务/分区导航和返回速览；设置直达，Dialog 焦点锁定和恢复，Toast live region，凭据默认遮罩，外链确认。
 - 视觉测试进程必须使用位于系统临时目录的 `CAIBAN_TEST_USER_DATA_DIR` 和合成夹具；禁止读取真实用户数据。

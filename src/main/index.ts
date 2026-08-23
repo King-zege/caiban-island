@@ -12,6 +12,7 @@ import { McpTokenVault } from './mcpTokenVault';
 import { AgentSessionService } from './agentSessionService';
 import { DeepSeekConfigService } from './deepSeekConfigService';
 import { AgentService } from './agentService';
+import { MemoryContextProvider, MemoryService } from './memoryService';
 import { resolveUserDataPath } from './userData';
 import { classifyRenderMode } from '../shared/renderMode';
 import type { RenderMode } from '../shared/types';
@@ -128,6 +129,7 @@ app.on('child-process-gone', (_event, details) => {
       const mcpTokenVault = new McpTokenVault(appSvc.settings, safeStorage);
       const agentSessions = new AgentSessionService(db, app.getPath('userData'));
       const deepSeek = new DeepSeekConfigService(appSvc.settings, safeStorage);
+      const memories = new MemoryService(db);
 
       // P6：飞书同步（手动按钮 + 变更后自动同步，防抖 3s）
       const feishu = new FeishuService(appSvc.tasks, appSvc.settings);
@@ -149,8 +151,11 @@ app.on('child-process-gone', (_event, details) => {
 
       controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       controller.setRenderMode(detectedRenderMode);
-      agentService = new AgentService(appSvc, agentSessions, deepSeek, (event) => win.webContents.send('agent:event', event));
-      registerIpc(controller, appSvc, feishu, mcpTokenVault, agentService, deepSeek);
+      agentService = new AgentService(
+        appSvc, agentSessions, deepSeek, (event) => win.webContents.send('agent:event', event),
+        undefined, memories, [new MemoryContextProvider(memories)]
+      );
+      registerIpc(controller, appSvc, feishu, mcpTokenVault, agentService, deepSeek, memories);
 
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);

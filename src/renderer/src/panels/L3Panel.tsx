@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowLeft, Bell, Bot, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
+import { Archive, ArrowLeft, Bell, Bot, Brain, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -13,6 +13,7 @@ import VirtualTaskSwitcher from '../components/VirtualTaskSwitcher';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import AgentPanel from '../components/AgentPanel';
+import MemoryPanel from '../components/MemoryPanel';
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
   { id: 'overview', label: '概览', icon: Gauge },
@@ -24,6 +25,7 @@ const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: Luci
 
 const WORKSPACE_NAV: Array<{ id: Exclude<WorkspaceSection, 'tasks'>; label: string; icon: LucideIcon }> = [
   { id: 'agent', label: 'Agent', icon: Bot },
+  { id: 'memory', label: '记忆', icon: Brain },
   { id: 'drafts', label: 'AI 草稿', icon: Sparkles },
   { id: 'archive', label: '归档', icon: Archive },
   { id: 'settings', label: '设置', icon: Settings }
@@ -211,6 +213,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
           )}
           {section === 'drafts' && <div className="workspace-scroll standalone-section"><DraftsPanel /></div>}
           {section === 'agent' && <div className="workspace-scroll standalone-section"><AgentPanel /></div>}
+          {section === 'memory' && <div className="workspace-scroll standalone-section"><MemoryPanel /></div>}
           {section === 'archive' && <div className="workspace-scroll standalone-section"><ArchiveView /></div>}
           {section === 'settings' && <div className="workspace-scroll standalone-section"><SettingsView /></div>}
         </main>}
