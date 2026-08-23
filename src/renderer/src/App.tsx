@@ -67,13 +67,27 @@ export default function App(): React.JSX.Element {
   const completedTransition = useRef<IslandTransitionState | null>(null);
   const ensureLoaded = useTaskStore((state) => state.ensureLoaded);
   const ensureOnboarded = useTaskStore((state) => state.ensureOnboarded);
+  const openDetail = useTaskStore((state) => state.openDetail);
   const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
+  const openTask = useWorkspaceStore((state) => state.openTask);
+  const highlightNode = useWorkspaceStore((state) => state.highlightNode);
+  const notify = useWorkspaceStore((state) => state.notify);
   const selectedTaskName = useTaskStore((state) => state.tasks.find((card) => card.task.id === selectedTaskId)?.task.name ?? '当前任务');
 
   useEffect(() => {
     void ensureLoaded();
     void ensureOnboarded();
   }, [ensureLoaded, ensureOnboarded]);
+
+  useEffect(() => window.api.onReminderEvent((event) => {
+    if (event.type === 'fallback') {
+      notify(event.message, 'info');
+      return;
+    }
+    openTask(event.taskId, 'nodes');
+    highlightNode(event.nodeId);
+    void openDetail(event.taskId);
+  }), [highlightNode, notify, openDetail, openTask]);
 
   useEffect(() => {
     let active = true;

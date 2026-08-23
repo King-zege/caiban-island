@@ -18,8 +18,8 @@ const TaskIdSchema = Type.Object({ taskId: Type.String() }, { additionalProperti
 const NodeSchema = Type.Object({
   title: Type.String(),
   description: Type.Optional(Type.String()),
-  startUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  endUtc: Type.Optional(Type.Union([Type.String(), Type.Null()]))
+  startUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点开始时间 ISO8601 UTC；用户确认后会在此刻提醒' })),
+  endUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点截止时间 ISO8601 UTC；仅用于计划，不额外提醒' }))
 }, { additionalProperties: false });
 const TaskDraftSchema = Type.Object({
   name: Type.String(),

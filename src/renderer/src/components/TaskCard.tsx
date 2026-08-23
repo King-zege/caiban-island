@@ -13,9 +13,12 @@ import {
   Trash2,
   TriangleAlert
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FocusEventHandler } from 'react';
+import { createPortal } from 'react-dom';
 import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, Urgency } from '../../../shared/types';
+import { formatUtcInTimeZone } from '../../../shared/time';
+import { DESIGN_TOKENS } from '../../../shared/designTokens';
 
 const URGENCY_LABEL: Record<Urgency, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
 const URGENCY_ICON = {
@@ -31,6 +34,11 @@ const NODE_STATUS_META = {
   completed: { label: '已完成', icon: Check },
   cancelled: { label: '已取消', icon: Ban }
 } satisfies Record<NodeStatus, { label: string; icon: typeof Circle }>;
+
+const NODE_MENU_WIDTH = Number.parseFloat(DESIGN_TOKENS.dark.nodeMenuWidth);
+const CONTROL_MIN = Number.parseFloat(DESIGN_TOKENS.dark.controlMin);
+const VIEWPORT_GUTTER = Number.parseFloat(DESIGN_TOKENS.dark.space2);
+const NODE_MENU_HEIGHT = CONTROL_MIN * 5 + Number.parseFloat(DESIGN_TOKENS.dark.space4);
 
 export type TaskCardAction = 'complete' | 'cancel' | 'delete';
 
@@ -77,15 +85,20 @@ interface TaskCardProps {
   card: TaskCardData;
   onOpen: () => void;
   onNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<void>;
+  onNodeTime: (taskId: string, node: TaskCardNode) => void;
   onTaskAction: (action: TaskCardAction) => void;
   tabIndex?: number;
   onFocus?: FocusEventHandler<HTMLButtonElement>;
 }
 
-export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
+export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
   const { task, progress, nodes, overdue } = card;
   const misc = task.kind === 'misc';
   const [busyNodeId, setBusyNodeId] = useState<string | null>(null);
+  const [openNodeId, setOpenNodeId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const nodeTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const nodeMenu = useRef<HTMLDivElement | null>(null);
   const nodeWindow = useMemo(() => visibleNodeWindow(nodes), [nodes]);
   const progressText = progress.total === 0
     ? nodes.length === 0 ? '尚未拆分' : '无有效节点'
@@ -107,12 +120,75 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tab
   ].filter(Boolean).join('，');
 
   const changeNodeStatus = async (nodeId: string, status: NodeStatus) => {
+    closeNodeMenu();
     setBusyNodeId(nodeId);
     try {
       await onNodeStatus(task.id, nodeId, status);
     } finally {
       setBusyNodeId(null);
     }
+  };
+
+  useEffect(() => {
+    if (!openNodeId) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (nodeMenu.current?.contains(target) || nodeTriggers.current.get(openNodeId)?.contains(target)) return;
+      setOpenNodeId(null);
+    };
+    const closeOnResize = () => setOpenNodeId(null);
+    document.addEventListener('pointerdown', closeOutside);
+    window.addEventListener('resize', closeOnResize);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      window.removeEventListener('resize', closeOnResize);
+    };
+  }, [openNodeId]);
+
+  useEffect(() => {
+    if (!openNodeId) return;
+    queueMicrotask(() => nodeMenu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+  }, [openNodeId]);
+
+  const openNodeMenu = (nodeId: string) => {
+    if (openNodeId === nodeId) {
+      setOpenNodeId(null);
+      return;
+    }
+    const trigger = nodeTriggers.current.get(nodeId);
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setMenuPosition({
+      left: Math.max(VIEWPORT_GUTTER, Math.min(window.innerWidth - NODE_MENU_WIDTH - VIEWPORT_GUTTER, rect.left + rect.width / 2 - NODE_MENU_WIDTH / 2)),
+      top: Math.max(VIEWPORT_GUTTER, Math.min(window.innerHeight - NODE_MENU_HEIGHT - VIEWPORT_GUTTER, rect.bottom + Number.parseFloat(DESIGN_TOKENS.dark.space1)))
+    });
+    setOpenNodeId(nodeId);
+  };
+
+  const closeNodeMenu = (restoreFocus = true) => {
+    const nodeId = openNodeId;
+    setOpenNodeId(null);
+    if (restoreFocus && nodeId) queueMicrotask(() => nodeTriggers.current.get(nodeId)?.focus());
+  };
+
+  const handleMenuKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeNodeMenu();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const buttons = [...(nodeMenu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+    if (buttons.length === 0) return;
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    let next = current;
+    if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = buttons.length - 1;
+    else if (event.key === 'ArrowDown') next = (Math.max(0, current) + 1) % buttons.length;
+    else next = current <= 0 ? buttons.length - 1 : current - 1;
+    event.preventDefault();
+    buttons[next]?.focus();
   };
 
   const chooseTaskAction = (event: React.MouseEvent<HTMLButtonElement>, action: TaskCardAction) => {
@@ -162,23 +238,31 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tab
               const meta = NODE_STATUS_META[node.status];
               const StatusIcon = meta.icon;
               return (
-                <label
+                <button
                   key={node.id}
+                  type="button"
                   className={'card-node-control status-' + node.status + (node.id === nodeWindow.currentId ? ' current' : '')}
                   data-carousel-no-drag="true"
+                  data-node-id={node.id}
                   title={node.title + ' · ' + meta.label}
+                  aria-label={node.title + '，' + meta.label + (node.startUtc ? '，已设置提醒时间' : '')}
+                  aria-haspopup="menu"
+                  aria-expanded={openNodeId === node.id}
+                  disabled={busyNodeId === node.id}
+                  ref={(element) => {
+                    if (element) nodeTriggers.current.set(node.id, element);
+                    else nodeTriggers.current.delete(node.id);
+                  }}
+                  onClick={(event) => { event.stopPropagation(); openNodeMenu(node.id); }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowDown') return;
+                    event.preventDefault();
+                    openNodeMenu(node.id);
+                  }}
                 >
-                  <select
-                    value={node.status}
-                    aria-label={node.title + '的状态'}
-                    disabled={busyNodeId === node.id}
-                    onChange={(event) => void changeNodeStatus(node.id, event.target.value as NodeStatus)}
-                  >
-                    {(Object.keys(NODE_STATUS_META) as NodeStatus[]).map((status) => <option key={status} value={status}>{NODE_STATUS_META[status].label}</option>)}
-                  </select>
                   <span className="card-node-marker"><StatusIcon aria-hidden="true" size={12} strokeWidth={2} /></span>
-                  <span>{node.title}</span>
-                </label>
+                  <span className="card-node-title">{node.title}{node.startUtc && <Clock3 aria-label="已设置提醒时间" size={11} strokeWidth={1.8} />}</span>
+                </button>
               );
             })}
           </div>
@@ -188,6 +272,65 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onTaskAction, tab
           </span>
         </div>
       )}
+      {openNodeId && (() => {
+        const node = nodeWindow.nodes.find((item) => item.id === openNodeId);
+        if (!node) return null;
+        const inactive = node.status === 'completed' || node.status === 'cancelled';
+        const timeText = formatUtcInTimeZone(node.startUtc, task.tzId);
+        return createPortal(
+          <div
+            ref={nodeMenu}
+            className="card-node-menu-popover"
+            role="menu"
+            aria-label={'操作节点：' + node.title}
+            data-carousel-no-drag="true"
+            style={menuPosition}
+            onKeyDown={handleMenuKeys}
+          >
+            {(Object.keys(NODE_STATUS_META) as NodeStatus[]).map((status) => {
+              const option = NODE_STATUS_META[status];
+              const OptionIcon = option.icon;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={node.status === status}
+                  onClick={() => {
+                    if (node.status === status) {
+                      closeNodeMenu();
+                      return;
+                    }
+                    void changeNodeStatus(node.id, status);
+                  }}
+                >
+                  <OptionIcon aria-hidden="true" size={16} />
+                  <span>{option.label}</span>
+                  {node.status === status && <Check aria-hidden="true" className="menu-check" size={15} />}
+                </button>
+              );
+            })}
+            <span className="card-node-menu-rule" />
+            <button
+              type="button"
+              role="menuitem"
+              disabled={inactive}
+              title={inactive ? '恢复为待完成或进行中后可设置' : undefined}
+              onClick={() => {
+                closeNodeMenu();
+                queueMicrotask(() => onNodeTime(task.id, node));
+              }}
+            >
+              <Clock3 aria-hidden="true" size={16} />
+              <span className="node-time-menu-copy">
+                <strong>{node.startUtc ? '修改提醒时间' : '设置提醒时间'}</strong>
+                <small>{inactive ? '恢复节点后可设置' : timeText ?? '到节点开始时通知'}</small>
+              </span>
+            </button>
+          </div>,
+          document.body
+        );
+      })()}
     </article>
   );
 }

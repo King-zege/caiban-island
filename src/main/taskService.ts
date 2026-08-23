@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateNodeInput, validateTaskInput } from '../shared/validation';
+import { validateNodeInput, validateNodeStartSchedule, validateTaskInput } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
 import type {
   LinkInput,
   LinkKind,
   NodeInput,
   NodeStatus,
+  NodeTimeUpdateRequest,
   Task,
   TaskCard,
   TaskCardNode,
@@ -68,13 +69,19 @@ export class TaskService {
       .all() as unknown as Record<string, unknown>[];
     const tasks = rows.map(toTask).sort(compareTasks);
     const nodeRows = this.db
-      .prepare('SELECT id, task_id, title, status, position FROM nodes ORDER BY position')
+      .prepare('SELECT id, task_id, title, start_utc, status, position FROM nodes ORDER BY position')
       .all() as unknown as Record<string, unknown>[];
     const byTask = new Map<string, TaskCardNode[]>();
     for (const n of nodeRows) {
       const key = String(n.task_id);
       const list = byTask.get(key) ?? [];
-      list.push({ id: String(n.id), status: String(n.status) as NodeStatus, title: String(n.title), position: Number(n.position) });
+      list.push({
+        id: String(n.id),
+        status: String(n.status) as NodeStatus,
+        title: String(n.title),
+        startUtc: n.start_utc === null ? null : String(n.start_utc),
+        position: Number(n.position)
+      });
       byTask.set(key, list);
     }
     return tasks.map((task) => {
@@ -195,6 +202,8 @@ export class TaskService {
     if (task.kind === 'misc') throw new TaskError('杂事不支持节点时间轴');
     const v = validateNodeInput(input);
     if (!v.ok) throw new TaskError(v.errors.join('；'));
+    const schedule = validateNodeStartSchedule(input.startUtc, 'pending', null);
+    if (!schedule.ok) throw new TaskError(schedule.errors.join('；'));
     const maxRow = this.db.prepare('SELECT MAX(position) AS m FROM nodes WHERE task_id = ?').get(taskId) as { m: number | null };
     const node: TaskNode = {
       id: randomUUID(),
@@ -218,11 +227,37 @@ export class TaskService {
     if (!row) throw new TaskError('节点不存在');
     const v = validateNodeInput(input);
     if (!v.ok) throw new TaskError(v.errors.join('；'));
+    const schedule = validateNodeStartSchedule(
+      input.startUtc,
+      String(row.status) as NodeStatus,
+      row.start_utc === null ? null : String(row.start_utc)
+    );
+    if (!schedule.ok) throw new TaskError(schedule.errors.join('；'));
     this.db
       .prepare('UPDATE nodes SET title=?, description=?, start_utc=?, end_utc=? WHERE id=?')
       .run(input.title.trim(), input.description.trim(), input.startUtc, input.endUtc, nodeId);
     this.logEvent(String(row.task_id), 'node_updated', JSON.stringify({ nodeId }));
     return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown>);
+  }
+
+  setNodeStartTime(request: NodeTimeUpdateRequest): TaskNode {
+    const row = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(request.nodeId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskError('节点不存在');
+    const current = row.start_utc === null ? null : String(row.start_utc);
+    if (current !== request.expectedStartUtc) throw new TaskError('节点时间已变化，请刷新后重试');
+    const input: NodeInput = {
+      title: String(row.title),
+      description: String(row.description),
+      startUtc: request.startUtc,
+      endUtc: row.end_utc === null ? null : String(row.end_utc)
+    };
+    const validation = validateNodeInput(input);
+    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
+    const schedule = validateNodeStartSchedule(request.startUtc, String(row.status) as NodeStatus, current);
+    if (!schedule.ok) throw new TaskError(schedule.errors.join('；'));
+    this.db.prepare('UPDATE nodes SET start_utc = ? WHERE id = ?').run(request.startUtc, request.nodeId);
+    this.logEvent(String(row.task_id), 'node_time_updated', JSON.stringify({ nodeId: request.nodeId, hasStart: request.startUtc !== null }));
+    return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(request.nodeId) as Record<string, unknown>);
   }
 
   removeNode(nodeId: string): void {

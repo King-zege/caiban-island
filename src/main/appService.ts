@@ -9,6 +9,7 @@ import type {
   LinkInput,
   NodeInput,
   NodeStatus,
+  NodeTimeUpdateRequest,
   Task,
   TaskInput,
   TaskLink,
@@ -36,15 +37,16 @@ export class AppService {
   }
 
   constructor(
-    db: DatabaseSync,
+    private readonly db: DatabaseSync,
     private readonly dataDir: string
   ) {
     this.tasks = new TaskService(db);
     this.archive = new ArchiveService(db, this.dataDir);
     this.reminders = new ReminderService(db);
     this.settings = new SettingsService(db);
-    this.drafts = new DraftService(db);
+    this.drafts = new DraftService(db, this.reminders);
     this.llm = new LlmService(this, this.settings);
+    this.reminders.reconcileFutureNodeReminders();
   }
 
   createTask(input: TaskInput): Task {
@@ -64,17 +66,23 @@ export class AppService {
   }
 
   completeTask(id: string): Task {
-    const t = this.tasks.setArchived(id, 'completed');
+    const t = this.withTransaction(() => {
+      const task = this.tasks.setArchived(id, 'completed');
+      this.reminders.disableForTask(id);
+      return task;
+    });
     this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
-    this.reminders.disableForTask(id);
     this.emitChanged();
     return t;
   }
 
   cancelTask(id: string): Task {
-    const t = this.tasks.setArchived(id, 'cancelled');
+    const t = this.withTransaction(() => {
+      const task = this.tasks.setArchived(id, 'cancelled');
+      this.reminders.disableForTask(id);
+      return task;
+    });
     this.archive.exportSnapshot(this.tasks.getTaskDetail(id));
-    this.reminders.disableForTask(id);
     this.emitChanged();
     return t;
   }
@@ -86,8 +94,11 @@ export class AppService {
   }
 
   restoreTask(id: string): Task {
-    this.archive.restoreTask(id);
-    this.reminders.recomputeForTask(id);
+    this.withTransaction(() => {
+      this.archive.restoreTask(id);
+      this.reminders.recomputeForTask(id);
+      this.reminders.syncTaskNodeReminders(id);
+    });
     this.emitChanged();
     return this.tasks.getTask(id) as Task;
   }
@@ -98,13 +109,31 @@ export class AppService {
   }
 
   addNode(taskId: string, input: NodeInput): TaskNode {
-    const node = this.tasks.addNode(taskId, input);
+    const node = this.withTransaction(() => {
+      const created = this.tasks.addNode(taskId, input);
+      this.reminders.syncNodeReminder(created.id);
+      return created;
+    });
     this.emitChanged();
     return node;
   }
 
   updateNode(nodeId: string, input: NodeInput): TaskNode {
-    const node = this.tasks.updateNode(nodeId, input);
+    const node = this.withTransaction(() => {
+      const updated = this.tasks.updateNode(nodeId, input);
+      this.reminders.syncNodeReminder(updated.id);
+      return updated;
+    });
+    this.emitChanged();
+    return node;
+  }
+
+  setNodeStartTime(request: NodeTimeUpdateRequest): TaskNode {
+    const node = this.withTransaction(() => {
+      const updated = this.tasks.setNodeStartTime(request);
+      this.reminders.syncNodeReminder(updated.id);
+      return updated;
+    });
     this.emitChanged();
     return node;
   }
@@ -115,7 +144,11 @@ export class AppService {
   }
 
   setNodeStatus(nodeId: string, status: NodeStatus): TaskNode {
-    const node = this.tasks.setNodeStatus(nodeId, status);
+    const node = this.withTransaction(() => {
+      const updated = this.tasks.setNodeStatus(nodeId, status);
+      this.reminders.syncNodeReminder(updated.id);
+      return updated;
+    });
     this.emitChanged();
     return node;
   }
@@ -150,5 +183,18 @@ export class AppService {
     }
     this.emitChanged();
     return result;
+  }
+
+  private withTransaction<T>(action: () => T): T {
+    const ownsTransaction = !this.db.isTransaction;
+    if (ownsTransaction) this.db.exec('BEGIN');
+    try {
+      const result = action();
+      if (ownsTransaction) this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      if (ownsTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 }

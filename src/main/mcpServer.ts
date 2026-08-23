@@ -14,8 +14,8 @@ const NODE_SCHEMA = {
   properties: {
     title: { type: 'string', description: '节点标题' },
     description: { type: 'string', description: '节点说明' },
-    startUtc: { type: ['string', 'null'], description: '开始时间 ISO8601 UTC' },
-    endUtc: { type: ['string', 'null'], description: '截止时间 ISO8601 UTC' }
+    startUtc: { type: ['string', 'null'], description: '开始时间 ISO8601 UTC；用户确认正式草稿后会在此刻提醒' },
+    endUtc: { type: ['string', 'null'], description: '截止时间 ISO8601 UTC；仅用于计划，不额外提醒' }
   },
   required: ['title'],
   additionalProperties: false

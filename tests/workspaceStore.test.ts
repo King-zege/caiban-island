@@ -4,7 +4,7 @@ import { UNDO_DELAY_MS, useWorkspaceStore } from '../src/renderer/src/state/useW
 afterEach(() => {
   useWorkspaceStore.getState().undoPending();
   useWorkspaceStore.getState().clearToast();
-  useWorkspaceStore.setState({ section: 'tasks', taskSection: 'overview', selectedTaskId: null, pendingUndo: null, toast: null });
+  useWorkspaceStore.setState({ section: 'tasks', taskSection: 'overview', selectedTaskId: null, highlightedNodeId: null, pendingUndo: null, toast: null });
   vi.useRealTimers();
 });
 
@@ -48,5 +48,16 @@ describe('工作台导航与撤销', () => {
     expect(useWorkspaceStore.getState().scheduleUndo({ id: 'task-1', kind: 'task', label: '任务', commit })).toBe(true);
     await vi.advanceTimersByTimeAsync(UNDO_DELAY_MS);
     expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it('提醒通知定位节点后短暂高亮，并在超时后清除', async () => {
+    vi.useFakeTimers();
+    useWorkspaceStore.getState().openTask('task-1', 'nodes');
+    useWorkspaceStore.getState().highlightNode('node-1');
+    expect(useWorkspaceStore.getState()).toMatchObject({
+      selectedTaskId: 'task-1', taskSection: 'nodes', highlightedNodeId: 'node-1'
+    });
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(useWorkspaceStore.getState().highlightedNodeId).toBeNull();
   });
 });

@@ -75,5 +75,8 @@ describe('节点管理（FR-024/FR-025/FR-026）', () => {
     expect(() =>
       svc.addNode(t.id, { title: 'x', description: '', startUtc: '2026-03-02T00:00:00.000Z', endUtc: '2026-03-01T00:00:00.000Z' })
     ).toThrow(TaskError);
+    expect(() =>
+      svc.addNode(t.id, { title: '过去节点', description: '', startUtc: new Date(Date.now() - 3600000).toISOString(), endUtc: null })
+    ).toThrow('不能早于当前时间');
   });
 });

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, Notification, safeStorage } from 'electron';
+import { app, BrowserWindow, nativeTheme, Notification, powerMonitor, safeStorage } from 'electron';
 import path from 'node:path';
 import { IslandWindowController } from './windowController';
 import { registerIpc } from './ipc';
@@ -16,6 +16,8 @@ import { MemoryContextProvider, MemoryService } from './memoryService';
 import { resolveUserDataPath } from './userData';
 import { classifyRenderMode } from '../shared/renderMode';
 import type { RenderMode } from '../shared/types';
+import type { ReminderEvent } from '../shared/types';
+import type { DueReminder } from './reminderService';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 const testUserDataDir = process.env['CAIBAN_TEST_USER_DATA_DIR'];
@@ -38,6 +40,7 @@ app.setAppUserModelId('caiban-island');
 
 let controller: IslandWindowController | null = null;
 let reminderTimer: NodeJS.Timeout | null = null;
+let reminderResumeHandler: (() => void) | null = null;
 let feishuTimer: NodeJS.Timeout | null = null;
 let mcpRuntime: { url: string; port: number; close: () => void } | null = null;
 let fullscreenDetector: FullscreenDetector | null = null;
@@ -69,35 +72,138 @@ app.on('child-process-gone', (_event, details) => {
       if (controller) controller.setLevel('l2');
     });
 
-    function showToast(title: string, body: string, onClick?: () => void): void {
-      if (!Notification.isSupported()) return;
+    function showToast(title: string, body: string, onClick?: () => void, onFailure?: () => void): void {
+      if (!Notification.isSupported()) {
+        onFailure?.();
+        return;
+      }
       const n = new Notification({ title, body, silent: false });
       if (onClick) n.on('click', onClick);
+      if (onFailure) n.once('failed', onFailure);
       n.show();
     }
 
-    function startReminderScheduler(appSvc: AppService): void {
-      setTimeout(() => {
-        const missed = appSvc.reminders.missedSince();
-        if (missed > 0) {
-          showToast('采办岛', '有 ' + missed + ' 条提醒在关机/睡眠期间错过，请查看任务列表');
-        }
-      }, 5000);
+    function startReminderScheduler(appSvc: AppService, win: BrowserWindow): void {
+      let deferredWhilePaused = false;
 
-      reminderTimer = setInterval(() => {
-        if (!controller || controller.paused) return;
-        const due = appSvc.reminders.dueNow();
-        for (const d of due) {
-          const task = appSvc.tasks.getTask(d.taskId);
-          const deadlineText = task?.deadlineUtc ? task.deadlineUtc.slice(0, 16).replace('T', ' ') : '';
-          showToast('采办岛：' + d.taskName, '截止 ' + deadlineText, () => {
-            if (controller) controller.setLevel('l2');
-          });
+      const sendEvent = (event: ReminderEvent): void => {
+        if (!win.isDestroyed()) win.webContents.send('reminder:event', event);
+      };
+
+      const openNode = (reminder: Extract<DueReminder, { kind: 'node' }>): void => {
+        if (!controller) return;
+        sendEvent({ type: 'open-node', taskId: reminder.taskId, nodeId: reminder.nodeId });
+        if (controller.paused) controller.togglePause();
+        controller.setLevel('l3');
+        controller.win.focus();
+      };
+
+      const openTaskList = (): void => {
+        if (!controller) return;
+        if (controller.paused) controller.togglePause();
+        controller.setLevel('l2');
+        controller.win.focus();
+      };
+
+      const deliverDue = (due: DueReminder[]): void => {
+        if (due.length === 0 || !controller) return;
+        const showFallback = (message: string): void => {
+          sendEvent({ type: 'fallback', message });
+          controller?.setLevel('l2');
+        };
+        if (!Notification.isSupported()) {
+          const first = due[0];
+          const message = due.length === 1
+            ? first.kind === 'node'
+              ? '节点「' + first.nodeTitle + '」现在开始'
+              : '任务“' + first.taskName + '”的截止提醒已到'
+            : '有 ' + due.length + ' 条提醒已到，请查看任务列表';
+          showFallback(message);
+          return;
         }
-        if (due.length > 0 && !Notification.isSupported()) {
+        for (const reminder of due) {
+          if (reminder.kind === 'node') {
+            const body = '节点「' + reminder.nodeTitle + '」现在开始';
+            showToast('采办岛：' + reminder.taskName, body, () => openNode(reminder), () => showFallback(body));
+          } else {
+            const deadlineText = new Date(reminder.deadlineUtc).toLocaleString('zh-CN', { hour12: false });
+            const body = '任务“' + reminder.taskName + '”的截止提醒已到';
+            showToast('采办岛：' + reminder.taskName, '截止 ' + deadlineText, openTaskList, () => showFallback(body));
+          }
+        }
+      };
+
+      const deliverMissed = (missed: DueReminder[]): void => {
+        if (missed.length === 0 || !controller) return;
+        const nodeCount = missed.filter((item) => item.kind === 'node').length;
+        const detail = nodeCount > 0
+          ? '，其中 ' + nodeCount + ' 条为节点提醒'
+          : '';
+        const message = '有 ' + missed.length + ' 条提醒在关机/睡眠期间错过' + detail + '，请查看任务列表';
+        if (Notification.isSupported()) showToast('采办岛', message, openTaskList, () => {
+          sendEvent({ type: 'fallback', message });
+          controller?.setLevel('l2');
+        });
+        else {
+          sendEvent({ type: 'fallback', message });
           controller.setLevel('l2');
         }
-      }, 20000);
+      };
+
+      const scheduleNext = (): void => {
+        if (reminderTimer) clearTimeout(reminderTimer);
+        const next = appSvc.reminders.nextPendingAt();
+        const pausedWithoutToast = controller?.paused === true && !Notification.isSupported();
+        const delay = pausedWithoutToast
+          ? 60000
+          : next
+            ? Math.max(1000, Math.min(60000, Date.parse(next) - Date.now()))
+            : 60000;
+        reminderTimer = setTimeout(tick, delay);
+      };
+
+      const tick = (): void => {
+        if (!controller) {
+          scheduleNext();
+          return;
+        }
+        if (!Notification.isSupported() && controller.paused) {
+          deferredWhilePaused = true;
+          scheduleNext();
+          return;
+        }
+        if (deferredWhilePaused) {
+          deliverMissed(appSvc.reminders.claimMissed(new Date(), 0));
+          deferredWhilePaused = false;
+        }
+        deliverDue(appSvc.reminders.dueNow());
+        scheduleNext();
+      };
+
+      const resume = (): void => {
+        if (!controller) return;
+        if (!Notification.isSupported() && controller.paused) {
+          deferredWhilePaused = true;
+          scheduleNext();
+          return;
+        }
+        deliverMissed(appSvc.reminders.claimMissed());
+        tick();
+      };
+
+      reminderResumeHandler = resume;
+      powerMonitor.on('resume', resume);
+      appSvc.onChange(scheduleNext);
+      reminderTimer = setTimeout(() => {
+        if (!controller) return;
+        if (!Notification.isSupported() && controller.paused) {
+          deferredWhilePaused = true;
+          scheduleNext();
+          return;
+        }
+        deliverMissed(appSvc.reminders.claimMissed());
+        tick();
+      }, 5000);
     }
 
     async function createWindow(): Promise<void> {
@@ -177,7 +283,7 @@ app.on('child-process-gone', (_event, details) => {
       // P7：真正全屏前台应用出现时自动暂停岛（FR-018）
       fullscreenDetector = new FullscreenDetector(controller);
       fullscreenDetector.start();
-      startReminderScheduler(appSvc);
+      startReminderScheduler(appSvc, win);
     }
 
     app.whenReady().then(createWindow);
@@ -186,7 +292,8 @@ app.on('child-process-gone', (_event, details) => {
     app.on('before-quit', () => {
       if (controller) controller.dispose();
       if (fullscreenDetector) fullscreenDetector.stop();
-      if (reminderTimer) clearInterval(reminderTimer);
+      if (reminderTimer) clearTimeout(reminderTimer);
+      if (reminderResumeHandler) powerMonitor.removeListener('resume', reminderResumeHandler);
       if (feishuTimer) clearTimeout(feishuTimer);
       if (mcpRuntime) mcpRuntime.close();
       if (agentService) void agentService.dispose();

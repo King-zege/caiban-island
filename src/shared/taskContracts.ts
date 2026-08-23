@@ -42,6 +42,16 @@ export interface NodeInput {
   endUtc: string | null;
 }
 
+export interface NodeTimeUpdateRequest {
+  nodeId: string;
+  startUtc: string | null;
+  expectedStartUtc: string | null;
+}
+
+export type ReminderEvent =
+  | { type: 'fallback'; message: string }
+  | { type: 'open-node'; taskId: string; nodeId: string };
+
 export type LinkKind = 'url' | 'file';
 
 export interface TaskLink {
@@ -77,6 +87,7 @@ export interface ProgressInfo {
 export interface TaskCardNode {
   id: string;
   title: string;
+  startUtc: string | null;
   status: NodeStatus;
   position: number;
 }

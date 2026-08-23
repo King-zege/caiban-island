@@ -10,6 +10,8 @@ import WelcomeView from '../components/WelcomeView';
 import { Button, IconButton } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Dialog } from '../components/ui/Dialog';
+import NodeTimeDialog from '../components/NodeTimeDialog';
+import type { TaskCardNode } from '../../../shared/types';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 const URGENCY_ORDER = { critical: 0, high: 1, normal: 2, low: 3 } as const;
@@ -18,6 +20,13 @@ interface PendingTaskAction {
   action: TaskCardAction;
   taskId: string;
   taskName: string;
+}
+
+interface PendingNodeTime {
+  taskId: string;
+  deadlineUtc: string | null;
+  tzId: string;
+  node: TaskCardNode;
 }
 
 export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): React.JSX.Element {
@@ -32,6 +41,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const cancelTask = useTaskStore((state) => state.cancel);
   const deleteTask = useTaskStore((state) => state.deleteTask);
   const setNodeStatus = useTaskStore((state) => state.setNodeStatus);
+  const setNodeStartTime = useTaskStore((state) => state.setNodeStartTime);
   const openTask = useWorkspaceStore((state) => state.openTask);
   const openSection = useWorkspaceStore((state) => state.openSection);
   const pendingUndo = useWorkspaceStore((state) => state.pendingUndo);
@@ -41,6 +51,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const [activeIndex, setActiveIndex] = useState(0);
   const [sortMode, setSortMode] = useState<SortMode>('deadline');
   const [pendingTaskAction, setPendingTaskAction] = useState<PendingTaskAction | null>(null);
+  const [pendingNodeTime, setPendingNodeTime] = useState<PendingNodeTime | null>(null);
   const [taskActionBusy, setTaskActionBusy] = useState(false);
   const [cardRenderLimit, setCardRenderLimit] = useState(2);
 
@@ -57,10 +68,11 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   }, []);
 
   useEffect(() => {
-    void window.api.setL2Detail(showForm);
-    void window.api.interacting(showForm || pendingTaskAction !== null);
+    const editing = showForm || pendingTaskAction !== null || pendingNodeTime !== null;
+    void window.api.setL2Detail(editing);
+    void window.api.interacting(editing);
     return () => { void window.api.interacting(false); };
-  }, [pendingTaskAction, showForm]);
+  }, [pendingNodeTime, pendingTaskAction, showForm]);
 
   const sortedTasks = useMemo(() => [...tasks].filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)).sort((left, right) => {
     if (sortMode === 'urgency') return URGENCY_ORDER[left.task.urgency] - URGENCY_ORDER[right.task.urgency];
@@ -96,6 +108,17 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const changeNodeStatus = async (taskId: string, nodeId: string, status: Parameters<typeof setNodeStatus>[2]) => {
     const error = await setNodeStatus(taskId, nodeId, status);
     notify(error ?? '节点状态已更新', error ? 'error' : 'success');
+  };
+
+  const saveNodeTime = async (startUtc: string | null): Promise<string | null> => {
+    if (!pendingNodeTime) return '节点时间编辑已关闭';
+    const error = await setNodeStartTime(pendingNodeTime.taskId, {
+      nodeId: pendingNodeTime.node.id,
+      startUtc,
+      expectedStartUtc: pendingNodeTime.node.startUtc
+    });
+    if (!error) notify(startUtc ? '节点提醒时间已更新' : '节点提醒已清除', 'success');
+    return error;
   };
 
   const confirmTaskAction = async () => {
@@ -187,6 +210,12 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                 onFocus={() => setActiveIndex(index)}
                 onOpen={() => enterWorkspace(card.task.id)}
                 onNodeStatus={changeNodeStatus}
+                onNodeTime={(_taskId, node) => setPendingNodeTime({
+                  taskId: card.task.id,
+                  deadlineUtc: card.task.deadlineUtc,
+                  tzId: card.task.tzId,
+                  node
+                })}
                 onTaskAction={(action) => setPendingTaskAction({ action, taskId: card.task.id, taskName: card.task.name })}
               />
               );
@@ -195,6 +224,21 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         )}
       </main>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
+      {pendingNodeTime && (
+        <NodeTimeDialog
+          open
+          mode="quick"
+          nodeTitle={pendingNodeTime.node.title}
+          status={pendingNodeTime.node.status}
+          startUtc={pendingNodeTime.node.startUtc}
+          taskDeadlineUtc={pendingNodeTime.deadlineUtc}
+          tzId={pendingNodeTime.tzId}
+          resolveReturnFocus={() => [...document.querySelectorAll<HTMLElement>('[data-node-id]')]
+            .find((element) => element.dataset.nodeId === pendingNodeTime.node.id) ?? null}
+          onClose={() => setPendingNodeTime(null)}
+          onSave={(startUtc) => saveNodeTime(startUtc)}
+        />
+      )}
       <Dialog
         open={pendingTaskAction !== null}
         title={actionTitle}

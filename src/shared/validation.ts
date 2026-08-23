@@ -1,5 +1,5 @@
 import { KINDS, URGENCIES } from './taskContracts';
-import type { TaskInput } from './taskContracts';
+import type { NodeStatus, TaskInput } from './taskContracts';
 
 export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
@@ -40,6 +40,22 @@ export function validateNodeInput(input: {
     errors.push('节点截止时间不能早于开始时间');
   }
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+export function validateNodeStartSchedule(
+  startUtc: string | null,
+  status: NodeStatus,
+  previousStartUtc: string | null,
+  nowMs = Date.now()
+): ValidationResult {
+  if (status === 'completed' || status === 'cancelled' || startUtc === null || startUtc === previousStartUtc) {
+    return { ok: true };
+  }
+  if (!isValidIsoUtc(startUtc)) return { ok: false, errors: ['节点开始时间格式无效'] };
+  const currentMinute = Math.floor(nowMs / 60000) * 60000;
+  return Date.parse(startUtc) < currentMinute
+    ? { ok: false, errors: ['节点开始时间不能早于当前时间'] }
+    : { ok: true };
 }
 
 export function isValidIsoUtc(value: string): boolean {

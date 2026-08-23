@@ -85,7 +85,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     const restored = new AgentSessionService(reopened, f.dir).get(session.id);
     expect(restored.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
     const version = reopened.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(3);
+    expect(version.version).toBe(4);
     const service = new AgentSessionService(reopened, f.dir);
     service.delete(session.id);
     expect(service.list()).toHaveLength(0);

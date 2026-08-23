@@ -10,7 +10,7 @@ import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { MemoryService } from './memoryService';
 import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, LinkInput, NodeInput, NodeStatus, TaskInput } from '../shared/types';
+import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskInput } from '../shared/types';
 import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
 export function registerIpc(
@@ -80,6 +80,7 @@ export function registerIpc(
 
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => appSvc.addNode(taskId, input)));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => appSvc.updateNode(nodeId, input)));
+  ipcMain.handle('nodes:setStartTime', (_e: IpcMainInvokeEvent, request: NodeTimeUpdateRequest) => wrap(() => appSvc.setNodeStartTime(request)));
   ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => appSvc.removeNode(nodeId)));
   ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => appSvc.setNodeStatus(nodeId, status)));
   ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => appSvc.reorderNodes(taskId, orderedIds)));

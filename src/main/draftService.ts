@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateNodeInput, validateTaskInput } from '../shared/validation';
+import { validateNodeInput, validateNodeStartSchedule, validateTaskInput } from '../shared/validation';
 import type { DraftPayload, DraftRecord, DraftSource, DraftState, TaskDraftPayload } from '../shared/draftContracts';
 import type { AgentActionDraftPayload, AgentTaskAction } from '../shared/agentContracts';
 import { NODE_STATUSES } from '../shared/taskContracts';
+import type { NodeStatus } from '../shared/taskContracts';
+import type { ReminderService } from './reminderService';
 
 export class DraftError extends Error {}
 
@@ -76,7 +78,10 @@ function assertPayloadShape(value: unknown): asserts value is DraftPayload {
 
 // FR-043~048：AI 输出永远是草稿；确认走单事务；校验失败可修复一次
 export class DraftService {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly reminders: ReminderService
+  ) {}
 
   create(source: DraftSource, payload: DraftPayload): DraftRecord {
     if (payload.type === 'action' && source !== 'pi') throw new DraftError('轻量操作提案只能由 Pi Agent 创建');
@@ -113,6 +118,8 @@ export class DraftService {
     for (const n of payload.nodes) {
       const v = validateNodeInput(n);
       if (!v.ok) throw new DraftError('节点校验失败：' + v.errors.join('；'));
+      const schedule = validateNodeStartSchedule(n.startUtc, 'pending', null);
+      if (!schedule.ok) throw new DraftError('节点校验失败：' + schedule.errors.join('；'));
     }
   }
 
@@ -174,6 +181,7 @@ export class DraftService {
         this.applyActionPayload(draft.payload);
         taskId = draft.payload.taskId;
       }
+      this.reminders.syncTaskNodeReminders(taskId);
       this.db.prepare("UPDATE drafts SET state = 'confirmed' WHERE id = ?").run(id);
       this.db.exec('COMMIT');
       return { type: draft.payload.type, taskId };
@@ -241,6 +249,8 @@ export class DraftService {
       if (!Array.isArray(action.beforeNodeIds) || !action.beforeNodeIds.every((id) => typeof id === 'string')) throw new DraftError('节点新增提案无效');
       const result = validateNodeInput(action.input);
       if (!result.ok) throw new DraftError('节点校验失败：' + result.errors.join('；'));
+      const schedule = validateNodeStartSchedule(action.input.startUtc, 'pending', null);
+      if (!schedule.ok) throw new DraftError('节点校验失败：' + schedule.errors.join('；'));
       return;
     }
     if (action.kind === 'update_node') {
@@ -248,6 +258,10 @@ export class DraftService {
       const before = validateNodeInput(action.before);
       const after = validateNodeInput(action.after);
       if (!before.ok || !after.ok) throw new DraftError('节点修改提案无效');
+      const node = this.db.prepare('SELECT status FROM nodes WHERE id = ?').get(action.nodeId) as { status: NodeStatus } | undefined;
+      if (!node) throw new DraftError('节点不存在');
+      const schedule = validateNodeStartSchedule(action.after.startUtc, node.status, action.before.startUtc);
+      if (!schedule.ok) throw new DraftError('节点校验失败：' + schedule.errors.join('；'));
       return;
     }
     if (action.kind === 'delete_node') {

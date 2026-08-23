@@ -51,6 +51,8 @@ P14 Windows x64 最终打包实测：portable EXE 88,791,531 字节、ZIP 144,25
 
 P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,435,158 字节、asar 111,931,434 字节；Pi/DeepSeek/lazy provider chunk/许可证资源完整，真实 Key、私有绝对路径与自动化伪凭据扫描无命中。修复版 portable 双击启动冒烟通过。
 
+P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,358,107 字节、asar 111,967,879 字节；Pi Core、Pi AI、lazy provider chunk 与第三方声明完整，产物中未发现 API Key 模式、私有绝对路径或 Pi CJS `require`。解包版主进程持续运行 8 秒的启动冒烟通过。
+
 ## 3. 进程分层
 
 - **main（主进程）**：窗口、SQLite、归档、提醒、MCP、Pi Agent/DeepSeek、旧 LLM、safeStorage 与系统集成。`AgentService` 编排 run，`PiAgentAdapter` 只处理 Pi 协议，`AgentSessionService` 处理可见会话与 FTS5 召回，`MemoryService` 处理提案/确认/安全扫描；Pi 不依赖 renderer、IPC 或正式任务服务。
@@ -65,10 +67,11 @@ P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,43
 | 通道 | 方向 | 说明 |
 | --- | --- | --- |
 | tasks:list / detail / create / update / complete / cancel / delete | renderer→main | 任务 CRUD 与详情（完成/取消即归档；delete 为确认后的永久删除） |
-| nodes:add / update / remove / setStatus / reorder | renderer→main | 节点操作（四态、排序） |
+| nodes:add / update / remove / setStatus / reorder / setStartTime | renderer→main | 节点操作；`setStartTime` 只接收 `NodeTimeUpdateRequest` 并校验预期旧值 |
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
 | reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
+| reminder:event | main→renderer | 只读提醒降级消息，或节点通知点击后的任务/节点定位指令 |
 | drafts:list / get / confirm / discard | renderer→main | AI 草稿审核（P5） |
 | archive:list / search / get / restore | renderer→main | 归档查询、恢复（快照导出在主进程完成/取消时执行） |
 | settings:getAll / set | renderer→main | 设置（默认提醒、自启、磨砂开关） |
@@ -127,7 +130,7 @@ P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,43
       meta TEXT NOT NULL DEFAULT '{}'      -- 名称/大小/修改时间等
     );
 
-`tasks:delete` 只接受活跃任务。应用服务在单个事务中删除该任务的 `change_events`，再删除 `tasks`；`nodes`、`links`、`notes`、`reminders` 由已启用的外键级联清理。renderer 在真正调用前提供二次确认与 5 秒撤销窗口。该扩展复用现有 TEXT 状态列与外键，不需要 SQLite schema 迁移。
+`tasks:delete` 只接受活跃任务。应用服务在单个事务中删除该任务的 `change_events`，再删除 `tasks`；`nodes`、`links`、`notes`、`reminders` 与 `node_reminders` 由已启用的外键级联清理。renderer 在真正调用前提供二次确认与 5 秒撤销窗口。
     CREATE TABLE notes(
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -186,6 +189,13 @@ P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,43
     CREATE VIRTUAL TABLE agent_messages_fts USING fts5(
       content, content='agent_messages', content_rowid='rowid', tokenize='unicode61'
     );
+    -- migration v4
+    CREATE TABLE node_reminders(
+      node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+      fire_at_utc TEXT NOT NULL,
+      fired INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX node_reminders_due ON node_reminders(fired, fire_at_utc);
 
 规则：WAL + foreign_keys=ON；schema 变更只走 `db.ts` 中按版本登记的迁移；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
 
@@ -232,6 +242,15 @@ P15 Windows x64 最终打包实测：portable EXE 88,892,499 字节、ZIP 144,43
 - `MemoryContextProvider` 实现通用 `AgentContextProvider`。`AgentService` 为每个已加载会话缓存一次已确认记忆快照；新建或经 `agent:getSession` 重新载入后才刷新，快照明确标记为背景事实而非指令。
 - `search_sessions` 查询 migration v3 的 external-content FTS5 索引，并在 SQL 层过滤 `tool` 消息；最多返回 8 个匹配、每个 3 条可见上下文以及受限长度的首尾摘要/片段。
 - 未来私人知识库只能新增独立 context provider，并另行设计文件授权、来源追踪、分块、全文/向量检索、删除同步和敏感内容策略；不得复用 `memories` 表保存文档块。
+
+## 7.3 节点时间与统一提醒调度（P16）
+
+- `TaskCardNode.startUtc` 让 L2 在任务列表响应中直接显示提醒标记。L2 通过独立 `nodes:setStartTime` 只写开始时间，不回传节点说明或截止时间；请求携带 `expectedStartUtc`，由 `TaskService` 在事务内执行乐观并发检查。
+- L2 的 `NodeTimeDialog` 只编辑开始时间；L3 复用同一时区转换与校验组件编辑开始/截止。输入按任务 `tzId` 解释，shared 层完成本地时间与 UTC 往返；活跃节点拒绝新设过去时间，截止早于开始拒绝，超过任务 deadline 需再次确认。
+- migration v4 的 `node_reminders` 以 `node_id` 为主键，保证一节点至多一个提醒。`ReminderService` 在节点/任务正式事务内同步资格与时间；完成、取消、删除或归档会移除调度行，但不清除节点历史 `start_utc`。启动迁移只回填活跃节点的未来时间。
+- 任务提前量提醒与节点准时提醒统一为 `DueReminder`，扫描后按任务提醒 `id` 或节点 `node_id` 条件更新 `fired`，只有原子领取成功的记录才通知。时间修改以 upsert 重置 `fired=0`，其他字段变化保持已有触发状态。
+- 调度器在最近到期时间与 60 秒上限之间动态安排扫描；启动和 `powerMonitor.resume` 先原子领取超过宽限期的漏发记录并聚合摘要，再逐条处理最近到期记录。系统通知不可用时发送只读 `reminder:event` 岛内轻弹。
+- 节点 Toast 点击发送 `{type:'open-node', taskId, nodeId}`，恢复岛并进入 L3；renderer 打开“采购节点”、加载详情并对目标节点短暂高亮。该事件不携带备注、路径或节点说明。
 
 ## 8. 安全
 

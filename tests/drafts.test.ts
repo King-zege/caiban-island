@@ -111,6 +111,22 @@ describe('草稿审核（FR-043~048）', () => {
     expect(detail.nodes.map((n) => n.title)).toEqual(['已有节点', '新节点A']);
   });
 
+  it('含未来开始时间的 AI 节点确认前不调度，确认后生成节点提醒', () => {
+    const app = fresh();
+    const task = app.createTask({ name: 'AI 提醒', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    const startUtc = '2099-08-23T08:00:00.000Z';
+    const draft = app.drafts.create('pi', {
+      type: 'nodes',
+      taskId: task.id,
+      nodes: [{ title: '确认报价', description: '', startUtc, endUtc: null }],
+      warnings: []
+    });
+    expect(app.reminders.nextPendingAt()).toBeNull();
+    app.drafts.confirm(draft.id);
+    const node = app.tasks.getTaskDetail(task.id).nodes[0];
+    expect(app.reminders.listNodeReminder(node.id)?.fire_at_utc).toBe(startUtc);
+  });
+
   it('非法草稿被拒绝（任务名校验、节点校验）', () => {
     const app = fresh();
     const badName: TaskDraftPayload = { ...taskDraft(), taskInput: { ...taskDraft().taskInput, name: '  ' } };

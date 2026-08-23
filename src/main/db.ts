@@ -127,6 +127,15 @@ const SCHEMA_V3 = [
   "INSERT INTO agent_messages_fts(agent_messages_fts) VALUES('rebuild')"
 ];
 
+const SCHEMA_V4 = [
+  `CREATE TABLE node_reminders(
+    node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+    fire_at_utc TEXT NOT NULL,
+    fired INTEGER NOT NULL DEFAULT 0
+  )`,
+  'CREATE INDEX node_reminders_due ON node_reminders(fired, fire_at_utc)'
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -153,6 +162,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 3) {
       for (const stmt of SCHEMA_V3) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)').run(new Date().toISOString());
+    }
+    if (current < 4) {
+      for (const stmt of SCHEMA_V4) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(4, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {

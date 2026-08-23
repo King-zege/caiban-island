@@ -673,32 +673,34 @@ select:disabled {
   gap: 2px;
   color: var(--status-pending);
   cursor: pointer;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.card-node-control select {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.01;
-}
-
-.card-node-control:focus-within {
+.card-node-control:focus-visible,
+.card-node-control[aria-expanded="true"] {
   border-radius: var(--radius-control);
   outline: var(--focus-width) solid var(--accent);
   outline-offset: 1px;
 }
 
-.card-node-control > span:last-child {
+.card-node-title {
+  display: flex;
   width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
+  gap: var(--space-1);
   color: var(--text-tertiary);
   font-size: 11px;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.card-node-title svg { flex: 0 0 auto; color: var(--accent); }
 
 .card-node-marker {
   display: grid;
@@ -715,6 +717,42 @@ select:disabled {
 .card-node-control.status-cancelled { color: var(--status-cancelled); }
 .card-node-control.current .card-node-marker { outline: 1px solid currentColor; outline-offset: 2px; }
 .card-progress-text { justify-self: end; color: var(--text-tertiary); font-size: 11px; }
+
+.card-node-menu-popover {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  width: var(--node-menu-width);
+  padding: var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-overlay);
+  box-shadow: 0 16px 40px var(--shadow-color);
+}
+
+.card-node-menu-popover > button {
+  display: grid;
+  min-height: var(--control-min);
+  align-items: center;
+  padding: 0 var(--space-3);
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  gap: var(--space-2);
+  border: 0;
+  border-radius: calc(var(--radius-control) - var(--space-1));
+  color: var(--text-secondary);
+  text-align: left;
+  background: transparent;
+}
+
+.card-node-menu-popover > button:hover,
+.card-node-menu-popover > button:focus-visible,
+.card-node-menu-popover > button[aria-checked="true"] { color: var(--text-primary); background: var(--surface-hover); }
+.card-node-menu-popover > button:disabled { cursor: not-allowed; opacity: 0.48; }
+.card-node-menu-popover .menu-check { justify-self: end; color: var(--accent); }
+.card-node-menu-rule { height: 1px; margin: var(--space-1) var(--space-2); background: var(--border-subtle); }
+.node-time-menu-copy { display: grid; min-width: 0; grid-column: 2 / 4; }
+.node-time-menu-copy strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.node-time-menu-copy small { overflow: hidden; color: var(--text-tertiary); font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 
 .l3-shell {
   display: grid;
@@ -1069,6 +1107,11 @@ select:disabled {
 .timeline-item.status-in_progress .timeline-marker { color: var(--status-in-progress); }
 .timeline-item.status-completed .timeline-marker { color: var(--status-completed); }
 .timeline-item.status-cancelled .timeline-marker { color: var(--status-cancelled); }
+.timeline-item.reminder-highlight {
+  border-radius: var(--radius-control);
+  background: var(--surface-pressed);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 
 .timeline-connector {
   width: 1px;
@@ -1351,6 +1394,9 @@ select:disabled {
 .ui-dialog-head p { margin: var(--space-2) 0 0; color: var(--text-secondary); }
 .ui-dialog-body { padding: 0 var(--space-6) var(--space-5); color: var(--text-secondary); }
 .ui-dialog-actions { display: flex; justify-content: flex-end; padding: var(--space-4) var(--space-6) var(--space-6); gap: var(--space-2); }
+
+.node-time-fields { display: grid; gap: var(--space-4); }
+.node-time-error { margin: 0; color: var(--danger); font-size: 14px; }
 
 .toast-stack {
   position: fixed;

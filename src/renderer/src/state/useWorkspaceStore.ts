@@ -20,12 +20,14 @@ interface WorkspaceState {
   section: WorkspaceSection;
   taskSection: TaskWorkspaceSection;
   selectedTaskId: string | null;
+  highlightedNodeId: string | null;
   pendingUndo: PendingUndoAction | null;
   toast: WorkspaceToast | null;
   openSection: (section: WorkspaceSection) => void;
   openTask: (taskId: string, section?: TaskWorkspaceSection) => void;
   clearTaskSelection: () => void;
   setTaskSection: (section: TaskWorkspaceSection) => void;
+  highlightNode: (nodeId: string) => void;
   scheduleUndo: (action: PendingUndoAction) => boolean;
   undoPending: () => void;
   notify: (message: string, tone?: WorkspaceToast['tone']) => void;
@@ -35,18 +37,28 @@ interface WorkspaceState {
 export const UNDO_DELAY_MS = 5000;
 let undoTimer: ReturnType<typeof setTimeout> | null = null;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   section: 'tasks',
   taskSection: 'overview',
   selectedTaskId: null,
+  highlightedNodeId: null,
   pendingUndo: null,
   toast: null,
 
   openSection: (section) => set({ section }),
-  openTask: (taskId, section = 'overview') => set({ section: 'tasks', selectedTaskId: taskId, taskSection: section }),
-  clearTaskSelection: () => set({ selectedTaskId: null, taskSection: 'overview' }),
+  openTask: (taskId, section = 'overview') => set({ section: 'tasks', selectedTaskId: taskId, taskSection: section, highlightedNodeId: null }),
+  clearTaskSelection: () => set({ selectedTaskId: null, taskSection: 'overview', highlightedNodeId: null }),
   setTaskSection: (taskSection) => set({ taskSection }),
+  highlightNode: (nodeId) => {
+    if (highlightTimer) clearTimeout(highlightTimer);
+    set({ highlightedNodeId: nodeId });
+    highlightTimer = setTimeout(() => {
+      highlightTimer = null;
+      if (get().highlightedNodeId === nodeId) set({ highlightedNodeId: null });
+    }, 4500);
+  },
 
   scheduleUndo: (action) => {
     if (get().pendingUndo) {

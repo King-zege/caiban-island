@@ -28,8 +28,8 @@ const TOOL_DEF = {
             properties: {
               title: { type: 'string' },
               description: { type: 'string' },
-              startUtc: { type: ['string', 'null'] },
-              endUtc: { type: ['string', 'null'] }
+              startUtc: { type: ['string', 'null'], description: '节点开始时间；确认草稿后会在此刻提醒' },
+              endUtc: { type: ['string', 'null'], description: '节点截止时间；仅用于计划' }
             },
             required: ['title'],
             additionalProperties: false

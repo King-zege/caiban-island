@@ -102,7 +102,9 @@ describe('TaskService 持久化', () => {
     const cards = service2.listActive();
     expect(cards.map((c) => c.task.name)).toEqual(['持久化任务']);
     const v = db2.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as { v: number };
-    expect(v.v).toBe(3);
+    expect(v.v).toBe(4);
+    const nodeReminderTable = db2.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'node_reminders'").get();
+    expect(nodeReminderTable).toBeTruthy();
     db2.close();
   });
 });

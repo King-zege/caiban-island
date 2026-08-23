@@ -22,6 +22,8 @@ import type {
   LinkInput,
   NodeInput,
   NodeStatus,
+  NodeTimeUpdateRequest,
+  ReminderEvent,
   Task,
   TaskCard,
   TaskDetail,
@@ -69,6 +71,7 @@ const api = {
 
   addNode: (taskId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:add', taskId, input),
   updateNode: (nodeId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:update', nodeId, input),
+  setNodeStartTime: (request: NodeTimeUpdateRequest): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:setStartTime', request),
   removeNode: (nodeId: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:remove', nodeId),
   setNodeStatus: (nodeId: string, status: NodeStatus): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:setStatus', nodeId, status),
   reorderNodes: (taskId: string, orderedIds: string[]): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:reorder', taskId, orderedIds),
@@ -79,6 +82,11 @@ const api = {
 
   listReminders: (taskId: string): Promise<IpcResult<number[]>> => ipcRenderer.invoke('reminders:list', taskId),
   setReminders: (taskId: string, offsets: number[]): Promise<IpcResult<boolean>> => ipcRenderer.invoke('reminders:set', taskId, offsets),
+  onReminderEvent: (cb: (event: ReminderEvent) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, value: ReminderEvent) => cb(value);
+    ipcRenderer.on('reminder:event', listener);
+    return () => ipcRenderer.removeListener('reminder:event', listener);
+  },
 
   listArchive: (): Promise<IpcResult<ArchivedItem[]>> => ipcRenderer.invoke('archive:list'),
   searchArchive: (q: string, outcome?: string): Promise<IpcResult<ArchivedItem[]>> => ipcRenderer.invoke('archive:search', q, outcome),

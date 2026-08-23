@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CalendarClock, CheckCircle2, ExternalLink, File, Link2, Plus, Trash2, TriangleAlert } from 'lucide-react';
-import type { LinkInput, NodeInput, TaskDetail } from '../../../shared/types';
+import type { LinkInput, NodeInput, TaskDetail, TaskNode } from '../../../shared/types';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import type { TaskWorkspaceSection } from '../state/useWorkspaceStore';
@@ -13,6 +13,7 @@ import { Field } from './ui/Field';
 import { ExternalTargetDialog } from './ui/ExternalTargetDialog';
 import type { ExternalTarget } from './ui/ExternalTargetDialog';
 import { AsyncFeedback } from './ui/AsyncFeedback';
+import NodeTimeDialog from './NodeTimeDialog';
 
 const URGENCY_LABEL = { critical: '紧急', high: '高', normal: '普通', low: '低' } as const;
 const REMINDER_CHOICES = [
@@ -45,6 +46,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const removeNode = useTaskStore((state) => state.removeNode);
   const moveNode = useTaskStore((state) => state.moveNode);
   const addNode = useTaskStore((state) => state.addNode);
+  const updateNode = useTaskStore((state) => state.updateNode);
   const addLink = useTaskStore((state) => state.addLink);
   const removeLink = useTaskStore((state) => state.removeLink);
   const saveNote = useTaskStore((state) => state.saveNote);
@@ -53,6 +55,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const pendingUndo = useWorkspaceStore((state) => state.pendingUndo);
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
+  const highlightedNodeId = useWorkspaceStore((state) => state.highlightedNodeId);
 
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeError, setNodeError] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [externalTarget, setExternalTarget] = useState<ExternalTarget | null>(null);
   const [locationError, setLocationError] = useState<{ target: string; message: string } | null>(null);
+  const [editingNodeTime, setEditingNodeTime] = useState<TaskNode | null>(null);
 
   useEffect(() => {
     setNoteBody(detail.note);
@@ -187,7 +191,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
             <div><span className="eyebrow">采购链路</span><h3>从计划到完成</h3></div>
             <span>{nodes.length} 个节点</span>
           </div>
-          <Timeline nodes={nodes} hiddenIds={hiddenIds} />
+          <Timeline nodes={nodes} hiddenIds={hiddenIds} tzId={task.tzId} highlightedNodeId={highlightedNodeId} />
         </section>
         <div className="overview-archive-actions">
           <Button icon={CheckCircle2} onClick={() => setArchiveAction('complete')}>完成任务</Button>
@@ -224,6 +228,8 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
           nodes={nodes}
           editable
           hiddenIds={hiddenIds}
+          tzId={task.tzId}
+          highlightedNodeId={highlightedNodeId}
           onStatus={(nodeId, status) => void setNodeStatus(task.id, nodeId, status).then((error) => error && notify(error, 'error'))}
         />
         {orderedNodes.filter((node) => !hiddenIds.has(node.id)).length > 0 && (
@@ -232,6 +238,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
               <li key={node.id}>
                 <span>{node.title}</span>
                 <span className="row-actions">
+                  <IconButton icon={CalendarClock} label={'设置' + node.title + '的时间'} onClick={() => setEditingNodeTime(node)} />
                   <IconButton icon={ArrowUp} label={'上移' + node.title} disabled={index === 0} onClick={() => void moveNode(task.id, node.id, -1).then((error) => error && notify(error, 'error'))} />
                   <IconButton icon={ArrowDown} label={'下移' + node.title} disabled={index === visibleNodes.length - 1} onClick={() => void moveNode(task.id, node.id, 1).then((error) => error && notify(error, 'error'))} />
                   <IconButton icon={Trash2} label={'删除' + node.title} variant="danger" onClick={() => scheduleNodeRemoval(node.id, node.title)} />
@@ -252,6 +259,29 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
           />
           <Button icon={Plus} variant="primary" disabled={nodeTitle.trim().length === 0} onClick={() => void doAddNode()}>添加节点</Button>
         </div>
+        {editingNodeTime && (
+          <NodeTimeDialog
+            open
+            mode="full"
+            nodeTitle={editingNodeTime.title}
+            status={editingNodeTime.status}
+            startUtc={editingNodeTime.startUtc}
+            endUtc={editingNodeTime.endUtc}
+            taskDeadlineUtc={task.deadlineUtc}
+            tzId={task.tzId}
+            onClose={() => setEditingNodeTime(null)}
+            onSave={async (startUtc, endUtc) => {
+              const error = await updateNode(task.id, editingNodeTime.id, {
+                title: editingNodeTime.title,
+                description: editingNodeTime.description,
+                startUtc,
+                endUtc
+              });
+              if (!error) notify(startUtc ? '节点时间已更新，到开始时间会提醒' : '节点时间已更新', 'success');
+              return error;
+            }}
+          />
+        )}
       </div>
     );
   }

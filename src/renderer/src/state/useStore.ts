@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LinkInput, NodeInput, NodeStatus, TaskCard, TaskDetail, TaskInput } from '../../../shared/types';
+import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskCard, TaskDetail, TaskInput } from '../../../shared/types';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -23,6 +23,8 @@ interface TaskState {
   prefetchDetail: (id: string) => Promise<void>;
   closeDetail: () => void;
   addNode: (taskId: string, input: NodeInput) => Promise<string | null>;
+  updateNode: (taskId: string, nodeId: string, input: NodeInput) => Promise<string | null>;
+  setNodeStartTime: (taskId: string, request: NodeTimeUpdateRequest) => Promise<string | null>;
   removeNode: (nodeId: string) => Promise<string | null>;
   setNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<string | null>;
   moveNode: (taskId: string, nodeId: string, dir: -1 | 1) => Promise<string | null>;
@@ -163,6 +165,30 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return r.error;
   },
 
+  updateNode: async (taskId, nodeId, input) => {
+    const r = await window.api.updateNode(nodeId, input);
+    if (r.ok) {
+      await get().refreshDetail(taskId);
+      return null;
+    }
+    return r.error;
+  },
+
+  setNodeStartTime: async (taskId, request) => {
+    const r = await window.api.setNodeStartTime(request);
+    if (!r.ok) return r.error;
+    if (get().detail?.task.id === taskId) await get().refreshDetail(taskId);
+    else {
+      set((state) => {
+        const detailCache = { ...state.detailCache };
+        delete detailCache[taskId];
+        return { detailCache };
+      });
+      await get().load();
+    }
+    return null;
+  },
+
   removeNode: async (nodeId) => {
     const d = get().detail;
     if (!d) return '详情未打开';
@@ -178,7 +204,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const r = await window.api.setNodeStatus(nodeId, status);
     if (r.ok) {
       if (get().detail?.task.id === taskId) await get().refreshDetail(taskId);
-      else await get().load();
+      else {
+        set((state) => {
+          const detailCache = { ...state.detailCache };
+          delete detailCache[taskId];
+          return { detailCache };
+        });
+        await get().load();
+      }
       return null;
     }
     return r.error;
