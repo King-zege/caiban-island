@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-**已完成至 P11**：在完整采购任务能力之上，界面已重构为“精密采购工作台”，并补齐三级返回语义、L2 节点速览与四态节点操作。
+**v0.2.0，已完成至 P12**：在完整采购任务能力之上，界面已重构为“精密采购工作台”，三级切换改为单次原生 resize，并支持集显、软件渲染自动降级。
 
-- 打包产物在 `release/`：`采办岛-便携版-0.1.0.exe`（免安装单文件）与 `采办岛-0.1.0-x64.zip`（绿色版，解压即用）；无证书，首次运行 SmartScreen 点"仍要运行"即可；
+- GitHub Release 只提供一个推荐下载：`Caiban-Island-0.2.0-Windows-x64.exe`（Windows x64 免安装独立运行版）；本地 `release/` 仍会生成同名 ZIP 用于打包验收，不上传 Release；
 - 开发运行：`npm run dev`；构建：`npm run build` + `npm start`；
 - 数据与快照：`%APPDATA%\caiban-island\`。
 ## 功能
@@ -49,9 +49,9 @@
 
 内置 AI 兜底通道：设置 → AI 与 Qoder → 内置 AI，配置兼容服务地址、模型和访问密钥，即可在 AI 草稿页生成待审核节点。
 
-## 免证书绿色版与 SmartScreen
+## Windows 独立运行版与 SmartScreen
 
-发布物为绿色免安装 zip，解压后双击 采办岛.exe 即可运行；无需证书、无需安装。首次运行 Windows SmartScreen 可能提示"Windows 已保护你的电脑"，点击"更多信息 → 仍要运行"即可——这是无签名应用的正常现象，不是病毒。数据保存在 %APPDATA%\caiban-island\，删除该目录即清除全部数据。
+从 GitHub Release 下载 `Caiban-Island-0.2.0-Windows-x64.exe` 后可直接运行，无需安装。当前版本未购买代码签名证书，首次运行 Windows SmartScreen 可能提示"Windows 已保护你的电脑"；核对发布页与文件名后，可点击"更多信息 → 仍要运行"。数据保存在 %APPDATA%\caiban-island\，删除该目录即清除全部数据。
 
 ## 飞书多维表格同步（P6 已完成）
 

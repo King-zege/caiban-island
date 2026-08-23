@@ -20,7 +20,7 @@
 | 内置 LLM | Node fetch（OpenAI-compatible） | function call 结构化输出 |
 | 飞书同步 | Node fetch（飞书多维表格 bitable v1 Open API）+ PersonalBaseToken | 个人令牌免管理员审批；无 CLI 依赖 |
 | Markdown | markdown-it（禁用 HTML）+ 自渲染 | 禁止原始 HTML 与脚本 |
-| 打包 | electron-builder（portable zip，可选 NSIS） | 免证书绿色分发 |
+| 打包 | electron-builder（portable EXE + 验收用 zip） | 免证书、免安装；GitHub Release 仅发布单一推荐 EXE |
 | 测试 | Vitest + Testing Library + user-event + jsdom + axe + Electron 视觉回归 | 单元、交互、无障碍与确定性截图，见 TEST_PLAN.md |
 
 ### 2.1 P9 新增依赖审查（2026-08-16）
@@ -180,7 +180,7 @@
 
 ## 10. 打包与分发
 
-- electron-builder portable 目标产出绿色目录 + zip；asar 打包资源；
+- electron-builder 在本地产出免安装独立 EXE、解压目录与验收用 zip；GitHub Release 只上传 `Caiban-Island-${version}-Windows-x64.exe`，避免重复下载项；asar 打包资源；
 - 无代码签名：README 说明 SmartScreen"仍要运行"为正常现象，不尝试绕过；
 - 通知显示：启动时 app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标正确显示所需）；
 - 目标平台：Win10 1809+ x64、Win11 x64；Arm64 为后续评估项。

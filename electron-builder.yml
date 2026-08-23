@@ -16,8 +16,8 @@ win:
       arch: [x64]
   icon: resources/icon.png
 portable:
-  artifactName: 采办岛-便携版-${version}.${ext}
-artifactName: 采办岛-${version}-${arch}.${ext}
+  artifactName: Caiban-Island-${version}-Windows-${arch}.${ext}
+artifactName: Caiban-Island-${version}-Windows-${arch}.${ext}
 electronLanguages:
   - zh-CN
   - en-US

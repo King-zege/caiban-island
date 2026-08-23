@@ -2,14 +2,14 @@
 
 ## 1. 背景
 
-旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书绿色分发、灵动岛三级面板、Qoder MCP 智能拆解节点、飞书多维表格同步。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
+旧版 DeskManager（WinUI 3 + .NET 10、签名 MSIX、仅 Win11）作为设计与规格参考；新版「采办岛」以 Electron 重写，目标 Win10(1809+)/Win11、免证书免安装分发、灵动岛三级面板、Qoder MCP 智能拆解节点、飞书多维表格同步。旧版 docs/（PRODUCT_SPEC、DESIGN_SYSTEM、ARCHITECTURE、TEST_PLAN）的设计资产已移植并扩充到本仓库。
 
 ## 2. 决策记录
 
 | 决策点 | 结论 | 理由 |
 | --- | --- | --- |
 | 技术栈 | Electron + TypeScript + React 19 + Vite + better-sqlite3 | 本机 Node 24 就绪；透明/置顶/磨砂/触控方案成熟；迭代最快 |
-| 分发 | 免证书绿色 zip（portable），可选 NSIS | 用户要求无证书；SmartScreen 提示可接受 |
+| 分发 | 免证书独立运行 EXE；zip 仅用于本地验收 | 用户要求 GitHub Release 保持单一、清晰、可信的下载项；SmartScreen 提示可接受 |
 | 界面 | 岛内三级 L1/L2/L3，无独立主窗口 | 用户确认；托盘承接常驻控制 |
 | AI 主通道 | Qoder（独立桌面 IDE）MCP：SSE 为主 + STDIO 备用 | Qoder 官方支持 STDIO/SSE 两种 MCP 模式；用户仅能用 Qoder 企业账号 |
 | AI 兜底 | 内置 OpenAI-compatible API（未配 Key 时入口隐藏） | 用户选择：Qoder 为主 + 兜底通道 |
