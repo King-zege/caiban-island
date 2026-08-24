@@ -10,7 +10,7 @@ import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { MemoryService } from './memoryService';
 import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskInput } from '../shared/types';
+import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskInput, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
 export function registerIpc(
@@ -74,6 +74,7 @@ export function registerIpc(
   ipcMain.handle('tasks:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.getTaskDetail(id)));
   ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskInput) => wrap(() => appSvc.createTask(input)));
   ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
+  ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => appSvc.setTaskUrgency(request)));
   ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.completeTask(id)));
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
   ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.deleteTask(id)));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CalendarClock, CheckCircle2, ExternalLink, File, Link2, Plus, Trash2, TriangleAlert } from 'lucide-react';
-import type { LinkInput, NodeInput, TaskDetail, TaskNode } from '../../../shared/types';
+import { URGENCIES } from '../../../shared/types';
+import type { LinkInput, NodeInput, TaskDetail, TaskNode, Urgency } from '../../../shared/types';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import type { TaskWorkspaceSection } from '../state/useWorkspaceStore';
@@ -52,6 +53,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const saveNote = useTaskStore((state) => state.saveNote);
   const completeTask = useTaskStore((state) => state.complete);
   const cancelTask = useTaskStore((state) => state.cancel);
+  const setTaskUrgency = useTaskStore((state) => state.setTaskUrgency);
   const pendingUndo = useWorkspaceStore((state) => state.pendingUndo);
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
@@ -71,6 +73,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const [externalTarget, setExternalTarget] = useState<ExternalTarget | null>(null);
   const [locationError, setLocationError] = useState<{ target: string; message: string } | null>(null);
   const [editingNodeTime, setEditingNodeTime] = useState<TaskNode | null>(null);
+  const [urgencyBusy, setUrgencyBusy] = useState(false);
 
   useEffect(() => {
     setNoteBody(detail.note);
@@ -166,6 +169,18 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
     setArchiveAction(null);
   };
 
+  const changeTaskUrgency = async (urgency: Urgency) => {
+    if (urgencyBusy || urgency === task.urgency) return;
+    setUrgencyBusy(true);
+    const error = await setTaskUrgency({
+      taskId: task.id,
+      urgency,
+      expectedUrgency: task.urgency
+    });
+    setUrgencyBusy(false);
+    notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
+  };
+
   if (section === 'overview') {
     return (
       <div className="task-workspace-section overview-section">
@@ -182,7 +197,23 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
           </div>
         </div>
         <div className="overview-facts" aria-label="任务概览">
-          <div><span>紧急程度</span><strong>{URGENCY_LABEL[task.urgency]}</strong></div>
+          <div className="overview-urgency-fact">
+            <span>紧急程度</span>
+            <span className="segmented-control overview-urgency-control" role="group" aria-label="调整任务紧急程度" aria-busy={urgencyBusy}>
+              {URGENCIES.map((urgency) => (
+                <button
+                  key={urgency}
+                  type="button"
+                  className={'urgency-' + urgency + (task.urgency === urgency ? ' active' : '')}
+                  aria-pressed={task.urgency === urgency}
+                  disabled={urgencyBusy}
+                  onClick={() => void changeTaskUrgency(urgency)}
+                >
+                  {URGENCY_LABEL[urgency]}
+                </button>
+              ))}
+            </span>
+          </div>
           <div><span>采购进度</span><strong>{effectiveNodeCount === 0 ? '待拆分' : completedCount + ' / ' + effectiveNodeCount}</strong></div>
           <div><span>关联资料</span><strong>{links.length} 项</strong></div>
         </div>

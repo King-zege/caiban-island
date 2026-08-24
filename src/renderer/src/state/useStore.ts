@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskCard, TaskDetail, TaskInput } from '../../../shared/types';
+import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskCard, TaskDetail, TaskInput, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -19,6 +19,7 @@ interface TaskState {
   complete: (id: string) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   deleteTask: (id: string) => Promise<string | null>;
+  setTaskUrgency: (request: TaskUrgencyUpdateRequest) => Promise<string | null>;
   openDetail: (id: string) => Promise<void>;
   prefetchDetail: (id: string) => Promise<void>;
   closeDetail: () => void;
@@ -119,6 +120,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return null;
     }
     return r.error;
+  },
+
+  setTaskUrgency: async (request) => {
+    const r = await window.api.setTaskUrgency(request);
+    if (!r.ok) return r.error;
+    set((state) => {
+      const tasks = state.tasks.map((card) => card.task.id === request.taskId
+        ? { ...card, task: r.data }
+        : card);
+      const detail = state.detail?.task.id === request.taskId
+        ? { ...state.detail, task: r.data }
+        : state.detail;
+      const detailCache = { ...state.detailCache };
+      if (detailCache[request.taskId]) {
+        detailCache[request.taskId] = { ...detailCache[request.taskId], task: r.data };
+      }
+      return { tasks, detail, detailCache };
+    });
+    await get().load();
+    return null;
   },
 
   openDetail: async (id) => {

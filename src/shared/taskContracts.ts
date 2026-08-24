@@ -78,6 +78,12 @@ export interface TaskInput {
   tzId: string;
 }
 
+export interface TaskUrgencyUpdateRequest {
+  taskId: string;
+  urgency: Urgency;
+  expectedUrgency: Urgency;
+}
+
 export interface ProgressInfo {
   done: number;
   total: number;

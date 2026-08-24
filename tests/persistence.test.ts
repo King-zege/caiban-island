@@ -68,6 +68,30 @@ describe('TaskService 持久化', () => {
     expect(updated.urgency).toBe('high');
   });
 
+  it('紧急程度快捷写入只更新目标字段，并拒绝旧值冲突', () => {
+    const { service, dbPath } = freshService();
+    const task = service.createTask(input({
+      name: '保持名称',
+      description: '保持说明',
+      deadlineUtc: '2026-09-01T00:00:00.000Z'
+    }));
+    const updated = service.setUrgency({ taskId: task.id, urgency: 'critical', expectedUrgency: 'normal' });
+    expect(updated).toMatchObject({
+      name: '保持名称',
+      description: '保持说明',
+      deadlineUtc: '2026-09-01T00:00:00.000Z',
+      urgency: 'critical'
+    });
+    expect(() => service.setUrgency({ taskId: task.id, urgency: 'low', expectedUrgency: 'normal' }))
+      .toThrow('任务紧急程度已变化，请刷新后重试');
+    expect(service.getTask(task.id)?.urgency).toBe('critical');
+
+    const verify = openDatabase(dbPath);
+    const event = verify.prepare("SELECT detail FROM change_events WHERE task_id = ? AND kind = 'task_urgency_updated'").get(task.id) as { detail: string };
+    expect(JSON.parse(event.detail)).toEqual({ from: 'normal', to: 'critical' });
+    verify.close();
+  });
+
   it('完成/取消 → 归档并从活跃列表移除', () => {
     const { service } = freshService();
     const t = service.createTask(input());

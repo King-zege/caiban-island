@@ -28,6 +28,7 @@ import type {
   TaskCard,
   TaskDetail,
   TaskInput,
+  TaskUrgencyUpdateRequest,
   TransitionRequestResult,
   UiPreferences
 } from '../shared/types';
@@ -65,6 +66,7 @@ const api = {
   taskDetail: (id: string): Promise<IpcResult<TaskDetail>> => ipcRenderer.invoke('tasks:detail', id),
   createTask: (input: TaskInput): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:create', input),
   updateTask: (id: string, input: TaskInput): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:update', id, input),
+  setTaskUrgency: (request: TaskUrgencyUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setUrgency', request),
   completeTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:complete', id),
   cancelTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:cancel', id),
   deleteTask: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('tasks:delete', id),

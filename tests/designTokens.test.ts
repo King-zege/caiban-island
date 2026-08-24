@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { DESIGN_TOKENS, designTokenCssVariables } from '../src/shared/designTokens';
 
 function luminance(hex: string): number {
@@ -35,5 +36,12 @@ describe('design tokens', () => {
       [DESIGN_TOKENS.light.low, '#FBFBFC']
     ] as const;
     for (const [foreground, background] of cases) expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('L2 节点与紧急度菜单使用不透底的确定性表面', () => {
+    const css = readFileSync(new URL('../src/renderer/src/styles/global.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.card-node-menu-popover\s*\{[\s\S]*?background:\s*var\(--surface-fallback\);/);
+    expect(DESIGN_TOKENS.dark.surfaceFallback).toMatch(/^#[0-9A-F]{6}$/i);
+    expect(DESIGN_TOKENS.light.surfaceFallback).toMatch(/^#[0-9A-F]{6}$/i);
   });
 });

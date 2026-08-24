@@ -76,6 +76,8 @@ describe('草稿审核（FR-043~048）', () => {
     let changes = 0;
     app.onChange(() => { changes += 1; });
     const task = app.createTask({ name: '通知测试', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    app.setTaskUrgency({ taskId: task.id, urgency: 'high', expectedUrgency: 'normal' });
+    app.setTaskUrgency({ taskId: task.id, urgency: 'high', expectedUrgency: 'high' });
     const node = app.addNode(task.id, { title: '节点', description: '', startUtc: null, endUtc: null });
     app.setNodeStatus(node.id, 'in_progress');
     app.saveNote(task.id, '备注');
@@ -84,7 +86,7 @@ describe('草稿审核（FR-043~048）', () => {
       type: 'nodes', taskId: task.id, nodes: [{ title: '草稿节点', description: '', startUtc: null, endUtc: null }], warnings: []
     });
     app.confirmDraft(draft.id);
-    expect(changes).toBe(6);
+    expect(changes).toBe(7);
   });
 
   it('丢弃草稿', () => {

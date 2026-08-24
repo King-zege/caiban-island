@@ -3,6 +3,7 @@ import {
   Ban,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronsUp,
   Circle,
   CircleDot,
@@ -16,7 +17,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FocusEventHandler } from 'react';
 import { createPortal } from 'react-dom';
-import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, Urgency } from '../../../shared/types';
+import { URGENCIES } from '../../../shared/types';
+import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, TaskUrgencyUpdateRequest, Urgency } from '../../../shared/types';
 import { formatUtcInTimeZone } from '../../../shared/time';
 import { DESIGN_TOKENS } from '../../../shared/designTokens';
 
@@ -39,6 +41,7 @@ const NODE_MENU_WIDTH = Number.parseFloat(DESIGN_TOKENS.dark.nodeMenuWidth);
 const CONTROL_MIN = Number.parseFloat(DESIGN_TOKENS.dark.controlMin);
 const VIEWPORT_GUTTER = Number.parseFloat(DESIGN_TOKENS.dark.space2);
 const NODE_MENU_HEIGHT = CONTROL_MIN * 5 + Number.parseFloat(DESIGN_TOKENS.dark.space4);
+const URGENCY_MENU_HEIGHT = CONTROL_MIN * 4 + Number.parseFloat(DESIGN_TOKENS.dark.space2);
 const APP_OVERLAY_ROOT_SELECTOR = '[data-app-overlay-root="true"]';
 
 export type TaskCardAction = 'complete' | 'cancel' | 'delete';
@@ -85,6 +88,7 @@ export function visibleNodeWindow(nodes: TaskCardNode[], limit = 3): { nodes: Ta
 interface TaskCardProps {
   card: TaskCardData;
   onOpen: () => void;
+  onUrgencyChange: (request: TaskUrgencyUpdateRequest) => Promise<void>;
   onNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<void>;
   onNodeTime: (taskId: string, node: TaskCardNode) => void;
   onTaskAction: (action: TaskCardAction) => void;
@@ -92,14 +96,18 @@ interface TaskCardProps {
   onFocus?: FocusEventHandler<HTMLButtonElement>;
 }
 
-export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
+export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, onNodeTime, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
   const { task, progress, nodes, overdue } = card;
   const misc = task.kind === 'misc';
   const [busyNodeId, setBusyNodeId] = useState<string | null>(null);
+  const [urgencyBusy, setUrgencyBusy] = useState(false);
+  const [urgencyMenuOpen, setUrgencyMenuOpen] = useState(false);
   const [openNodeId, setOpenNodeId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const nodeTriggers = useRef(new Map<string, HTMLButtonElement>());
   const nodeMenu = useRef<HTMLDivElement | null>(null);
+  const urgencyTrigger = useRef<HTMLButtonElement | null>(null);
+  const urgencyMenu = useRef<HTMLDivElement | null>(null);
   const nodeWindow = useMemo(() => visibleNodeWindow(nodes), [nodes]);
   const progressText = progress.total === 0
     ? nodes.length === 0 ? '尚未拆分' : '无有效节点'
@@ -131,26 +139,44 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
   };
 
   useEffect(() => {
-    if (!openNodeId) return;
+    if (!openNodeId && !urgencyMenuOpen) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (nodeMenu.current?.contains(target) || nodeTriggers.current.get(openNodeId)?.contains(target)) return;
+      if (nodeMenu.current?.contains(target) || (openNodeId && nodeTriggers.current.get(openNodeId)?.contains(target))) return;
+      if (urgencyMenu.current?.contains(target) || urgencyTrigger.current?.contains(target)) return;
       setOpenNodeId(null);
+      setUrgencyMenuOpen(false);
     };
-    const closeOnResize = () => setOpenNodeId(null);
+    const closeOnResize = () => {
+      setOpenNodeId(null);
+      setUrgencyMenuOpen(false);
+    };
     document.addEventListener('pointerdown', closeOutside);
     window.addEventListener('resize', closeOnResize);
     return () => {
       document.removeEventListener('pointerdown', closeOutside);
       window.removeEventListener('resize', closeOnResize);
     };
-  }, [openNodeId]);
+  }, [openNodeId, urgencyMenuOpen]);
 
   useEffect(() => {
     if (!openNodeId) return;
     queueMicrotask(() => nodeMenu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
   }, [openNodeId]);
+
+  useEffect(() => {
+    if (!urgencyMenuOpen) return;
+    queueMicrotask(() => urgencyMenu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+  }, [urgencyMenuOpen]);
+
+  const positionMenu = (trigger: HTMLButtonElement, height: number) => {
+    const rect = trigger.getBoundingClientRect();
+    setMenuPosition({
+      left: Math.max(VIEWPORT_GUTTER, Math.min(window.innerWidth - NODE_MENU_WIDTH - VIEWPORT_GUTTER, rect.left + rect.width / 2 - NODE_MENU_WIDTH / 2)),
+      top: Math.max(VIEWPORT_GUTTER, Math.min(window.innerHeight - height - VIEWPORT_GUTTER, rect.bottom + Number.parseFloat(DESIGN_TOKENS.dark.space1)))
+    });
+  };
 
   const openNodeMenu = (nodeId: string) => {
     if (openNodeId === nodeId) {
@@ -159,12 +185,20 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
     }
     const trigger = nodeTriggers.current.get(nodeId);
     if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    setMenuPosition({
-      left: Math.max(VIEWPORT_GUTTER, Math.min(window.innerWidth - NODE_MENU_WIDTH - VIEWPORT_GUTTER, rect.left + rect.width / 2 - NODE_MENU_WIDTH / 2)),
-      top: Math.max(VIEWPORT_GUTTER, Math.min(window.innerHeight - NODE_MENU_HEIGHT - VIEWPORT_GUTTER, rect.bottom + Number.parseFloat(DESIGN_TOKENS.dark.space1)))
-    });
+    setUrgencyMenuOpen(false);
+    positionMenu(trigger, NODE_MENU_HEIGHT);
     setOpenNodeId(nodeId);
+  };
+
+  const openUrgencyMenu = () => {
+    if (urgencyMenuOpen) {
+      setUrgencyMenuOpen(false);
+      return;
+    }
+    if (!urgencyTrigger.current) return;
+    setOpenNodeId(null);
+    positionMenu(urgencyTrigger.current, URGENCY_MENU_HEIGHT);
+    setUrgencyMenuOpen(true);
   };
 
   const closeNodeMenu = (restoreFocus = true) => {
@@ -173,15 +207,24 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
     if (restoreFocus && nodeId) queueMicrotask(() => nodeTriggers.current.get(nodeId)?.focus());
   };
 
-  const handleMenuKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const closeUrgencyMenu = (restoreFocus = true) => {
+    setUrgencyMenuOpen(false);
+    if (restoreFocus) queueMicrotask(() => urgencyTrigger.current?.focus());
+  };
+
+  const moveMenuFocus = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    menu: HTMLDivElement | null,
+    close: () => void
+  ) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      closeNodeMenu();
+      close();
       return;
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const buttons = [...(nodeMenu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+    const buttons = [...(menu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
     if (buttons.length === 0) return;
     const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
     let next = current;
@@ -190,7 +233,31 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
     else if (event.key === 'ArrowDown') next = (Math.max(0, current) + 1) % buttons.length;
     else next = current <= 0 ? buttons.length - 1 : current - 1;
     event.preventDefault();
+    event.stopPropagation();
     buttons[next]?.focus();
+  };
+
+  const handleMenuKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    moveMenuFocus(event, nodeMenu.current, closeNodeMenu);
+  };
+
+  const changeUrgency = async (urgency: Urgency) => {
+    if (urgency === task.urgency) {
+      closeUrgencyMenu();
+      return;
+    }
+    const request: TaskUrgencyUpdateRequest = {
+      taskId: task.id,
+      urgency,
+      expectedUrgency: task.urgency
+    };
+    closeUrgencyMenu();
+    setUrgencyBusy(true);
+    try {
+      await onUrgencyChange(request);
+    } finally {
+      setUrgencyBusy(false);
+    }
   };
 
   const chooseTaskAction = (event: React.MouseEvent<HTMLButtonElement>, action: TaskCardAction) => {
@@ -200,29 +267,47 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
 
   return (
     <article className={'task-card urgency-' + task.urgency + (overdue ? ' overdue' : '')}>
-      <button
-        type="button"
-        className="task-card-open"
-        aria-label={a11y}
-        data-carousel-card="true"
-        data-task-id={task.id}
-        tabIndex={tabIndex}
-        onFocus={onFocus}
-        onClick={onOpen}
-      >
-        <strong className="card-title" title={task.name}>{task.name}</strong>
-        <span className="card-next" title={nextTitle}><span>下一步</span>{nextTitle}</span>
+      <div className="task-card-summary">
+        <button
+          type="button"
+          className="task-card-open"
+          aria-label={a11y}
+          data-carousel-card="true"
+          data-task-id={task.id}
+          tabIndex={tabIndex}
+          onFocus={onFocus}
+          onClick={onOpen}
+        >
+          <strong className="card-title" title={task.name}>{task.name}</strong>
+          <span className="card-next" title={nextTitle}><span>下一步</span>{nextTitle}</span>
+        </button>
         <span className="card-meta">
-          <span className={'urgency-label urgency-' + task.urgency}>
+          <button
+            ref={urgencyTrigger}
+            type="button"
+            className={'card-urgency-button urgency-label urgency-' + task.urgency}
+            data-carousel-no-drag="true"
+            aria-label={'调整任务紧急程度，当前为' + URGENCY_LABEL[task.urgency]}
+            aria-haspopup="menu"
+            aria-expanded={urgencyMenuOpen}
+            disabled={urgencyBusy}
+            onClick={(event) => { event.stopPropagation(); openUrgencyMenu(); }}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              openUrgencyMenu();
+            }}
+          >
             <UrgencyIcon aria-hidden="true" size={14} strokeWidth={1.9} />
             {URGENCY_LABEL[task.urgency]}
-          </span>
+            <ChevronDown aria-hidden="true" size={12} strokeWidth={1.9} />
+          </button>
           <span className={overdue ? 'deadline-overdue' : 'deadline'}>
             <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
             {overdueDuration ? overdueDuration + ' · ' : ''}{deadline}
           </span>
         </span>
-      </button>
+      </div>
 
       <details className="card-task-menu" data-carousel-no-drag="true">
         <summary aria-label={'管理任务：' + task.name} role="button" title="任务操作"><MoreHorizontal aria-hidden="true" size={18} /></summary>
@@ -232,6 +317,40 @@ export default function TaskCard({ card, onOpen, onNodeStatus, onNodeTime, onTas
           <button type="button" className="danger" onClick={(event) => chooseTaskAction(event, 'delete')}><Trash2 aria-hidden="true" size={16} />永久删除</button>
         </div>
       </details>
+
+      {urgencyMenuOpen && (() => {
+        const overlayRoot = document.querySelector<HTMLElement>(APP_OVERLAY_ROOT_SELECTOR) ?? document.body;
+        return createPortal(
+          <div
+            ref={urgencyMenu}
+            className="card-node-menu-popover task-urgency-menu-popover"
+            role="menu"
+            aria-label={'调整任务紧急程度：' + task.name}
+            data-carousel-no-drag="true"
+            style={menuPosition}
+            onKeyDown={(event) => moveMenuFocus(event, urgencyMenu.current, closeUrgencyMenu)}
+          >
+            {URGENCIES.map((urgency) => {
+              const OptionIcon = URGENCY_ICON[urgency];
+              return (
+                <button
+                  key={urgency}
+                  type="button"
+                  className={'urgency-' + urgency}
+                  role="menuitemradio"
+                  aria-checked={task.urgency === urgency}
+                  onClick={() => void changeUrgency(urgency)}
+                >
+                  <OptionIcon aria-hidden="true" size={16} />
+                  <span>{URGENCY_LABEL[urgency]}</span>
+                  {task.urgency === urgency && <Check aria-hidden="true" className="menu-check" size={15} />}
+                </button>
+              );
+            })}
+          </div>,
+          overlayRoot
+        );
+      })()}
 
       {!misc && (
         <div className="card-node-block">

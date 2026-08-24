@@ -526,6 +526,12 @@ select:disabled {
   background: transparent;
 }
 
+.task-card-summary {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
 .card-title {
   overflow: hidden;
   font-size: 18px;
@@ -557,6 +563,7 @@ select:disabled {
 
 .card-meta {
   display: flex;
+  min-height: var(--control-min);
   align-items: center;
   justify-content: space-between;
   min-width: 0;
@@ -564,6 +571,26 @@ select:disabled {
   gap: var(--space-2);
   color: var(--text-secondary);
   font-size: 11px;
+}
+
+.card-urgency-button {
+  min-width: 0;
+  min-height: var(--control-min);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.card-urgency-button:hover,
+.card-urgency-button:focus-visible,
+.card-urgency-button[aria-expanded="true"] {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+}
+
+.card-urgency-button > svg:last-child {
+  color: var(--text-tertiary);
 }
 
 .card-meta > span,
@@ -730,7 +757,7 @@ select:disabled {
   padding: var(--space-1);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
-  background: var(--surface-overlay);
+  background: var(--surface-fallback);
   box-shadow: 0 16px 40px var(--shadow-color);
 }
 
@@ -753,6 +780,10 @@ select:disabled {
 .card-node-menu-popover > button[aria-checked="true"] { color: var(--text-primary); background: var(--surface-hover); }
 .card-node-menu-popover > button:disabled { cursor: not-allowed; opacity: 0.48; }
 .card-node-menu-popover .menu-check { justify-self: end; color: var(--accent); }
+.task-urgency-menu-popover > button.urgency-critical > svg:first-child { color: var(--urgency-critical); }
+.task-urgency-menu-popover > button.urgency-high > svg:first-child { color: var(--urgency-high); }
+.task-urgency-menu-popover > button.urgency-normal > svg:first-child { color: var(--urgency-normal); }
+.task-urgency-menu-popover > button.urgency-low > svg:first-child { color: var(--urgency-low); }
 .card-node-menu-rule { height: 1px; margin: var(--space-1) var(--space-2); background: var(--border-subtle); }
 .node-time-menu-copy { display: grid; min-width: 0; grid-column: 2 / 4; }
 .node-time-menu-copy strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1066,6 +1097,8 @@ select:disabled {
 .overview-facts > div + div { border-left: 1px solid var(--border-subtle); }
 .overview-facts span { color: var(--text-tertiary); font-size: 11px; }
 .overview-facts strong { font-size: 14px; font-weight: 650; }
+.overview-urgency-control { justify-self: start; }
+.overview-urgency-control button { min-width: var(--control-min); padding: 0 var(--space-2); }
 
 .workspace-block {
   padding-top: var(--space-2);

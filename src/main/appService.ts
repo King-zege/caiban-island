@@ -12,6 +12,7 @@ import type {
   NodeTimeUpdateRequest,
   Task,
   TaskInput,
+  TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
 } from '../shared/taskContracts';
@@ -63,6 +64,13 @@ export class AppService {
     this.reminders.recomputeForTask(id);
     this.emitChanged();
     return t;
+  }
+
+  setTaskUrgency(request: TaskUrgencyUpdateRequest): Task {
+    const changed = request.urgency !== request.expectedUrgency;
+    const task = this.withTransaction(() => this.tasks.setUrgency(request));
+    if (changed) this.emitChanged();
+    return task;
   }
 
   completeTask(id: string): Task {

@@ -66,7 +66,7 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 
 | 通道 | 方向 | 说明 |
 | --- | --- | --- |
-| tasks:list / detail / create / update / complete / cancel / delete | renderer→main | 任务 CRUD 与详情（完成/取消即归档；delete 为确认后的永久删除） |
+| tasks:list / detail / create / update / setUrgency / complete / cancel / delete | renderer→main | 任务 CRUD 与详情；`setUrgency` 只接收 `TaskUrgencyUpdateRequest` 并校验预期旧值（完成/取消即归档；delete 为确认后的永久删除） |
 | nodes:add / update / remove / setStatus / reorder / setStartTime | renderer→main | 节点操作；`setStartTime` 只接收 `NodeTimeUpdateRequest` 并校验预期旧值 |
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
@@ -131,6 +131,8 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
     );
 
 `tasks:delete` 只接受活跃任务。应用服务在单个事务中删除该任务的 `change_events`，再删除 `tasks`；`nodes`、`links`、`notes`、`reminders` 与 `node_reminders` 由已启用的外键级联清理。renderer 在真正调用前提供二次确认与 5 秒撤销窗口。
+
+`tasks:setUrgency` 只接受 `TaskUrgencyUpdateRequest(taskId, urgency, expectedUrgency)`。`TaskService` 校验四档枚举、任务仍为活跃状态且数据库当前值等于 `expectedUrgency`，随后只更新 `urgency` 与 `updated_at` 并记录 `task_urgency_updated`；冲突时拒绝覆盖。正式写入经 `AppService` 编排，提交后发送一次变更通知，以触发任务列表刷新和飞书自动同步。
     CREATE TABLE notes(
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

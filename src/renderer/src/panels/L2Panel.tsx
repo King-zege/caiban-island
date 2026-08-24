@@ -11,7 +11,7 @@ import { Button, IconButton } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Dialog } from '../components/ui/Dialog';
 import NodeTimeDialog from '../components/NodeTimeDialog';
-import type { TaskCardNode } from '../../../shared/types';
+import type { TaskCardNode, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 const URGENCY_ORDER = { critical: 0, high: 1, normal: 2, low: 3 } as const;
@@ -40,6 +40,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const completeTask = useTaskStore((state) => state.complete);
   const cancelTask = useTaskStore((state) => state.cancel);
   const deleteTask = useTaskStore((state) => state.deleteTask);
+  const setTaskUrgency = useTaskStore((state) => state.setTaskUrgency);
   const setNodeStatus = useTaskStore((state) => state.setNodeStatus);
   const setNodeStartTime = useTaskStore((state) => state.setNodeStartTime);
   const openTask = useWorkspaceStore((state) => state.openTask);
@@ -108,6 +109,11 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const changeNodeStatus = async (taskId: string, nodeId: string, status: Parameters<typeof setNodeStatus>[2]) => {
     const error = await setNodeStatus(taskId, nodeId, status);
     notify(error ?? '节点状态已更新', error ? 'error' : 'success');
+  };
+
+  const changeTaskUrgency = async (request: TaskUrgencyUpdateRequest) => {
+    const error = await setTaskUrgency(request);
+    notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
   };
 
   const saveNodeTime = async (startUtc: string | null): Promise<string | null> => {
@@ -209,6 +215,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                 tabIndex={index === activeIndex ? 0 : -1}
                 onFocus={() => setActiveIndex(index)}
                 onOpen={() => enterWorkspace(card.task.id)}
+                onUrgencyChange={changeTaskUrgency}
                 onNodeStatus={changeNodeStatus}
                 onNodeTime={(_taskId, node) => setPendingNodeTime({
                   taskId: card.task.id,

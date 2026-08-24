@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { validateNodeInput, validateNodeStartSchedule, validateTaskInput } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
+import { URGENCIES } from '../shared/taskContracts';
 import type {
   LinkInput,
   LinkKind,
@@ -13,6 +14,7 @@ import type {
   TaskCardNode,
   TaskDetail,
   TaskInput,
+  TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
 } from '../shared/taskContracts';
@@ -160,6 +162,26 @@ export class TaskService {
       .run(name, description, input.kind, input.urgency, input.deadlineUtc, input.tzId, updated, id);
     this.logEvent(id, 'task_updated', JSON.stringify({ name }));
     return this.getTask(id) as Task;
+  }
+
+  setUrgency(request: TaskUrgencyUpdateRequest): Task {
+    if (!URGENCIES.includes(request.urgency)) throw new TaskError('无效的紧急程度');
+    if (!URGENCIES.includes(request.expectedUrgency)) throw new TaskError('无效的预期紧急程度');
+    const existing = this.getTask(request.taskId);
+    if (!existing) throw new TaskError('任务不存在');
+    if (existing.status !== 'active') throw new TaskError('只能调整活跃任务的紧急程度');
+    if (existing.urgency !== request.expectedUrgency) throw new TaskError('任务紧急程度已变化，请刷新后重试');
+    if (existing.urgency === request.urgency) return existing;
+    const updatedAt = new Date().toISOString();
+    const result = this.db
+      .prepare("UPDATE tasks SET urgency = ?, updated_at = ? WHERE id = ? AND status = 'active' AND urgency = ?")
+      .run(request.urgency, updatedAt, request.taskId, request.expectedUrgency);
+    if (result.changes !== 1) throw new TaskError('任务紧急程度已变化，请刷新后重试');
+    this.logEvent(request.taskId, 'task_urgency_updated', JSON.stringify({
+      from: request.expectedUrgency,
+      to: request.urgency
+    }));
+    return this.getTask(request.taskId) as Task;
   }
 
   listArchived(): Array<{ id: string; name: string; kind: string; urgency: string; deadlineUtc: string | null; outcome: string; archivedAt: string }> {

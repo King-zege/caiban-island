@@ -74,7 +74,7 @@ afterEach(() => {
 describe('P9 核心界面控件', () => {
   it('任务凭条是可聚焦按钮并优先朗读下一动作', async () => {
     const onOpen = vi.fn();
-    render(<TaskCard card={CARD} onOpen={onOpen} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
+    render(<TaskCard card={CARD} onOpen={onOpen} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
 
     const card = screen.getByRole('button', { name: /下一步：确认技术参数/ });
     expect(card.tagName).toBe('BUTTON');
@@ -87,7 +87,7 @@ describe('P9 核心界面控件', () => {
 
   it('采购凭条节点轴支持四态显式选择', async () => {
     const onNodeStatus = vi.fn(async () => undefined);
-    render(<TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={onNodeStatus} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
+    render(<TaskCard card={CARD} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={onNodeStatus} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
 
     await userEvent.click(screen.getByRole('button', { name: /确认技术参数，进行中/ }));
     const current = screen.getByRole('menuitemradio', { name: '进行中' });
@@ -98,7 +98,7 @@ describe('P9 核心界面控件', () => {
 
   it('采购凭条节点菜单可以直接设置提醒时间', async () => {
     const onNodeTime = vi.fn();
-    render(<TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={async () => undefined} onNodeTime={onNodeTime} onTaskAction={() => undefined} />);
+    render(<TaskCard card={CARD} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={onNodeTime} onTaskAction={() => undefined} />);
 
     await userEvent.click(screen.getByRole('button', { name: /确认技术参数，进行中/ }));
     await userEvent.click(screen.getByRole('menuitem', { name: /设置提醒时间/ }));
@@ -112,7 +112,7 @@ describe('P9 核心界面控件', () => {
         ? { ...node, startUtc: '2026-08-18T01:30:00.000Z' }
         : node)
     };
-    render(<TaskCard card={completedCard} onOpen={() => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
+    render(<TaskCard card={completedCard} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} />);
 
     const trigger = screen.getByRole('button', { name: /确认需求，已完成，已设置提醒时间/ });
     expect(trigger.querySelector('[aria-label="已设置提醒时间"]')).not.toBeNull();
@@ -124,7 +124,7 @@ describe('P9 核心界面控件', () => {
 
   it('采购凭条右上角菜单提供完成、取消和永久删除', async () => {
     const onTaskAction = vi.fn();
-    render(<TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={onTaskAction} />);
+    render(<TaskCard card={CARD} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={onTaskAction} />);
 
     await userEvent.click(screen.getByRole('button', { name: '管理任务：办公电脑采购' }));
     expect(screen.getByRole('button', { name: '完成并归档' })).not.toBeNull();
@@ -220,7 +220,7 @@ describe('P9 核心界面控件', () => {
   });
 
   it('核心任务凭条没有 serious 或 critical 的 axe 问题', async () => {
-    const { container } = render(<main><TaskCard card={CARD} onOpen={() => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} /></main>);
+    const { container } = render(<main><TaskCard card={CARD} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={() => undefined} /></main>);
     const result = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     const blocking = result.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical');
     expect(blocking).toEqual([]);
