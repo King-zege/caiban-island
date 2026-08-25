@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowLeft, Bell, Bot, Brain, ClipboardList, Gauge, ListChecks, Paperclip, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
+import { Archive, ArrowLeft, Bell, Bot, Brain, ClipboardList, Gauge, ListChecks, Paperclip, Pencil, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -10,10 +10,11 @@ import SettingsView from '../components/SettingsView';
 import DraftsPanel from '../components/DraftsPanel';
 import NewTaskForm from '../components/NewTaskForm';
 import VirtualTaskSwitcher from '../components/VirtualTaskSwitcher';
-import { Button } from '../components/ui/Button';
+import { Button, IconButton } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import AgentPanel from '../components/AgentPanel';
 import MemoryPanel from '../components/MemoryPanel';
+import RenameDialog from '../components/RenameDialog';
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
   { id: 'overview', label: '概览', icon: Gauge },
@@ -40,6 +41,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const detailLoading = useTaskStore((state) => state.detailLoading);
   const detailError = useTaskStore((state) => state.detailError);
   const openDetail = useTaskStore((state) => state.openDetail);
+  const setTaskName = useTaskStore((state) => state.setTaskName);
   const section = useWorkspaceStore((state) => state.section);
   const taskSection = useWorkspaceStore((state) => state.taskSection);
   const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
@@ -47,10 +49,12 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const openTask = useWorkspaceStore((state) => state.openTask);
   const clearTaskSelection = useWorkspaceStore((state) => state.clearTaskSelection);
   const setTaskSection = useWorkspaceStore((state) => state.setTaskSection);
+  const notify = useWorkspaceStore((state) => state.notify);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [mountStage, setMountStage] = useState(0);
+  const [renamingTask, setRenamingTask] = useState<{ id: string; name: string } | null>(null);
   const compact = (layoutWidth ?? windowWidth) <= 760;
 
   useEffect(() => {
@@ -173,9 +177,21 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
             ) : (
               <>
                 <div className="workspace-task-head">
-                  <div>
+                  <div className="workspace-task-title">
                     <span className="eyebrow">当前任务</span>
-                    <h1 tabIndex={-1} data-transition-focus="l3">{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
+                    <div>
+                      <h1 tabIndex={-1} data-transition-focus="l3">{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
+                      {(currentTask?.task ?? detail?.task) && (
+                        <IconButton
+                          icon={Pencil}
+                          label="编辑任务名称"
+                          onClick={() => {
+                            const task = currentTask?.task ?? detail?.task;
+                            if (task) setRenamingTask({ id: task.id, name: task.name });
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
                   <span className={'workspace-urgency urgency-' + (currentTask?.task.urgency ?? detail?.task.urgency ?? 'normal')}>
                     {currentTask?.overdue ? '已逾期' : currentTask?.task.urgency === 'critical' ? '紧急' : currentTask?.task.urgency === 'high' ? '高优先级' : currentTask?.task.urgency === 'low' ? '低优先级' : '普通'}
@@ -219,6 +235,18 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
         </main>}
       </div>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
+      {renamingTask && (
+        <RenameDialog
+          kind="任务"
+          currentName={renamingTask.name}
+          onClose={() => setRenamingTask(null)}
+          onSave={async (name) => {
+            const error = await setTaskName({ taskId: renamingTask.id, name, expectedName: renamingTask.name });
+            if (!error) notify('任务名称已更新', 'success');
+            return error;
+          }}
+        />
+      )}
     </div>
   );
 }

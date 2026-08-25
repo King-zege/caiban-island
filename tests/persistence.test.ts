@@ -92,6 +92,42 @@ describe('TaskService 持久化', () => {
     verify.close();
   });
 
+  it('任务与节点重命名只更新名称字段，并拒绝旧值冲突', () => {
+    const { service, dbPath } = freshService();
+    const task = service.createTask(input({ name: '旧任务名', description: '保留说明', urgency: 'high' }));
+    const node = service.addNode(task.id, {
+      title: '旧节点名', description: '保留节点说明', startUtc: null, endUtc: null
+    });
+
+    const renamedTask = service.setName({ taskId: task.id, name: '  新任务名  ', expectedName: '旧任务名' });
+    const renamedNode = service.setNodeTitle({ nodeId: node.id, title: '新节点名', expectedTitle: '旧节点名' });
+    expect(renamedTask).toMatchObject({ name: '新任务名', description: '保留说明', urgency: 'high' });
+    expect(renamedNode).toMatchObject({ title: '新节点名', description: '保留节点说明', startUtc: null, status: 'pending' });
+    expect(() => service.setName({ taskId: task.id, name: '冲突任务名', expectedName: '旧任务名' }))
+      .toThrow('任务名称已变化，请刷新后重试');
+    expect(() => service.setNodeTitle({ nodeId: node.id, title: '冲突节点名', expectedTitle: '旧节点名' }))
+      .toThrow('节点名称已变化，请刷新后重试');
+
+    const verify = openDatabase(dbPath);
+    const events = verify.prepare("SELECT kind FROM change_events WHERE task_id = ? AND kind IN ('task_name_updated', 'node_title_updated') ORDER BY id").all(task.id) as unknown as Array<{ kind: string }>;
+    expect(events.map((event) => event.kind)).toEqual(['task_name_updated', 'node_title_updated']);
+    verify.close();
+  });
+
+  it('重命名复用名称校验且原值无操作不写审计', () => {
+    const { service, dbPath } = freshService();
+    const task = service.createTask(input({ name: '原任务名' }));
+    const node = service.addNode(task.id, { title: '原节点名', description: '', startUtc: null, endUtc: null });
+    expect(service.setName({ taskId: task.id, name: ' 原任务名 ', expectedName: '原任务名' }).name).toBe('原任务名');
+    expect(service.setNodeTitle({ nodeId: node.id, title: ' 原节点名 ', expectedTitle: '原节点名' }).title).toBe('原节点名');
+    expect(() => service.setName({ taskId: task.id, name: ' ', expectedName: '原任务名' })).toThrow('任务名称不能为空');
+    expect(() => service.setNodeTitle({ nodeId: node.id, title: ' ', expectedTitle: '原节点名' })).toThrow('节点标题不能为空');
+    const verify = openDatabase(dbPath);
+    const row = verify.prepare("SELECT COUNT(*) AS count FROM change_events WHERE task_id = ? AND kind IN ('task_name_updated', 'node_title_updated')").get(task.id) as { count: number };
+    expect(row.count).toBe(0);
+    verify.close();
+  });
+
   it('完成/取消 → 归档并从活跃列表移除', () => {
     const { service } = freshService();
     const t = service.createTask(input());

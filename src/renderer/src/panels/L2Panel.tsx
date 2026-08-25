@@ -11,10 +11,13 @@ import { Button, IconButton } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Dialog } from '../components/ui/Dialog';
 import NodeTimeDialog from '../components/NodeTimeDialog';
+import RenameDialog from '../components/RenameDialog';
+import { ExternalTargetDialog } from '../components/ui/ExternalTargetDialog';
+import type { ExternalTarget } from '../components/ui/ExternalTargetDialog';
+import { compareTasks } from '../../../shared/sorting';
 import type { TaskCardNode, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
-const URGENCY_ORDER = { critical: 0, high: 1, normal: 2, low: 3 } as const;
 
 interface PendingTaskAction {
   action: TaskCardAction;
@@ -29,6 +32,10 @@ interface PendingNodeTime {
   node: TaskCardNode;
 }
 
+type PendingRename =
+  | { kind: 'task'; taskId: string; name: string }
+  | { kind: 'node'; taskId: string; node: TaskCardNode };
+
 export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): React.JSX.Element {
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
@@ -37,11 +44,14 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const onboarded = useTaskStore((state) => state.onboarded);
   const setOnboarded = useTaskStore((state) => state.setOnboarded);
   const prefetchDetail = useTaskStore((state) => state.prefetchDetail);
+  const loadTaskLinks = useTaskStore((state) => state.loadTaskLinks);
   const completeTask = useTaskStore((state) => state.complete);
   const cancelTask = useTaskStore((state) => state.cancel);
   const deleteTask = useTaskStore((state) => state.deleteTask);
   const setTaskUrgency = useTaskStore((state) => state.setTaskUrgency);
+  const setTaskName = useTaskStore((state) => state.setTaskName);
   const setNodeStatus = useTaskStore((state) => state.setNodeStatus);
+  const setNodeTitle = useTaskStore((state) => state.setNodeTitle);
   const setNodeStartTime = useTaskStore((state) => state.setNodeStartTime);
   const openTask = useWorkspaceStore((state) => state.openTask);
   const openSection = useWorkspaceStore((state) => state.openSection);
@@ -50,9 +60,12 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const notify = useWorkspaceStore((state) => state.notify);
   const [showForm, setShowForm] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [sortMode, setSortMode] = useState<SortMode>('deadline');
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('urgency');
   const [pendingTaskAction, setPendingTaskAction] = useState<PendingTaskAction | null>(null);
   const [pendingNodeTime, setPendingNodeTime] = useState<PendingNodeTime | null>(null);
+  const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
+  const [externalTarget, setExternalTarget] = useState<ExternalTarget | null>(null);
   const [taskActionBusy, setTaskActionBusy] = useState(false);
   const [cardRenderLimit, setCardRenderLimit] = useState(2);
 
@@ -69,23 +82,37 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   }, []);
 
   useEffect(() => {
-    const editing = showForm || pendingTaskAction !== null || pendingNodeTime !== null;
+    const editing = showForm || pendingTaskAction !== null || pendingNodeTime !== null || pendingRename !== null || externalTarget !== null;
     void window.api.setL2Detail(editing);
     void window.api.interacting(editing);
     return () => { void window.api.interacting(false); };
-  }, [pendingNodeTime, pendingTaskAction, showForm]);
+  }, [externalTarget, pendingNodeTime, pendingRename, pendingTaskAction, showForm]);
 
   const sortedTasks = useMemo(() => [...tasks].filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)).sort((left, right) => {
-    if (sortMode === 'urgency') return URGENCY_ORDER[left.task.urgency] - URGENCY_ORDER[right.task.urgency];
-    if (sortMode === 'updated') return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc);
+    if (sortMode === 'urgency') return compareTasks(left.task, right.task);
+    if (sortMode === 'updated') return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || compareTasks(left.task, right.task);
     const leftDeadline = left.task.deadlineUtc ?? '9999';
     const rightDeadline = right.task.deadlineUtc ?? '9999';
     return leftDeadline.localeCompare(rightDeadline) || left.task.id.localeCompare(right.task.id);
   }), [pendingUndo, sortMode, tasks]);
 
   useEffect(() => {
-    if (activeIndex >= sortedTasks.length) setActiveIndex(Math.max(0, sortedTasks.length - 1));
-  }, [activeIndex, sortedTasks.length]);
+    if (sortedTasks.length === 0) {
+      setActiveIndex(0);
+      setActiveTaskId(null);
+      return;
+    }
+    if (activeTaskId) {
+      const preservedIndex = sortedTasks.findIndex((card) => card.task.id === activeTaskId);
+      if (preservedIndex >= 0) {
+        if (preservedIndex !== activeIndex) setActiveIndex(preservedIndex);
+        return;
+      }
+    }
+    const nextIndex = Math.min(activeIndex, sortedTasks.length - 1);
+    setActiveIndex(nextIndex);
+    setActiveTaskId(sortedTasks[nextIndex].task.id);
+  }, [activeIndex, activeTaskId, sortedTasks]);
 
   useEffect(() => {
     const taskId = sortedTasks[activeIndex]?.task.id;
@@ -114,6 +141,19 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const changeTaskUrgency = async (request: TaskUrgencyUpdateRequest) => {
     const error = await setTaskUrgency(request);
     notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
+  };
+
+  const saveRename = async (name: string): Promise<string | null> => {
+    if (!pendingRename) return '名称编辑已关闭';
+    const error = pendingRename.kind === 'task'
+      ? await setTaskName({ taskId: pendingRename.taskId, name, expectedName: pendingRename.name })
+      : await setNodeTitle(pendingRename.taskId, {
+          nodeId: pendingRename.node.id,
+          title: name,
+          expectedTitle: pendingRename.node.title
+        });
+    if (!error) notify(pendingRename.kind === 'task' ? '任务名称已更新' : '节点名称已更新', 'success');
+    return error;
   };
 
   const saveNodeTime = async (startUtc: string | null): Promise<string | null> => {
@@ -169,8 +209,8 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal aria-hidden="true" size={20} strokeWidth={1.75} /></summary>
             <div className="more-menu-popover">
               <span className="more-menu-label"><ArrowDownUp aria-hidden="true" size={15} />排序方式</span>
+              <button className={sortMode === 'urgency' ? 'active' : ''} onClick={() => setSortMode('urgency')}>紧急程度（默认）</button>
               <button className={sortMode === 'deadline' ? 'active' : ''} onClick={() => setSortMode('deadline')}>截止时间</button>
-              <button className={sortMode === 'urgency' ? 'active' : ''} onClick={() => setSortMode('urgency')}>紧急程度</button>
               <button className={sortMode === 'updated' ? 'active' : ''} onClick={() => setSortMode('updated')}>最近更新</button>
               <span className="more-menu-rule" />
               <button onClick={openSettings}><Settings aria-hidden="true" size={16} />设置</button>
@@ -203,7 +243,10 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
             gap={12}
             itemCount={sortedTasks.length}
             activeIndex={activeIndex}
-            onActiveIndexChange={setActiveIndex}
+            onActiveIndexChange={(index) => {
+              setActiveIndex(index);
+              setActiveTaskId(sortedTasks[index]?.task.id ?? null);
+            }}
             reducedMotion={reducedMotion}
             renderLimit={cardRenderLimit}
             renderItem={(index) => {
@@ -213,7 +256,10 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                 key={card.task.id}
                 card={card}
                 tabIndex={index === activeIndex ? 0 : -1}
-                onFocus={() => setActiveIndex(index)}
+                onFocus={() => {
+                  setActiveIndex(index);
+                  setActiveTaskId(card.task.id);
+                }}
                 onOpen={() => enterWorkspace(card.task.id)}
                 onUrgencyChange={changeTaskUrgency}
                 onNodeStatus={changeNodeStatus}
@@ -223,6 +269,10 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                   tzId: card.task.tzId,
                   node
                 })}
+                onLoadMaterials={loadTaskLinks}
+                onOpenMaterial={(link) => setExternalTarget({ kind: link.kind, target: link.target, title: link.title })}
+                onRenameTask={() => setPendingRename({ kind: 'task', taskId: card.task.id, name: card.task.name })}
+                onRenameNode={(node) => setPendingRename({ kind: 'node', taskId: card.task.id, node })}
                 onTaskAction={(action) => setPendingTaskAction({ action, taskId: card.task.id, taskName: card.task.name })}
               />
               );
@@ -246,6 +296,15 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           onSave={(startUtc) => saveNodeTime(startUtc)}
         />
       )}
+      {pendingRename && (
+        <RenameDialog
+          kind={pendingRename.kind === 'task' ? '任务' : '节点'}
+          currentName={pendingRename.kind === 'task' ? pendingRename.name : pendingRename.node.title}
+          onClose={() => setPendingRename(null)}
+          onSave={saveRename}
+        />
+      )}
+      <ExternalTargetDialog target={externalTarget} onClose={() => setExternalTarget(null)} />
       <Dialog
         open={pendingTaskAction !== null}
         title={actionTitle}

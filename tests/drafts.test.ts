@@ -76,9 +76,13 @@ describe('草稿审核（FR-043~048）', () => {
     let changes = 0;
     app.onChange(() => { changes += 1; });
     const task = app.createTask({ name: '通知测试', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
+    app.setTaskName({ taskId: task.id, name: '通知测试已改名', expectedName: '通知测试' });
+    app.setTaskName({ taskId: task.id, name: ' 通知测试已改名 ', expectedName: '通知测试已改名' });
     app.setTaskUrgency({ taskId: task.id, urgency: 'high', expectedUrgency: 'normal' });
     app.setTaskUrgency({ taskId: task.id, urgency: 'high', expectedUrgency: 'high' });
     const node = app.addNode(task.id, { title: '节点', description: '', startUtc: null, endUtc: null });
+    app.setNodeTitle({ nodeId: node.id, title: '节点已改名', expectedTitle: '节点' });
+    app.setNodeTitle({ nodeId: node.id, title: ' 节点已改名 ', expectedTitle: '节点已改名' });
     app.setNodeStatus(node.id, 'in_progress');
     app.saveNote(task.id, '备注');
     app.setReminders(task.id, []);
@@ -86,7 +90,7 @@ describe('草稿审核（FR-043~048）', () => {
       type: 'nodes', taskId: task.id, nodes: [{ title: '草稿节点', description: '', startUtc: null, endUtc: null }], warnings: []
     });
     app.confirmDraft(draft.id);
-    expect(changes).toBe(7);
+    expect(changes).toBe(9);
   });
 
   it('丢弃草稿', () => {

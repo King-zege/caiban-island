@@ -10,8 +10,10 @@ import type {
   NodeInput,
   NodeStatus,
   NodeTimeUpdateRequest,
+  NodeTitleUpdateRequest,
   Task,
   TaskInput,
+  TaskNameUpdateRequest,
   TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
@@ -64,6 +66,12 @@ export class AppService {
     this.reminders.recomputeForTask(id);
     this.emitChanged();
     return t;
+  }
+
+  setTaskName(request: TaskNameUpdateRequest): Task {
+    const task = this.withTransaction(() => this.tasks.setName(request));
+    if (task.name !== request.expectedName) this.emitChanged();
+    return task;
   }
 
   setTaskUrgency(request: TaskUrgencyUpdateRequest): Task {
@@ -133,6 +141,12 @@ export class AppService {
       return updated;
     });
     this.emitChanged();
+    return node;
+  }
+
+  setNodeTitle(request: NodeTitleUpdateRequest): TaskNode {
+    const node = this.withTransaction(() => this.tasks.setNodeTitle(request));
+    if (node.title !== request.expectedTitle) this.emitChanged();
     return node;
   }
 

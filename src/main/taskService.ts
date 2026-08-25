@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateNodeInput, validateNodeStartSchedule, validateTaskInput } from '../shared/validation';
+import { validateNodeInput, validateNodeStartSchedule, validateNodeTitle, validateTaskInput, validateTaskName } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
 import { URGENCIES } from '../shared/taskContracts';
 import type {
@@ -9,11 +9,13 @@ import type {
   NodeInput,
   NodeStatus,
   NodeTimeUpdateRequest,
+  NodeTitleUpdateRequest,
   Task,
   TaskCard,
   TaskCardNode,
   TaskDetail,
   TaskInput,
+  TaskNameUpdateRequest,
   TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
@@ -164,6 +166,24 @@ export class TaskService {
     return this.getTask(id) as Task;
   }
 
+  setName(request: TaskNameUpdateRequest): Task {
+    const validation = validateTaskName(request.name);
+    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
+    const existing = this.getTask(request.taskId);
+    if (!existing) throw new TaskError('任务不存在');
+    if (existing.status !== 'active') throw new TaskError('只能编辑活跃任务的名称');
+    if (existing.name !== request.expectedName) throw new TaskError('任务名称已变化，请刷新后重试');
+    const name = request.name.trim();
+    if (existing.name === name) return existing;
+    const updatedAt = new Date().toISOString();
+    const result = this.db
+      .prepare("UPDATE tasks SET name = ?, updated_at = ? WHERE id = ? AND status = 'active' AND name = ?")
+      .run(name, updatedAt, request.taskId, request.expectedName);
+    if (result.changes !== 1) throw new TaskError('任务名称已变化，请刷新后重试');
+    this.logEvent(request.taskId, 'task_name_updated', JSON.stringify({ from: request.expectedName, to: name }));
+    return this.getTask(request.taskId) as Task;
+  }
+
   setUrgency(request: TaskUrgencyUpdateRequest): Task {
     if (!URGENCIES.includes(request.urgency)) throw new TaskError('无效的紧急程度');
     if (!URGENCIES.includes(request.expectedUrgency)) throw new TaskError('无效的预期紧急程度');
@@ -260,6 +280,28 @@ export class TaskService {
       .run(input.title.trim(), input.description.trim(), input.startUtc, input.endUtc, nodeId);
     this.logEvent(String(row.task_id), 'node_updated', JSON.stringify({ nodeId }));
     return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown>);
+  }
+
+  setNodeTitle(request: NodeTitleUpdateRequest): TaskNode {
+    const validation = validateNodeTitle(request.title);
+    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
+    const row = this.db
+      .prepare("SELECT nodes.* FROM nodes JOIN tasks ON tasks.id = nodes.task_id WHERE nodes.id = ? AND tasks.status = 'active'")
+      .get(request.nodeId) as Record<string, unknown> | undefined;
+    if (!row) throw new TaskError('节点不存在或所属任务已归档');
+    const currentTitle = String(row.title);
+    if (currentTitle !== request.expectedTitle) throw new TaskError('节点名称已变化，请刷新后重试');
+    const title = request.title.trim();
+    if (currentTitle === title) return toNode(row);
+    const result = this.db.prepare('UPDATE nodes SET title = ? WHERE id = ? AND title = ?').run(title, request.nodeId, request.expectedTitle);
+    if (result.changes !== 1) throw new TaskError('节点名称已变化，请刷新后重试');
+    this.db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), String(row.task_id));
+    this.logEvent(String(row.task_id), 'node_title_updated', JSON.stringify({
+      nodeId: request.nodeId,
+      from: request.expectedTitle,
+      to: title
+    }));
+    return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(request.nodeId) as Record<string, unknown>);
   }
 
   setNodeStartTime(request: NodeTimeUpdateRequest): TaskNode {

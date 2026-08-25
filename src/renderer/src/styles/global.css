@@ -613,55 +613,79 @@ select:disabled {
 .urgency-label.urgency-low,
 .workspace-urgency.urgency-low { color: var(--urgency-low); }
 
-.card-task-menu {
+.card-task-menu-trigger {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
   z-index: 8;
-}
-
-.card-task-menu > summary {
-  display: grid;
+  display: flex;
   width: var(--control-min);
   height: var(--control-min);
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   color: var(--text-secondary);
-  list-style: none;
-  place-items: center;
+  background: transparent;
 }
 
-.card-task-menu > summary::-webkit-details-marker { display: none; }
-.card-task-menu > summary:hover,
-.card-task-menu[open] > summary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-pressed); }
+.card-task-menu-trigger:hover,
+.card-task-menu-trigger:focus-visible,
+.card-task-menu-trigger[aria-expanded="true"] { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-pressed); }
+.card-task-menu-trigger svg:last-child { color: var(--text-tertiary); }
 
 .card-task-menu-popover {
-  position: absolute;
-  top: calc(100% - var(--space-1));
-  right: 0;
+  position: fixed;
+  z-index: 100;
   display: grid;
-  width: 160px;
+  width: min(var(--task-menu-width), calc(100vw - var(--space-4)));
+  max-height: min(var(--task-menu-max-height), calc(100vh - var(--space-4)));
   padding: var(--space-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
-  background: var(--surface-overlay);
-  box-shadow: 0 12px 32px var(--shadow-color);
+  background: var(--surface-fallback);
+  box-shadow: 0 16px 40px var(--shadow-color);
 }
 
-.card-task-menu-popover button {
-  display: flex;
+.card-task-menu-popover > button {
+  display: grid;
   min-height: var(--control-min);
   align-items: center;
   padding: 0 var(--space-3);
+  grid-template-columns: 20px minmax(0, 1fr);
   gap: var(--space-2);
   border: 0;
   border-radius: calc(var(--radius-control) - var(--space-1));
+  color: var(--text-secondary);
   text-align: left;
   background: transparent;
 }
 
-.card-task-menu-popover button:hover { background: var(--surface-hover); }
-.card-task-menu-popover button.danger { color: var(--danger); }
+.card-task-menu-popover > button:hover,
+.card-task-menu-popover > button:focus-visible { color: var(--text-primary); background: var(--surface-hover); }
+.card-task-menu-popover > button.danger { color: var(--danger); }
+.card-task-menu-label {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+.card-task-menu-state {
+  min-height: var(--control-min);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.card-task-menu-popover > button > span { min-width: 0; }
+.card-task-menu-popover > button > span:has(small) { display: grid; gap: 2px; }
+.card-task-menu-popover > button strong,
+.card-task-menu-popover > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-task-menu-popover > button strong { color: var(--text-primary); font-size: 13px; font-weight: 620; }
+.card-task-menu-popover > button small { color: var(--text-tertiary); font-family: var(--font-utility); font-size: 10px; }
 
 .card-node-block {
   display: grid;
@@ -953,6 +977,15 @@ select:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.workspace-task-title { min-width: 0; }
+.workspace-task-title > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+.workspace-task-title h1 { min-width: 0; }
 
 .workspace-urgency {
   padding-bottom: var(--space-1);

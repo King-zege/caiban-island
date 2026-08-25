@@ -8,9 +8,13 @@ import {
   Circle,
   CircleDot,
   Clock3,
+  File,
+  Link2,
   ListChecks,
-  MoreHorizontal,
+  Paperclip,
+  Pencil,
   Play,
+  RotateCw,
   Trash2,
   TriangleAlert
 } from 'lucide-react';
@@ -18,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FocusEventHandler } from 'react';
 import { createPortal } from 'react-dom';
 import { URGENCIES } from '../../../shared/types';
-import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, TaskUrgencyUpdateRequest, Urgency } from '../../../shared/types';
+import type { NodeStatus, TaskCard as TaskCardData, TaskCardNode, TaskLink, TaskUrgencyUpdateRequest, Urgency } from '../../../shared/types';
 import { formatUtcInTimeZone } from '../../../shared/time';
 import { DESIGN_TOKENS } from '../../../shared/designTokens';
 
@@ -38,9 +42,11 @@ const NODE_STATUS_META = {
 } satisfies Record<NodeStatus, { label: string; icon: typeof Circle }>;
 
 const NODE_MENU_WIDTH = Number.parseFloat(DESIGN_TOKENS.dark.nodeMenuWidth);
+const TASK_MENU_WIDTH = Number.parseFloat(DESIGN_TOKENS.dark.taskMenuWidth);
+const TASK_MENU_MAX_HEIGHT = Number.parseFloat(DESIGN_TOKENS.dark.taskMenuMaxHeight);
 const CONTROL_MIN = Number.parseFloat(DESIGN_TOKENS.dark.controlMin);
 const VIEWPORT_GUTTER = Number.parseFloat(DESIGN_TOKENS.dark.space2);
-const NODE_MENU_HEIGHT = CONTROL_MIN * 5 + Number.parseFloat(DESIGN_TOKENS.dark.space4);
+const NODE_MENU_HEIGHT = CONTROL_MIN * 6 + Number.parseFloat(DESIGN_TOKENS.dark.space4);
 const URGENCY_MENU_HEIGHT = CONTROL_MIN * 4 + Number.parseFloat(DESIGN_TOKENS.dark.space2);
 const APP_OVERLAY_ROOT_SELECTOR = '[data-app-overlay-root="true"]';
 
@@ -91,23 +97,33 @@ interface TaskCardProps {
   onUrgencyChange: (request: TaskUrgencyUpdateRequest) => Promise<void>;
   onNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<void>;
   onNodeTime: (taskId: string, node: TaskCardNode) => void;
+  onLoadMaterials?: (taskId: string) => Promise<{ links: TaskLink[]; error: string | null }>;
+  onOpenMaterial?: (link: TaskLink) => void;
+  onRenameTask?: () => void;
+  onRenameNode?: (node: TaskCardNode) => void;
   onTaskAction: (action: TaskCardAction) => void;
   tabIndex?: number;
   onFocus?: FocusEventHandler<HTMLButtonElement>;
 }
 
-export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, onNodeTime, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
+export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, onNodeTime, onLoadMaterials, onOpenMaterial, onRenameTask, onRenameNode, onTaskAction, tabIndex = 0, onFocus }: TaskCardProps): React.JSX.Element {
   const { task, progress, nodes, overdue } = card;
   const misc = task.kind === 'misc';
   const [busyNodeId, setBusyNodeId] = useState<string | null>(null);
   const [urgencyBusy, setUrgencyBusy] = useState(false);
   const [urgencyMenuOpen, setUrgencyMenuOpen] = useState(false);
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
+  const [taskMenuLoading, setTaskMenuLoading] = useState(false);
+  const [taskMenuError, setTaskMenuError] = useState<string | null>(null);
+  const [taskLinks, setTaskLinks] = useState<TaskLink[] | null>(null);
   const [openNodeId, setOpenNodeId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const nodeTriggers = useRef(new Map<string, HTMLButtonElement>());
   const nodeMenu = useRef<HTMLDivElement | null>(null);
   const urgencyTrigger = useRef<HTMLButtonElement | null>(null);
   const urgencyMenu = useRef<HTMLDivElement | null>(null);
+  const taskMenuTrigger = useRef<HTMLButtonElement | null>(null);
+  const taskMenu = useRef<HTMLDivElement | null>(null);
   const nodeWindow = useMemo(() => visibleNodeWindow(nodes), [nodes]);
   const progressText = progress.total === 0
     ? nodes.length === 0 ? '尚未拆分' : '无有效节点'
@@ -139,18 +155,21 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
   };
 
   useEffect(() => {
-    if (!openNodeId && !urgencyMenuOpen) return;
+    if (!openNodeId && !urgencyMenuOpen && !taskMenuOpen) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (nodeMenu.current?.contains(target) || (openNodeId && nodeTriggers.current.get(openNodeId)?.contains(target))) return;
       if (urgencyMenu.current?.contains(target) || urgencyTrigger.current?.contains(target)) return;
+      if (taskMenu.current?.contains(target) || taskMenuTrigger.current?.contains(target)) return;
       setOpenNodeId(null);
       setUrgencyMenuOpen(false);
+      setTaskMenuOpen(false);
     };
     const closeOnResize = () => {
       setOpenNodeId(null);
       setUrgencyMenuOpen(false);
+      setTaskMenuOpen(false);
     };
     document.addEventListener('pointerdown', closeOutside);
     window.addEventListener('resize', closeOnResize);
@@ -158,7 +177,7 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
       document.removeEventListener('pointerdown', closeOutside);
       window.removeEventListener('resize', closeOnResize);
     };
-  }, [openNodeId, urgencyMenuOpen]);
+  }, [openNodeId, taskMenuOpen, urgencyMenuOpen]);
 
   useEffect(() => {
     if (!openNodeId) return;
@@ -170,10 +189,15 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
     queueMicrotask(() => urgencyMenu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
   }, [urgencyMenuOpen]);
 
-  const positionMenu = (trigger: HTMLButtonElement, height: number) => {
+  useEffect(() => {
+    if (!taskMenuOpen || taskMenuLoading) return;
+    queueMicrotask(() => taskMenu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+  }, [taskMenuLoading, taskMenuOpen]);
+
+  const positionMenu = (trigger: HTMLButtonElement, width: number, height: number) => {
     const rect = trigger.getBoundingClientRect();
     setMenuPosition({
-      left: Math.max(VIEWPORT_GUTTER, Math.min(window.innerWidth - NODE_MENU_WIDTH - VIEWPORT_GUTTER, rect.left + rect.width / 2 - NODE_MENU_WIDTH / 2)),
+      left: Math.max(VIEWPORT_GUTTER, Math.min(window.innerWidth - width - VIEWPORT_GUTTER, rect.left + rect.width / 2 - width / 2)),
       top: Math.max(VIEWPORT_GUTTER, Math.min(window.innerHeight - height - VIEWPORT_GUTTER, rect.bottom + Number.parseFloat(DESIGN_TOKENS.dark.space1)))
     });
   };
@@ -186,7 +210,8 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
     const trigger = nodeTriggers.current.get(nodeId);
     if (!trigger) return;
     setUrgencyMenuOpen(false);
-    positionMenu(trigger, NODE_MENU_HEIGHT);
+    setTaskMenuOpen(false);
+    positionMenu(trigger, NODE_MENU_WIDTH, NODE_MENU_HEIGHT);
     setOpenNodeId(nodeId);
   };
 
@@ -197,8 +222,33 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
     }
     if (!urgencyTrigger.current) return;
     setOpenNodeId(null);
-    positionMenu(urgencyTrigger.current, URGENCY_MENU_HEIGHT);
+    setTaskMenuOpen(false);
+    positionMenu(urgencyTrigger.current, NODE_MENU_WIDTH, URGENCY_MENU_HEIGHT);
     setUrgencyMenuOpen(true);
+  };
+
+  const loadMaterials = async () => {
+    setTaskMenuLoading(true);
+    setTaskMenuError(null);
+    const result = onLoadMaterials
+      ? await onLoadMaterials(task.id)
+      : { links: [], error: null };
+    setTaskMenuLoading(false);
+    setTaskLinks(result.links);
+    setTaskMenuError(result.error);
+  };
+
+  const openTaskMenu = () => {
+    if (taskMenuOpen) {
+      setTaskMenuOpen(false);
+      return;
+    }
+    if (!taskMenuTrigger.current) return;
+    setOpenNodeId(null);
+    setUrgencyMenuOpen(false);
+    positionMenu(taskMenuTrigger.current, TASK_MENU_WIDTH, TASK_MENU_MAX_HEIGHT);
+    setTaskMenuOpen(true);
+    if (taskLinks === null) void loadMaterials();
   };
 
   const closeNodeMenu = (restoreFocus = true) => {
@@ -210,6 +260,11 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
   const closeUrgencyMenu = (restoreFocus = true) => {
     setUrgencyMenuOpen(false);
     if (restoreFocus) queueMicrotask(() => urgencyTrigger.current?.focus());
+  };
+
+  const closeTaskMenu = (restoreFocus = true) => {
+    setTaskMenuOpen(false);
+    if (restoreFocus) queueMicrotask(() => taskMenuTrigger.current?.focus());
   };
 
   const moveMenuFocus = (
@@ -260,8 +315,8 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
     }
   };
 
-  const chooseTaskAction = (event: React.MouseEvent<HTMLButtonElement>, action: TaskCardAction) => {
-    event.currentTarget.closest('details')?.removeAttribute('open');
+  const chooseTaskAction = (action: TaskCardAction) => {
+    closeTaskMenu(false);
     onTaskAction(action);
   };
 
@@ -309,14 +364,72 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
         </span>
       </div>
 
-      <details className="card-task-menu" data-carousel-no-drag="true">
-        <summary aria-label={'管理任务：' + task.name} role="button" title="任务操作"><MoreHorizontal aria-hidden="true" size={18} /></summary>
-        <div className="card-task-menu-popover">
-          <button type="button" onClick={(event) => chooseTaskAction(event, 'complete')}><CheckCircle2 aria-hidden="true" size={16} />完成并归档</button>
-          <button type="button" onClick={(event) => chooseTaskAction(event, 'cancel')}><Ban aria-hidden="true" size={16} />取消并归档</button>
-          <button type="button" className="danger" onClick={(event) => chooseTaskAction(event, 'delete')}><Trash2 aria-hidden="true" size={16} />永久删除</button>
-        </div>
-      </details>
+      <button
+        ref={taskMenuTrigger}
+        type="button"
+        className="card-task-menu-trigger"
+        data-carousel-no-drag="true"
+        aria-label={'展开任务资料与操作：' + task.name}
+        aria-haspopup="menu"
+        aria-expanded={taskMenuOpen}
+        title="资料与任务操作"
+        onClick={(event) => { event.stopPropagation(); openTaskMenu(); }}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          openTaskMenu();
+        }}
+      >
+        <Paperclip aria-hidden="true" size={17} />
+        <ChevronDown aria-hidden="true" size={11} />
+      </button>
+
+      {taskMenuOpen && (() => {
+        const overlayRoot = document.querySelector<HTMLElement>(APP_OVERLAY_ROOT_SELECTOR) ?? document.body;
+        return createPortal(
+          <div
+            ref={taskMenu}
+            className="card-task-menu-popover"
+            role="menu"
+            aria-label={'任务资料与操作：' + task.name}
+            data-carousel-no-drag="true"
+            style={menuPosition}
+            onKeyDown={(event) => moveMenuFocus(event, taskMenu.current, closeTaskMenu)}
+          >
+            <span className="card-task-menu-label">关联资料</span>
+            {taskMenuLoading ? (
+              <span className="card-task-menu-state" role="status">正在读取资料</span>
+            ) : taskMenuError ? (
+              <button type="button" role="menuitem" onClick={() => void loadMaterials()}>
+                <RotateCw aria-hidden="true" size={16} /><span><strong>重新载入资料</strong><small>{taskMenuError}</small></span>
+              </button>
+            ) : taskLinks?.length ? taskLinks.map((link) => {
+              const MaterialIcon = link.kind === 'url' ? Link2 : File;
+              return (
+                <button
+                  key={link.id}
+                  type="button"
+                  className="card-material-menu-item"
+                  role="menuitem"
+                  title={link.target}
+                  onClick={() => { closeTaskMenu(false); onOpenMaterial?.(link); }}
+                >
+                  <MaterialIcon aria-hidden="true" size={16} />
+                  <span><strong>{link.title || (link.kind === 'url' ? '网页链接' : '文件')}</strong><small>{link.target}</small></span>
+                </button>
+              );
+            }) : (
+              <span className="card-task-menu-state">尚未添加链接或文件</span>
+            )}
+            <span className="card-node-menu-rule" />
+            <button type="button" role="menuitem" onClick={() => { closeTaskMenu(false); onRenameTask?.(); }}><Pencil aria-hidden="true" size={16} /><span>编辑任务名称</span></button>
+            <button type="button" role="menuitem" onClick={() => chooseTaskAction('complete')}><CheckCircle2 aria-hidden="true" size={16} /><span>完成并归档</span></button>
+            <button type="button" role="menuitem" onClick={() => chooseTaskAction('cancel')}><Ban aria-hidden="true" size={16} /><span>取消并归档</span></button>
+            <button type="button" role="menuitem" className="danger" onClick={() => chooseTaskAction('delete')}><Trash2 aria-hidden="true" size={16} /><span>永久删除</span></button>
+          </div>,
+          overlayRoot
+        );
+      })()}
 
       {urgencyMenuOpen && (() => {
         const overlayRoot = document.querySelector<HTMLElement>(APP_OVERLAY_ROOT_SELECTOR) ?? document.body;
@@ -433,6 +546,17 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
               );
             })}
             <span className="card-node-menu-rule" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                closeNodeMenu(false);
+                onRenameNode?.(node);
+              }}
+            >
+              <Pencil aria-hidden="true" size={16} />
+              <span>编辑节点名称</span>
+            </button>
             <button
               type="button"
               role="menuitem"

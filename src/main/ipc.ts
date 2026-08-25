@@ -10,7 +10,7 @@ import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { MemoryService } from './memoryService';
 import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskInput, TaskUrgencyUpdateRequest } from '../shared/types';
+import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskInput, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
 export function registerIpc(
@@ -74,6 +74,7 @@ export function registerIpc(
   ipcMain.handle('tasks:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.getTaskDetail(id)));
   ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskInput) => wrap(() => appSvc.createTask(input)));
   ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
+  ipcMain.handle('tasks:setName', (_e: IpcMainInvokeEvent, request: TaskNameUpdateRequest) => wrap(() => appSvc.setTaskName(request)));
   ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => appSvc.setTaskUrgency(request)));
   ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.completeTask(id)));
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
@@ -81,6 +82,7 @@ export function registerIpc(
 
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => appSvc.addNode(taskId, input)));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => appSvc.updateNode(nodeId, input)));
+  ipcMain.handle('nodes:setTitle', (_e: IpcMainInvokeEvent, request: NodeTitleUpdateRequest) => wrap(() => appSvc.setNodeTitle(request)));
   ipcMain.handle('nodes:setStartTime', (_e: IpcMainInvokeEvent, request: NodeTimeUpdateRequest) => wrap(() => appSvc.setNodeStartTime(request)));
   ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => appSvc.removeNode(nodeId)));
   ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => appSvc.setNodeStatus(nodeId, status)));

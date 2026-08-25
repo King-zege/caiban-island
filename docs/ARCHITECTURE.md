@@ -66,8 +66,8 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 
 | 通道 | 方向 | 说明 |
 | --- | --- | --- |
-| tasks:list / detail / create / update / setUrgency / complete / cancel / delete | renderer→main | 任务 CRUD 与详情；`setUrgency` 只接收 `TaskUrgencyUpdateRequest` 并校验预期旧值（完成/取消即归档；delete 为确认后的永久删除） |
-| nodes:add / update / remove / setStatus / reorder / setStartTime | renderer→main | 节点操作；`setStartTime` 只接收 `NodeTimeUpdateRequest` 并校验预期旧值 |
+| tasks:list / detail / create / update / setName / setUrgency / complete / cancel / delete | renderer→main | 任务 CRUD 与详情；`setName`、`setUrgency` 使用专用请求并校验预期旧值（完成/取消即归档；delete 为确认后的永久删除） |
+| nodes:add / update / setTitle / remove / setStatus / reorder / setStartTime | renderer→main | 节点操作；`setTitle`、`setStartTime` 使用专用请求并校验预期旧值 |
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
 | reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
@@ -133,6 +133,10 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 `tasks:delete` 只接受活跃任务。应用服务在单个事务中删除该任务的 `change_events`，再删除 `tasks`；`nodes`、`links`、`notes`、`reminders` 与 `node_reminders` 由已启用的外键级联清理。renderer 在真正调用前提供二次确认与 5 秒撤销窗口。
 
 `tasks:setUrgency` 只接受 `TaskUrgencyUpdateRequest(taskId, urgency, expectedUrgency)`。`TaskService` 校验四档枚举、任务仍为活跃状态且数据库当前值等于 `expectedUrgency`，随后只更新 `urgency` 与 `updated_at` 并记录 `task_urgency_updated`；冲突时拒绝覆盖。正式写入经 `AppService` 编排，提交后发送一次变更通知，以触发任务列表刷新和飞书自动同步。
+
+`tasks:setName` 与 `nodes:setTitle` 分别只接受 `TaskNameUpdateRequest(taskId, name, expectedName)` 和 `NodeTitleUpdateRequest(nodeId, title, expectedTitle)`。shared 校验复用任务/节点创建时的 1–200 字符规则；`TaskService` 在活跃数据上执行旧值检查，只更新名称字段与审计时间并记录对应审计事件。无变化不写入、不通知；冲突拒绝整份快照覆盖。所有正式重命名经 `AppService` 事务提交后发送一次变更通知。
+
+L2 任务列表由 main 先按 shared `compareTasks` 返回，renderer 的默认“紧急程度”模式继续复用同一比较器，避免复制排序规则；用户临时选择的截止时间/最近更新模式只存在于当前 renderer 生命周期。卡片资料下拉复用 `tasks:detail` 按需读取缓存中的 `TaskLink` 元数据，不新增文件读取能力，也不接触文件内容；打开目标继续经过 `ExternalTargetDialog` 确认。
     CREATE TABLE notes(
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

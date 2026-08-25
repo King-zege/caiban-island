@@ -5,11 +5,24 @@ export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
 const NAME_MAX = 200;
 
+export function validateTaskName(value: string): ValidationResult {
+  const name = (value ?? '').trim();
+  if (name.length === 0) return { ok: false, errors: ['任务名称不能为空'] };
+  if (name.length > NAME_MAX) return { ok: false, errors: ['任务名称不能超过 ' + NAME_MAX + ' 个字符'] };
+  return { ok: true };
+}
+
+export function validateNodeTitle(value: string): ValidationResult {
+  const title = (value ?? '').trim();
+  if (title.length === 0) return { ok: false, errors: ['节点标题不能为空'] };
+  if (title.length > NAME_MAX) return { ok: false, errors: ['节点标题不能超过 ' + NAME_MAX + ' 个字符'] };
+  return { ok: true };
+}
+
 export function validateTaskInput(input: TaskInput): ValidationResult {
   const errors: string[] = [];
-  const name = (input.name ?? '').trim();
-  if (name.length === 0) errors.push('任务名称不能为空');
-  else if (name.length > NAME_MAX) errors.push('任务名称不能超过 ' + NAME_MAX + ' 个字符');
+  const nameResult = validateTaskName(input.name);
+  if (!nameResult.ok) errors.push(...nameResult.errors);
   if (!URGENCIES.includes(input.urgency)) errors.push('无效的紧急程度');
   if (!KINDS.includes(input.kind)) errors.push('无效的任务类型');
   if (input.deadlineUtc !== null) {
@@ -25,9 +38,8 @@ export function validateNodeInput(input: {
   endUtc: string | null;
 }): ValidationResult {
   const errors: string[] = [];
-  const title = (input.title ?? '').trim();
-  if (title.length === 0) errors.push('节点标题不能为空');
-  else if (title.length > NAME_MAX) errors.push('节点标题不能超过 ' + NAME_MAX + ' 个字符');
+  const titleResult = validateNodeTitle(input.title);
+  if (!titleResult.ok) errors.push(...titleResult.errors);
   if (input.startUtc !== null && !isValidIsoUtc(input.startUtc)) errors.push('节点开始时间格式无效');
   if (input.endUtc !== null && !isValidIsoUtc(input.endUtc)) errors.push('节点截止时间格式无效');
   if (

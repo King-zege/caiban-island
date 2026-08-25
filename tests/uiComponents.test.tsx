@@ -126,10 +126,10 @@ describe('P9 核心界面控件', () => {
     const onTaskAction = vi.fn();
     render(<TaskCard card={CARD} onOpen={() => undefined} onUrgencyChange={async () => undefined} onNodeStatus={async () => undefined} onNodeTime={() => undefined} onTaskAction={onTaskAction} />);
 
-    await userEvent.click(screen.getByRole('button', { name: '管理任务：办公电脑采购' }));
-    expect(screen.getByRole('button', { name: '完成并归档' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: '取消并归档' })).not.toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: '永久删除' }));
+    await userEvent.click(screen.getByRole('button', { name: '展开任务资料与操作：办公电脑采购' }));
+    expect(screen.getByRole('menuitem', { name: '完成并归档' })).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: '取消并归档' })).not.toBeNull();
+    await userEvent.click(screen.getByRole('menuitem', { name: '永久删除' }));
     expect(onTaskAction).toHaveBeenCalledWith('delete');
   });
 

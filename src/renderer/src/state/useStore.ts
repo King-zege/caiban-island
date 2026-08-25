@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, TaskCard, TaskDetail, TaskInput, TaskUrgencyUpdateRequest } from '../../../shared/types';
+import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskDetail, TaskInput, TaskLink, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -19,12 +19,15 @@ interface TaskState {
   complete: (id: string) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   deleteTask: (id: string) => Promise<string | null>;
+  setTaskName: (request: TaskNameUpdateRequest) => Promise<string | null>;
   setTaskUrgency: (request: TaskUrgencyUpdateRequest) => Promise<string | null>;
   openDetail: (id: string) => Promise<void>;
   prefetchDetail: (id: string) => Promise<void>;
+  loadTaskLinks: (id: string) => Promise<{ links: TaskLink[]; error: string | null }>;
   closeDetail: () => void;
   addNode: (taskId: string, input: NodeInput) => Promise<string | null>;
   updateNode: (taskId: string, nodeId: string, input: NodeInput) => Promise<string | null>;
+  setNodeTitle: (taskId: string, request: NodeTitleUpdateRequest) => Promise<string | null>;
   setNodeStartTime: (taskId: string, request: NodeTimeUpdateRequest) => Promise<string | null>;
   removeNode: (nodeId: string) => Promise<string | null>;
   setNodeStatus: (taskId: string, nodeId: string, status: NodeStatus) => Promise<string | null>;
@@ -122,6 +125,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return r.error;
   },
 
+  setTaskName: async (request) => {
+    const r = await window.api.setTaskName(request);
+    if (!r.ok) return r.error;
+    set((state) => {
+      const tasks = state.tasks.map((card) => card.task.id === request.taskId
+        ? { ...card, task: r.data }
+        : card);
+      const detail = state.detail?.task.id === request.taskId
+        ? { ...state.detail, task: r.data }
+        : state.detail;
+      const detailCache = { ...state.detailCache };
+      if (detailCache[request.taskId]) detailCache[request.taskId] = { ...detailCache[request.taskId], task: r.data };
+      return { tasks, detail, detailCache };
+    });
+    await get().load();
+    return null;
+  },
+
   setTaskUrgency: async (request) => {
     const r = await window.api.setTaskUrgency(request);
     if (!r.ok) return r.error;
@@ -169,6 +190,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return request;
   },
 
+  loadTaskLinks: async (id) => {
+    await get().prefetchDetail(id);
+    const cached = get().detailCache[id];
+    return cached
+      ? { links: cached.links, error: null }
+      : { links: [], error: get().detailError ?? '暂时无法读取任务资料' };
+  },
+
   closeDetail: () => set({ detail: null, detailError: null }),
 
   refreshDetail: async (id) => {
@@ -193,6 +222,33 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return null;
     }
     return r.error;
+  },
+
+  setNodeTitle: async (taskId, request) => {
+    const r = await window.api.setNodeTitle(request);
+    if (!r.ok) return r.error;
+    set((state) => {
+      const patchNodes = <T extends { id: string }>(nodes: T[]) => nodes.map((node) => node.id === request.nodeId
+        ? { ...node, title: r.data.title }
+        : node);
+      const tasks = state.tasks.map((card) => card.task.id === taskId
+        ? {
+            ...card,
+            nodes: patchNodes(card.nodes),
+            progress: card.progress.nextTitle === request.expectedTitle
+              ? { ...card.progress, nextTitle: r.data.title }
+              : card.progress
+          }
+        : card);
+      const detail = state.detail?.task.id === taskId
+        ? { ...state.detail, nodes: patchNodes(state.detail.nodes) }
+        : state.detail;
+      const detailCache = { ...state.detailCache };
+      if (detailCache[taskId]) detailCache[taskId] = { ...detailCache[taskId], nodes: patchNodes(detailCache[taskId].nodes) };
+      return { tasks, detail, detailCache };
+    });
+    await get().load();
+    return null;
   },
 
   setNodeStartTime: async (taskId, request) => {

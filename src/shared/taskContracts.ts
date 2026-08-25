@@ -48,6 +48,12 @@ export interface NodeTimeUpdateRequest {
   expectedStartUtc: string | null;
 }
 
+export interface NodeTitleUpdateRequest {
+  nodeId: string;
+  title: string;
+  expectedTitle: string;
+}
+
 export type ReminderEvent =
   | { type: 'fallback'; message: string }
   | { type: 'open-node'; taskId: string; nodeId: string };
@@ -82,6 +88,12 @@ export interface TaskUrgencyUpdateRequest {
   taskId: string;
   urgency: Urgency;
   expectedUrgency: Urgency;
+}
+
+export interface TaskNameUpdateRequest {
+  taskId: string;
+  name: string;
+  expectedName: string;
 }
 
 export interface ProgressInfo {
