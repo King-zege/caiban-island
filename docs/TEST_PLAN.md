@@ -57,7 +57,7 @@
 - 记忆安全：规范化重复、不可见 Unicode、提示注入、凭据/Authorization、私人/临时路径和单条长度均在写入前拒绝。
 - 会话召回：FTS5 迁移/索引、首尾摘要、有限上下文、tool 消息过滤；会话新建/重载才刷新确认记忆快照。
 - 飞书：mock bitable server 建表/建字段/按任务ID upsert 幂等；令牌失效错误与重试；CSV/Markdown 导出格式。
-- Renderer：L2 方向键/Home/End/Enter、项目紧急度排序与菜单、资料懒载入、节点四态/时间、任务/节点重命名、双层内容模式、杂事贴纸虚拟化与 5 秒完成撤销；L3 分组任务导航、项目五页签、杂事单页、旧 deadline 提示、提醒/备注/资料管理与通知定位；设置直达，Dialog 焦点锁定和恢复，Toast live region，凭据默认遮罩，外链确认。
+- Renderer：L2 方向键/Home/End/Enter、项目紧急度排序与菜单、资料懒载入、节点四态/时间、任务/节点重命名、双层内容模式、杂事贴纸虚拟化与立即完成反馈；L3 分组任务导航、项目五页签、杂事单页、旧 deadline 提示、提醒/备注/资料管理与通知定位；设置直达，Dialog 焦点锁定和恢复，Toast live region，凭据默认遮罩，外链确认。
 - 视觉测试进程必须使用位于系统临时目录的 `CAIBAN_TEST_USER_DATA_DIR` 和合成夹具；禁止读取真实用户数据。
 - 软件渲染测试使用隔离目录与 `CAIBAN_TEST_DISABLE_HARDWARE_ACCELERATION=1`；生产包不得接受该变量。
 

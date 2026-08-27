@@ -18,12 +18,13 @@ function reminderLabel(value: string | null, timeZone: string): string | null {
 interface MiscStickerProps {
   card: TaskCard;
   tabIndex: number;
+  completing: boolean;
   onFocus: () => void;
   onOpen: () => void;
   onComplete: () => void;
 }
 
-export default function MiscSticker({ card, tabIndex, onFocus, onOpen, onComplete }: MiscStickerProps): React.JSX.Element {
+export default function MiscSticker({ card, tabIndex, completing, onFocus, onOpen, onComplete }: MiscStickerProps): React.JSX.Element {
   const reminder = card.miscReminder;
   const formatted = reminderLabel(reminder?.fireAtUtc ?? null, card.task.tzId);
   const status = reminder?.state === 'fired'
@@ -55,8 +56,9 @@ export default function MiscSticker({ card, tabIndex, onFocus, onOpen, onComplet
         type="button"
         className="misc-sticker-complete"
         data-carousel-no-drag="true"
-        aria-label={'完成杂事「' + card.task.name + '」'}
-        title="完成杂事"
+        aria-label={(completing ? '正在完成杂事「' : '完成杂事「') + card.task.name + '」'}
+        title={completing ? '正在完成' : '完成杂事'}
+        disabled={completing}
         onClick={(event) => { event.stopPropagation(); onComplete(); }}
       >
         <Check aria-hidden="true" size={18} />

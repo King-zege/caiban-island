@@ -68,6 +68,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
   const [externalTarget, setExternalTarget] = useState<ExternalTarget | null>(null);
   const [taskActionBusy, setTaskActionBusy] = useState(false);
+  const [completingMiscId, setCompletingMiscId] = useState<string | null>(null);
   const [cardRenderLimit, setCardRenderLimit] = useState(2);
 
   useEffect(() => {
@@ -188,15 +189,12 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
   };
 
-  const quickCompleteMisc = (taskId: string, taskName: string) => {
-    const scheduled = scheduleUndo({
-      id: taskId,
-      kind: 'task',
-      operation: 'complete',
-      label: '杂事「' + taskName + '」',
-      commit: () => completeTask(taskId)
-    });
-    if (scheduled) notify('杂事将在 5 秒后完成，可撤销', 'info');
+  const quickCompleteMisc = async (taskId: string) => {
+    if (completingMiscId) return;
+    setCompletingMiscId(taskId);
+    const error = await completeTask(taskId);
+    setCompletingMiscId(null);
+    notify(error ?? '杂事已完成并归档', error ? 'error' : 'success');
   };
 
   const saveRename = async (name: string): Promise<string | null> => {
@@ -356,9 +354,10 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
                   key={card.task.id}
                   card={card}
                   tabIndex={index === activeMiscIndex ? 0 : -1}
+                  completing={completingMiscId === card.task.id}
                   onFocus={() => { setActiveMiscIndex(index); setActiveMiscId(card.task.id); }}
                   onOpen={() => enterWorkspace(card.task.id)}
-                  onComplete={() => quickCompleteMisc(card.task.id, card.task.name)}
+                  onComplete={() => void quickCompleteMisc(card.task.id)}
                 />;
               }}
             />

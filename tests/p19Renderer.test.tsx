@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,7 +107,7 @@ describe('P19 Renderer 任务分层', () => {
     });
   });
 
-  it('L2 混合布局同步原生尺寸模式；杂事贴纸正文打开 L3，完成操作进入 5 秒撤销队列', async () => {
+  it('L2 混合布局同步原生尺寸模式；杂事贴纸正文打开 L3，完成操作立即提交', async () => {
     const setL2ContentMode = vi.fn(async () => ({ accepted: true }));
     const setLevel = vi.fn(async () => ({ accepted: true }));
     const completeTask = vi.fn(async () => ({ ok: true as const, data: MISC_CARD.task }));
@@ -123,12 +123,10 @@ describe('P19 Renderer 任务分层', () => {
     expect(useWorkspaceStore.getState().selectedTaskId).toBe('misc-1');
     expect(setLevel).toHaveBeenCalledWith('l3');
 
-    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: '完成杂事「联系物业续门禁卡」' }));
-    expect(screen.queryByRole('button', { name: /打开杂事「联系物业续门禁卡」/ })).toBeNull();
-    expect(completeTask).not.toHaveBeenCalled();
-    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(completeTask).toHaveBeenCalledWith('misc-1');
+    await waitFor(() => expect(completeTask).toHaveBeenCalledWith('misc-1'));
+    expect(useWorkspaceStore.getState().pendingUndo).toBeNull();
+    expect(useWorkspaceStore.getState().toast?.message).toBe('杂事已完成并归档');
   });
 
   it('L3 为杂事使用无页签单页，保留提醒、备注、资料和生命周期操作', async () => {
