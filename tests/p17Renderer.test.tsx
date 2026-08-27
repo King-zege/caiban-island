@@ -17,6 +17,7 @@ const CARD: TaskCard = {
     kind: 'task',
     urgency: 'normal',
     deadlineUtc: '2026-09-01T10:00:00.000Z',
+    remindAtUtc: null,
     tzId: 'Asia/Shanghai',
     status: 'active',
     createdAtUtc: '2026-08-24T00:00:00.000Z',
@@ -26,7 +27,8 @@ const CARD: TaskCard = {
   },
   progress: { done: 0, total: 1, nextTitle: '确认参数' },
   nodes: [{ id: 'node-1', title: '确认参数', startUtc: null, status: 'pending', position: 0 }],
-  overdue: false
+  overdue: false,
+  miscReminder: null
 };
 
 const DETAIL: TaskDetail = {
@@ -36,7 +38,8 @@ const DETAIL: TaskDetail = {
     startUtc: null, endUtc: null, status: 'pending', position: 0
   }],
   links: [],
-  note: ''
+  note: '',
+  miscReminder: null
 };
 
 function updatedCard(urgency: TaskCard['task']['urgency']): TaskCard {

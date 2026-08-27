@@ -71,7 +71,8 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 | links:add / remove | renderer→main | 链接管理（URL 仅 http/https） |
 | notes:save | renderer→main | 备注保存（每任务一条，Markdown） |
 | reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
-| reminder:event | main→renderer | 只读提醒降级消息，或节点通知点击后的任务/节点定位指令 |
+| misc:setReminder / resolveLegacyDeadline | renderer→main | 杂事精确提醒的并发安全设置，以及旧 deadline 转换/清除 |
+| reminder:event | main→renderer | 只读提醒降级消息，或节点/杂事通知点击后的定位指令 |
 | drafts:list / get / confirm / discard | renderer→main | AI 草稿审核（P5） |
 | archive:list / search / get / restore | renderer→main | 归档查询、恢复（快照导出在主进程完成/取消时执行） |
 | settings:getAll / set | renderer→main | 设置（默认提醒、自启、磨砂开关） |
@@ -84,7 +85,7 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 | memory:list / listProposals / confirmProposal / discardProposal | renderer→main | 读取与审核长期记忆提案（P15） |
 | memory:update / delete / clear | renderer→main | 用户直接维护已确认记忆（P15） |
 | system:openUrl / openPath / showInFolder | renderer→main | 系统打开动作 |
-| window:setLevel / setL2Detail / activate | renderer→main | 请求窗口三级控制、速览加高、焦点激活；层级请求返回 `TransitionRequestResult` |
+| window:setLevel / setL2Detail / setL2ContentMode / activate | renderer→main | 请求窗口三级控制、速览内容模式/加高、焦点激活；层级请求返回 `TransitionRequestResult` |
 | window:transitionReady / transitionFinished | renderer→main | renderer 完成目标层准备与 compositor 动画后确认当前 transition id |
 | window:transition | main→renderer | 推送 `IslandTransitionState` 阶段、源/目标几何、时长与渲染模式 |
 | ui:interacting / island:togglePause / app:quit | renderer→main | 交互态、暂停、退出 |
@@ -137,6 +138,8 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 `tasks:setName` 与 `nodes:setTitle` 分别只接受 `TaskNameUpdateRequest(taskId, name, expectedName)` 和 `NodeTitleUpdateRequest(nodeId, title, expectedTitle)`。shared 校验复用任务/节点创建时的 1–200 字符规则；`TaskService` 在活跃数据上执行旧值检查，只更新名称字段与审计时间并记录对应审计事件。无变化不写入、不通知；冲突拒绝整份快照覆盖。所有正式重命名经 `AppService` 事务提交后发送一次变更通知。
 
 L2 任务列表由 main 先按 shared `compareTasks` 返回，renderer 的默认“紧急程度”模式继续复用同一比较器，避免复制排序规则；用户临时选择的截止时间/最近更新模式只存在于当前 renderer 生命周期。卡片资料下拉复用 `tasks:detail` 按需读取缓存中的 `TaskLink` 元数据，不新增文件读取能力，也不接触文件内容；打开目标继续经过 `ExternalTargetDialog` 确认。
+
+P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有比较器和 P18 卡片；杂事按已触发、未来时间、无提醒最近更新和 ID 固定排序。renderer 把 `empty|project|misc|mixed` 发送给 window controller；controller 在 L1 也保存模式，并将其与 `l2Detail` 合并计算目标尺寸，避免进入 L2 后二次 resize。L3 将同一任务数组展平为带不可选分组头的虚拟导航；项目保留五分区，杂事改为单页编辑。
     CREATE TABLE notes(
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -257,6 +260,15 @@ L2 任务列表由 main 先按 shared `compareTasks` 返回，renderer 的默认
 - 任务提前量提醒与节点准时提醒统一为 `DueReminder`，扫描后按任务提醒 `id` 或节点 `node_id` 条件更新 `fired`，只有原子领取成功的记录才通知。时间修改以 upsert 重置 `fired=0`，其他字段变化保持已有触发状态。
 - 调度器在最近到期时间与 60 秒上限之间动态安排扫描；启动和 `powerMonitor.resume` 先原子领取超过宽限期的漏发记录并聚合摘要，再逐条处理最近到期记录。系统通知不可用时发送只读 `reminder:event` 岛内轻弹。
 - 节点 Toast 点击发送 `{type:'open-node', taskId, nodeId}`，恢复岛并进入 L3；renderer 打开“采购节点”、加载详情并对目标节点短暂高亮。该事件不携带备注、路径或节点说明。
+
+## 7.4 杂事分层与精确提醒（P19）
+
+- migration v5 为 `tasks` 增加 `remind_at_utc`，并创建 `misc_reminders(task_id PRIMARY KEY, fire_at_utc, fired)` 与到期索引。`tasks.remind_at_utc` 是用户计划，调度表是可重建派生状态；旧杂事 deadline 不回填，且其 `reminders` 行在迁移中删除。
+- `TaskCreateRequest` 是 `ProjectTaskCreateRequest | MiscTaskCreateRequest`。杂事创建由 `AppService` 在一个事务内写 task、note 和提醒；`Task.kind` 创建后不可变，杂事的 urgency 仅保留旧数据兼容且不再对外展示或允许修改。
+- `misc:setReminder` 只接受 taskId、新时间和 `expectedRemindAtUtc`。新设/修改必须为未来 ISO8601 UTC；相同时间不重置 fired，修改时间 upsert 为 fired=0，清除同步删除调度行。完成/取消/删除移除调度，恢复只同步未来时间。
+- 旧杂事 deadline 通过 `misc:resolveLegacyDeadline` 原子转换或清除，并携带预期 deadline。转换仅允许未来值：写入 `remind_at_utc`、清空 `deadline_utc`、删除旧提前量并建立精确提醒；过去值只允许清除。
+- `ReminderService` 把项目、节点、杂事统一为 `DueReminder`，三类记录分别按自身主键原子领取。杂事 Toast 点击发送 `{type:'open-misc', taskId}`，renderer 打开该杂事 L3 单页；漏发摘要只报告数量与分类，不携带备注或资料目标。
+- AI 三条通道的 `propose_task_draft` 使用 task/misc 判别 schema；确认仍由 `DraftService` 最终校验并经 AppService 事务写入。节点草稿和轻量节点操作继续拒绝杂事。
 
 ## 8. 安全
 

@@ -17,6 +17,7 @@ const CARD: TaskCard = {
     kind: 'task',
     urgency: 'normal',
     deadlineUtc: '2026-08-25T10:00:00.000Z',
+    remindAtUtc: null,
     tzId: 'Asia/Shanghai',
     status: 'active',
     createdAtUtc: '2026-08-23T00:00:00.000Z',
@@ -26,7 +27,8 @@ const CARD: TaskCard = {
   },
   progress: { done: 0, total: 1, nextTitle: '确认技术参数' },
   nodes: [{ id: 'node-1', title: '确认技术参数', startUtc: null, status: 'pending', position: 0 }],
-  overdue: false
+  overdue: false,
+  miscReminder: null
 };
 
 function setApi(api: Partial<Window['api']>): void {

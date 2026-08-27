@@ -51,7 +51,7 @@ export class ArchiveService {
     const mdPath = path.join(dir, 'task.md');
 
     const json = {
-      format_version: 1,
+      format_version: 2,
       exported_at: now,
       app_version: APP_VERSION,
       task,
@@ -67,16 +67,16 @@ export class ArchiveService {
       '# ' + task.name,
       '',
       '- 类型：' + (task.kind === 'misc' ? '杂事' : '任务'),
-      '- 紧急程度：' + (urgencyLabel[task.urgency] ?? task.urgency),
-      '- 截止时间：' + (task.deadlineUtc ?? '未设置'),
+      task.kind === 'misc' ? '- 提醒时间：' + (task.remindAtUtc ?? '未设置') : '- 紧急程度：' + (urgencyLabel[task.urgency] ?? task.urgency),
+      task.kind === 'misc' ? '' : '- 截止时间：' + (task.deadlineUtc ?? '未设置'),
       '- 归档时间：' + (task.archivedAt ?? now),
       task.description ? '- 说明：' + task.description : '',
       '',
-      '## 节点',
+      task.kind === 'misc' ? '' : '## 节点',
       ''
     ];
     const ordered = [...detail.nodes].sort((a, b) => a.position - b.position);
-    if (ordered.length === 0) lines.push('（无节点）');
+    if (task.kind !== 'misc' && ordered.length === 0) lines.push('（无节点）');
     for (const n of ordered) {
       const dates = [n.startUtc, n.endUtc].filter(Boolean).join(' ~ ');
       lines.push('- [' + (statusLabel[n.status] ?? n.status) + '] ' + n.title + (dates ? '（' + dates + '）' : ''));
@@ -135,6 +135,7 @@ export class ArchiveService {
       kind: String(row.kind) as TaskDetail['task']['kind'],
       urgency: String(row.urgency) as TaskDetail['task']['urgency'],
       deadlineUtc: row.deadline_utc === null ? null : String(row.deadline_utc),
+      remindAtUtc: row.remind_at_utc === null || row.remind_at_utc === undefined ? null : String(row.remind_at_utc),
       tzId: String(row.tz_id),
       status: String(row.status) as TaskDetail['task']['status'],
       createdAtUtc: String(row.created_at),
@@ -165,7 +166,16 @@ export class ArchiveService {
         target: String(r.target),
         meta: String(r.meta)
       })),
-      note: note ? note.body : ''
+      note: note ? note.body : '',
+      miscReminder: toTask(taskRow).kind === 'misc'
+        ? {
+            state: taskRow.remind_at_utc
+              ? (Date.parse(String(taskRow.remind_at_utc)) <= Date.now() ? 'fired' : 'scheduled')
+              : taskRow.deadline_utc ? 'legacy_deadline' : 'none',
+            fireAtUtc: taskRow.remind_at_utc === null || taskRow.remind_at_utc === undefined ? null : String(taskRow.remind_at_utc),
+            legacyDeadlineUtc: taskRow.deadline_utc === null ? null : String(taskRow.deadline_utc)
+          }
+        : null
     };
     return { task: detail, events };
   }

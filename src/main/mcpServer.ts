@@ -35,7 +35,7 @@ export function createMcpServer(appSvc: AppService): Server {
     tools: [
       {
         name: 'list_active_tasks',
-        description: '列出采办岛全部活跃任务（含紧急度、截止时间、进度与下一节点）',
+        description: '列出采办岛全部活跃采购项目与杂事（含分类、项目进度或杂事精确提醒）',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false }
       },
       {
@@ -50,18 +50,36 @@ export function createMcpServer(appSvc: AppService): Server {
       },
       {
         name: 'propose_task_draft',
-        description: '提交一个任务拆分草稿（名称、说明、截止时间、紧急度、节点列表），草稿需用户在采办岛内审核确认后才生效',
+        description: '提交一个采购项目或杂事草稿；多阶段工作使用 task，单步骤记录/提醒使用 misc，草稿需用户审核确认后才生效',
         inputSchema: {
           type: 'object',
-          properties: {
-            name: { type: 'string', description: '任务名称，1-200 字符' },
-            description: { type: 'string', description: '任务说明' },
-            deadlineUtc: { type: ['string', 'null'], description: '截止时间 ISO8601 UTC，可空' },
-            urgency: { type: 'string', enum: ['critical', 'high', 'normal', 'low'], description: '紧急度' },
-            nodes: { type: 'array', items: NODE_SCHEMA, description: '时间轴节点' }
-          },
-          required: ['name', 'nodes'],
-          additionalProperties: false
+          oneOf: [
+            {
+              type: 'object',
+              properties: {
+                kind: { const: 'task' },
+                name: { type: 'string', description: '项目名称，1-200 字符' },
+                description: { type: 'string', description: '项目说明' },
+                deadlineUtc: { type: ['string', 'null'], description: '截止时间 ISO8601 UTC，可空' },
+                urgency: { type: 'string', enum: ['critical', 'high', 'normal', 'low'], description: '紧急度' },
+                nodes: { type: 'array', items: NODE_SCHEMA, description: '时间轴节点' }
+              },
+              required: ['kind', 'name', 'nodes'],
+              additionalProperties: false
+            },
+            {
+              type: 'object',
+              properties: {
+                kind: { const: 'misc' },
+                name: { type: 'string', description: '杂事名称，1-200 字符' },
+                note: { type: 'string', description: '可选备注' },
+                remindAtUtc: { type: ['string', 'null'], description: '精确提醒时间 ISO8601 UTC，可空' },
+                nodes: { type: 'array', maxItems: 0, description: '杂事必须为空数组' }
+              },
+              required: ['kind', 'name', 'nodes'],
+              additionalProperties: false
+            }
+          ]
         }
       },
       {
@@ -93,6 +111,8 @@ export function createMcpServer(appSvc: AppService): Server {
             deadline: c.task.deadlineUtc,
             urgency: c.task.urgency,
             kind: c.task.kind,
+            remindAtUtc: c.task.remindAtUtc,
+            miscReminder: c.miscReminder,
             done: c.progress.done,
             total: c.progress.total,
             nextNode: c.progress.nextTitle,
@@ -105,7 +125,8 @@ export function createMcpServer(appSvc: AppService): Server {
         return textResult(detail);
       }
       if (name === 'propose_task_draft') {
-        const nodes = (args.nodes as DraftNodeProposal[]).map((n) => ({
+        const kind = args.kind === 'misc' ? 'misc' : 'task';
+        const nodes = ((args.nodes as DraftNodeProposal[] | undefined) ?? []).map((n) => ({
           title: String(n.title ?? ''),
           description: String(n.description ?? ''),
           startUtc: n.startUtc === undefined || n.startUtc === null ? null : String(n.startUtc),
@@ -113,18 +134,26 @@ export function createMcpServer(appSvc: AppService): Server {
         }));
         const draft = appSvc.drafts.create('mcp', {
           type: 'task',
-          taskInput: {
-            name: String(args.name ?? ''),
-            description: String(args.description ?? ''),
-            kind: 'task',
-            urgency: (args.urgency as 'critical' | 'high' | 'normal' | 'low') ?? 'normal',
-            deadlineUtc: args.deadlineUtc === undefined || args.deadlineUtc === null ? null : String(args.deadlineUtc),
-            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-          },
-          nodes,
+          taskInput: kind === 'misc'
+            ? {
+                kind: 'misc',
+                name: String(args.name ?? ''),
+                note: String(args.note ?? ''),
+                remindAtUtc: args.remindAtUtc === undefined || args.remindAtUtc === null ? null : String(args.remindAtUtc),
+                tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
+              }
+            : {
+                kind: 'task',
+                name: String(args.name ?? ''),
+                description: String(args.description ?? ''),
+                urgency: (args.urgency as 'critical' | 'high' | 'normal' | 'low') ?? 'normal',
+                deadlineUtc: args.deadlineUtc === undefined || args.deadlineUtc === null ? null : String(args.deadlineUtc),
+                tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
+              },
+          nodes: kind === 'misc' ? [] : nodes,
           warnings: []
         });
-        return textResult({ draftId: draft.id, status: 'pending', nodeCount: nodes.length, message: '草稿已进入采办岛审核面板' });
+        return textResult({ draftId: draft.id, status: 'pending', nodeCount: kind === 'misc' ? 0 : nodes.length, message: '草稿已进入采办岛审核面板' });
       }
       if (name === 'propose_node_draft') {
         const nodes = (args.nodes as DraftNodeProposal[]).map((n) => ({

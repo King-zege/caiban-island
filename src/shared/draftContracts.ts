@@ -1,4 +1,4 @@
-import type { TaskInput } from './taskContracts';
+import type { TaskCreateRequest } from './taskContracts';
 import type { AgentActionDraftPayload } from './agentContracts';
 
 export type DraftSource = 'mcp' | 'api' | 'pi';
@@ -13,7 +13,7 @@ export interface DraftNodeProposal {
 
 export interface TaskDraftPayload {
   type: 'task';
-  taskInput: TaskInput;
+  taskInput: TaskCreateRequest;
   nodes: DraftNodeProposal[];
   warnings: string[];
 }

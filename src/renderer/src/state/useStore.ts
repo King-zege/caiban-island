@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskDetail, TaskInput, TaskLink, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
+import type { LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskCreateRequest, TaskDetail, TaskLink, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -15,12 +15,14 @@ interface TaskState {
   ensureOnboarded: () => Promise<void>;
   setOnboarded: (value: boolean) => void;
   load: () => Promise<void>;
-  create: (input: TaskInput) => Promise<string | null>;
+  create: (input: TaskCreateRequest) => Promise<string | null>;
   complete: (id: string) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   deleteTask: (id: string) => Promise<string | null>;
   setTaskName: (request: TaskNameUpdateRequest) => Promise<string | null>;
   setTaskUrgency: (request: TaskUrgencyUpdateRequest) => Promise<string | null>;
+  setMiscReminder: (request: MiscReminderUpdateRequest) => Promise<string | null>;
+  resolveLegacyMiscDeadline: (request: LegacyMiscDeadlineActionRequest) => Promise<string | null>;
   openDetail: (id: string) => Promise<void>;
   prefetchDetail: (id: string) => Promise<void>;
   loadTaskLinks: (id: string) => Promise<{ links: TaskLink[]; error: string | null }>;
@@ -160,6 +162,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return { tasks, detail, detailCache };
     });
     await get().load();
+    return null;
+  },
+
+  setMiscReminder: async (request) => {
+    const r = await window.api.setMiscReminder(request);
+    if (!r.ok) return r.error;
+    await get().refreshDetail(request.taskId);
+    return null;
+  },
+
+  resolveLegacyMiscDeadline: async (request) => {
+    const r = await window.api.resolveLegacyMiscDeadline(request);
+    if (!r.ok) return r.error;
+    await get().refreshDetail(request.taskId);
     return null;
   },
 

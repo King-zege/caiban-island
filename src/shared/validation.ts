@@ -1,5 +1,5 @@
 import { KINDS, URGENCIES } from './taskContracts';
-import type { NodeStatus, TaskInput } from './taskContracts';
+import type { MiscReminderUpdateRequest, NodeStatus, TaskCreateRequest, TaskInput } from './taskContracts';
 
 export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
@@ -30,6 +30,27 @@ export function validateTaskInput(input: TaskInput): ValidationResult {
   }
   if (!input.tzId || input.tzId.length === 0) errors.push('缺少时区信息');
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+export function validateTaskCreateRequest(input: TaskCreateRequest, nowMs = Date.now()): ValidationResult {
+  if (input.kind === 'task') return validateTaskInput(input);
+  const errors: string[] = [];
+  const nameResult = validateTaskName(input.name);
+  if (!nameResult.ok) errors.push(...nameResult.errors);
+  if (!input.tzId) errors.push('缺少时区信息');
+  if (input.remindAtUtc !== null) {
+    if (!isValidIsoUtc(input.remindAtUtc)) errors.push('提醒时间格式无效');
+    else if (Date.parse(input.remindAtUtc) <= nowMs) errors.push('提醒时间必须晚于当前时间');
+  }
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+export function validateMiscReminderUpdate(request: MiscReminderUpdateRequest, nowMs = Date.now()): ValidationResult {
+  if (request.remindAtUtc === null) return { ok: true };
+  if (!isValidIsoUtc(request.remindAtUtc)) return { ok: false, errors: ['提醒时间格式无效'] };
+  return Date.parse(request.remindAtUtc) <= nowMs
+    ? { ok: false, errors: ['提醒时间必须晚于当前时间'] }
+    : { ok: true };
 }
 
 export function validateNodeInput(input: {

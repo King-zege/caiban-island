@@ -12,13 +12,14 @@ import { useWorkspaceStore } from '../src/renderer/src/state/useWorkspaceStore';
 const NORMAL_CARD: TaskCard = {
   task: {
     id: 'task-normal', name: '普通采购', description: '', kind: 'task', urgency: 'normal',
-    deadlineUtc: '2026-09-01T10:00:00.000Z', tzId: 'Asia/Shanghai', status: 'active',
+    deadlineUtc: '2026-09-01T10:00:00.000Z', remindAtUtc: null, tzId: 'Asia/Shanghai', status: 'active',
     createdAtUtc: '2026-08-20T00:00:00.000Z', updatedAtUtc: '2026-08-20T00:00:00.000Z',
     archivedAt: null, archiveOutcome: null
   },
   progress: { done: 0, total: 1, nextTitle: '确认需求' },
   nodes: [{ id: 'node-1', title: '确认需求', startUtc: null, status: 'pending', position: 0 }],
-  overdue: false
+  overdue: false,
+  miscReminder: null
 };
 
 const CRITICAL_CARD: TaskCard = {
@@ -40,7 +41,8 @@ function detailFor(card: TaskCard): TaskDetail {
       { id: 'link-url', taskId: card.task.id, kind: 'url', title: '供应商报价页', target: 'https://example.com/quote', meta: '{}' },
       { id: 'link-file', taskId: card.task.id, kind: 'file', title: '报价单', target: 'C:\\Fixtures\\quote.pdf', meta: '{}' }
     ] : [],
-    note: ''
+    note: '',
+    miscReminder: null
   };
 }
 

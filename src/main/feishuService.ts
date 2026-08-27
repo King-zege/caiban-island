@@ -28,6 +28,7 @@ const TABLE_FIELDS = [
   { field_name: '类型', type: 3, property: { options: [{ name: '任务' }, { name: '杂事' }] } },
   { field_name: '紧急程度', type: 3, property: { options: [{ name: '紧急' }, { name: '高' }, { name: '普通' }, { name: '低' }] } },
   { field_name: '截止时间', type: 5 },
+  { field_name: '提醒时间', type: 5 },
   { field_name: '状态', type: 3, property: { options: [{ name: '进行中' }, { name: '已完成' }, { name: '已取消' }] } },
   { field_name: '进度', type: 2 },
   { field_name: '下一节点', type: 1 },
@@ -148,12 +149,20 @@ export class FeishuService {
       采办岛任务ID: t.id,
       任务名称: t.name,
       类型: t.kind === 'misc' ? '杂事' : '任务',
-      紧急程度: URGENCY_LABEL[t.urgency] ?? t.urgency,
       状态: '进行中',
-      下一节点: card.progress.nextTitle ?? ''
+      下一节点: t.kind === 'misc' ? null : card.progress.nextTitle ?? ''
     };
-    if (t.deadlineUtc) fields.截止时间 = Math.floor(Date.parse(t.deadlineUtc) / 1000);
-    if (card.progress.total > 0) fields.进度 = Math.round((card.progress.done / card.progress.total) * 100);
+    if (t.kind === 'misc') {
+      fields.紧急程度 = null;
+      fields.截止时间 = null;
+      fields.进度 = null;
+      fields.提醒时间 = t.remindAtUtc ? Math.floor(Date.parse(t.remindAtUtc) / 1000) : null;
+    } else {
+      fields.紧急程度 = URGENCY_LABEL[t.urgency] ?? t.urgency;
+      fields.提醒时间 = null;
+      if (t.deadlineUtc) fields.截止时间 = Math.floor(Date.parse(t.deadlineUtc) / 1000);
+      if (card.progress.total > 0) fields.进度 = Math.round((card.progress.done / card.progress.total) * 100);
+    }
     fields.最后同步时间 = Math.floor(now / 1000);
     return fields;
   }
@@ -184,7 +193,9 @@ export class FeishuService {
   }
 
   private async syncInner(): Promise<SyncResult> {
+    const existingTarget = this.getTarget();
     const target = await this.ensureTarget();
+    if (existingTarget) await this.ensureReminderField(target);
     const cards = this.tasks.listActive();
     const ids = cards.map((c) => c.task.id);
     const existing = await this.searchByTaskIds(target, ids);
@@ -211,6 +222,16 @@ export class FeishuService {
     }
     this.lastSync = { at: new Date().toISOString(), ok: true, created: toCreate.length, updated: toUpdate.length };
     return { created: toCreate.length, updated: toUpdate.length };
+  }
+
+  private async ensureReminderField(target: FeishuTarget): Promise<void> {
+    const base = '/bitable/v1/apps/' + target.appToken + '/tables/' + target.tableId + '/fields';
+    const data = await this.api<{ items?: Array<{ field_name?: string }> }>(base + '?page_size=100', { method: 'GET' });
+    if ((data.items ?? []).some((field) => field.field_name === '提醒时间')) return;
+    await this.api(base, {
+      method: 'POST',
+      body: JSON.stringify({ field_name: '提醒时间', type: 5 })
+    });
   }
 
   private async searchByTaskIds(target: FeishuTarget, ids: string[]): Promise<Map<string, string>> {
@@ -245,7 +266,7 @@ export class FeishuService {
 
   exportCsv(targetPath: string): string {
     const rows = this.exportLines();
-    const header = ['任务名称', '类型', '紧急程度', '截止时间', '状态', '进度', '下一节点', '时间轴节点', '网页链接', '文件链接', '备注', '采办岛任务ID'];
+    const header = ['任务名称', '类型', '紧急程度', '截止时间', '提醒时间', '状态', '进度', '下一节点', '时间轴节点', '网页链接', '文件链接', '备注', '采办岛任务ID'];
     const escape = (v: string) => '"' + v.replaceAll('"', '""').replaceAll(String.fromCharCode(10), '；') + '"';
     const lines = [header.join(',')];
     for (const r of rows) {
@@ -258,8 +279,9 @@ export class FeishuService {
       const vals = [
         t.name,
         t.kind === 'misc' ? '杂事' : '任务',
-        URGENCY_LABEL[t.urgency] ?? t.urgency,
-        t.deadlineUtc ?? '',
+        t.kind === 'misc' ? '' : URGENCY_LABEL[t.urgency] ?? t.urgency,
+        t.kind === 'misc' ? '' : t.deadlineUtc ?? '',
+        t.kind === 'misc' ? t.remindAtUtc ?? '' : '',
         '进行中',
         String(progress),
         r.card.progress.nextTitle ?? '',
@@ -286,9 +308,12 @@ exportMarkdown(targetPath: string): string {
       const nodes = [...detail.nodes].sort((a, b) => a.position - b.position);
       lines.push('## ' + t.name, '');
       lines.push('- 类型：' + (t.kind === 'misc' ? '杂事' : '任务'));
-      lines.push('- 紧急程度：' + (URGENCY_LABEL[t.urgency] ?? t.urgency));
-      lines.push('- 截止时间：' + (t.deadlineUtc ?? '未设置'));
-      lines.push('- 进度：' + (r.card.progress.total > 0 ? r.card.progress.done + '/' + r.card.progress.total : '尚未拆分'));
+      if (t.kind === 'misc') lines.push('- 提醒时间：' + (t.remindAtUtc ?? '未设置'));
+      else {
+        lines.push('- 紧急程度：' + (URGENCY_LABEL[t.urgency] ?? t.urgency));
+        lines.push('- 截止时间：' + (t.deadlineUtc ?? '未设置'));
+        lines.push('- 进度：' + (r.card.progress.total > 0 ? r.card.progress.done + '/' + r.card.progress.total : '尚未拆分'));
+      }
       if (r.card.progress.nextTitle) lines.push('- 下一节点：' + r.card.progress.nextTitle);
       if (nodes.length > 0) {
         lines.push('', '### 节点');
@@ -314,7 +339,7 @@ exportMarkdown(targetPath: string): string {
   // FR-096：单任务导出（任务详情页使用）
   exportTaskCsv(targetPath: string, taskId: string): string {
     const detail = this.tasks.getTaskDetail(taskId);
-    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,状态,进度,时间轴节点,网页链接,文件链接,备注,采办岛任务ID'];
+    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,提醒时间,状态,进度,时间轴节点,网页链接,文件链接,备注,采办岛任务ID'];
     const esc = (v: string) => '"' + v.replaceAll('"', '""').replaceAll(String.fromCharCode(10), '；') + '"';
     const nodes = [...detail.nodes].sort((a, b) => a.position - b.position);
     const urls = detail.links.filter((l) => l.kind === 'url').map((l) => l.target);
@@ -326,8 +351,9 @@ exportMarkdown(targetPath: string): string {
     const vals = [
       detail.task.name,
       detail.task.kind === 'misc' ? '杂事' : '任务',
-      URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency,
-      detail.task.deadlineUtc ?? '',
+      detail.task.kind === 'misc' ? '' : URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency,
+      detail.task.kind === 'misc' ? '' : detail.task.deadlineUtc ?? '',
+      detail.task.kind === 'misc' ? detail.task.remindAtUtc ?? '' : '',
       detail.task.status === 'active' ? '进行中' : detail.task.archiveOutcome === 'completed' ? '已完成' : '已取消',
       String(progress),
       nodes.map((n) => '[' + (STATUS_LABEL[n.status] ?? n.status) + '] ' + n.title).join('；'),
@@ -349,8 +375,8 @@ exportMarkdown(targetPath: string): string {
       '# ' + detail.task.name,
       '',
       '- 类型：' + (detail.task.kind === 'misc' ? '杂事' : '任务'),
-      '- 紧急程度：' + (URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency),
-      '- 截止时间：' + (detail.task.deadlineUtc ?? '未设置'),
+      detail.task.kind === 'misc' ? '- 提醒时间：' + (detail.task.remindAtUtc ?? '未设置') : '- 紧急程度：' + (URGENCY_LABEL[detail.task.urgency] ?? detail.task.urgency),
+      detail.task.kind === 'misc' ? '' : '- 截止时间：' + (detail.task.deadlineUtc ?? '未设置'),
       ''
     ];
     if (nodes.length > 0) {
@@ -372,10 +398,18 @@ exportMarkdown(targetPath: string): string {
   // FR-096：归档任务导出
   exportArchivedCsv(targetPath: string): string {
     const items = this.tasks.listArchived();
-    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,结果,归档时间,采办岛任务ID'];
+    const lines: string[] = ['任务名称,类型,紧急程度,截止时间,提醒时间,结果,归档时间,采办岛任务ID'];
     const esc = (v: string) => '"' + v.replaceAll('"', '""') + '"';
     for (const it of items) {
-      lines.push([it.name, it.kind === 'misc' ? '杂事' : '任务', URGENCY_LABEL[it.urgency] ?? it.urgency, it.deadlineUtc ?? '', it.outcome === 'completed' ? '已完成' : '已取消', it.archivedAt, it.id].map(esc).join(','));
+      const detail = this.tasks.getTaskDetail(it.id);
+      lines.push([
+        it.name,
+        it.kind === 'misc' ? '杂事' : '任务',
+        it.kind === 'misc' ? '' : URGENCY_LABEL[it.urgency] ?? it.urgency,
+        it.kind === 'misc' ? '' : it.deadlineUtc ?? '',
+        it.kind === 'misc' ? detail.task.remindAtUtc ?? '' : '',
+        it.outcome === 'completed' ? '已完成' : '已取消', it.archivedAt, it.id
+      ].map(esc).join(','));
     }
     writeFileSync(targetPath, String.fromCharCode(0xfeff) + lines.join(String.fromCharCode(10)) + String.fromCharCode(10), 'utf8');
     return targetPath;

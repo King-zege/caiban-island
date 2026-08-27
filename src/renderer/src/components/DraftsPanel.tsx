@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { DraftNodeProposal, DraftPayload, DraftRecord, Urgency } from '../../../shared/types';
 import { URGENCIES } from '../../../shared/taskContracts';
+import { dateTimeLocalToUtc, utcToDateTimeLocal } from '../../../shared/time';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import { AsyncFeedback } from './ui/AsyncFeedback';
@@ -189,7 +190,11 @@ export default function DraftsPanel(): React.JSX.Element {
               <button key={draft.id} className={'draft-item' + (draft.id === selectedId ? ' active' : '')} aria-current={draft.id === selectedId ? 'page' : undefined} onClick={() => setSelectedId(draft.id)}>
                 <span className="draft-source">{draft.source === 'mcp' ? 'Qoder' : draft.source === 'pi' ? 'Pi Agent' : '内置 AI'}</span>
                 <strong>{titleOf(draft)}</strong>
-                <small>{draft.payload.type === 'action' ? '待逐次确认的轻量操作' : draft.payload.nodes.length + ' 个节点'} · {draft.createdAt.slice(5, 16).replace('T', ' ')}</small>
+                <small>{draft.payload.type === 'action'
+                  ? '待逐次确认的轻量操作'
+                  : draft.payload.type === 'task' && draft.payload.taskInput.kind === 'misc'
+                    ? '杂事草稿'
+                    : draft.payload.nodes.length + ' 个节点'} · {draft.createdAt.slice(5, 16).replace('T', ' ')}</small>
               </button>
             ))}
           </nav>
@@ -199,9 +204,22 @@ export default function DraftsPanel(): React.JSX.Element {
               <div className="section-heading"><div><span className="eyebrow">草稿内容</span><h2>{titleOf(selected)}</h2></div></div>
               {selected.payload.type === 'task' && (
                 <div className="draft-task-fields">
-                  <Field label="任务名称" value={selected.payload.taskInput.name} onChange={(event) => mutatePayload((payload) => payload.type === 'task' ? { ...payload, taskInput: { ...payload.taskInput, name: event.target.value } } : payload)} />
-                  <Field label="任务说明" value={selected.payload.taskInput.description} onChange={(event) => mutatePayload((payload) => payload.type === 'task' ? { ...payload, taskInput: { ...payload.taskInput, description: event.target.value } } : payload)} />
-                  <label className="ui-field"><span className="ui-field-label">紧急程度</span><span className="segmented-control">{URGENCIES.map((urgency) => <button key={urgency} type="button" className={selected.payload.type === 'task' && selected.payload.taskInput.urgency === urgency ? 'active' : ''} aria-pressed={selected.payload.type === 'task' && selected.payload.taskInput.urgency === urgency} onClick={() => mutatePayload((payload) => payload.type === 'task' ? { ...payload, taskInput: { ...payload.taskInput, urgency } } : payload)}>{URGENCY_LABEL[urgency]}</button>)}</span></label>
+                  <Field label={selected.payload.taskInput.kind === 'misc' ? '杂事名称' : '项目名称'} value={selected.payload.taskInput.name} onChange={(event) => mutatePayload((payload) => payload.type === 'task' ? { ...payload, taskInput: { ...payload.taskInput, name: event.target.value } } : payload)} />
+                  {selected.payload.taskInput.kind === 'misc' ? <>
+                    <Field
+                      label="提醒时间"
+                      type="datetime-local"
+                      value={utcToDateTimeLocal(selected.payload.taskInput.remindAtUtc, selected.payload.taskInput.tzId)}
+                      hint="不设置就不会提醒"
+                      onChange={(event) => mutatePayload((payload) => payload.type === 'task' && payload.taskInput.kind === 'misc'
+                        ? { ...payload, taskInput: { ...payload.taskInput, remindAtUtc: event.target.value ? dateTimeLocalToUtc(event.target.value, payload.taskInput.tzId) : null } }
+                        : payload)}
+                    />
+                    <label className="ui-field"><span className="ui-field-label">备注</span><textarea value={selected.payload.taskInput.note} onChange={(event) => mutatePayload((payload) => payload.type === 'task' && payload.taskInput.kind === 'misc' ? { ...payload, taskInput: { ...payload.taskInput, note: event.target.value } } : payload)} /></label>
+                  </> : <>
+                    <Field label="项目说明" value={selected.payload.taskInput.description} onChange={(event) => mutatePayload((payload) => payload.type === 'task' && payload.taskInput.kind === 'task' ? { ...payload, taskInput: { ...payload.taskInput, description: event.target.value } } : payload)} />
+                    <label className="ui-field"><span className="ui-field-label">紧急程度</span><span className="segmented-control">{URGENCIES.map((urgency) => <button key={urgency} type="button" className={selected.payload.type === 'task' && selected.payload.taskInput.kind === 'task' && selected.payload.taskInput.urgency === urgency ? 'active' : ''} aria-pressed={selected.payload.type === 'task' && selected.payload.taskInput.kind === 'task' && selected.payload.taskInput.urgency === urgency} onClick={() => mutatePayload((payload) => payload.type === 'task' && payload.taskInput.kind === 'task' ? { ...payload, taskInput: { ...payload.taskInput, urgency } } : payload)}>{URGENCY_LABEL[urgency]}</button>)}</span></label>
+                  </>}
                 </div>
               )}
 
@@ -211,7 +229,7 @@ export default function DraftsPanel(): React.JSX.Element {
                   <p>{selected.payload.summary}</p>
                   <small>确认时会再次核对原值；任务数据已变化则拒绝执行。</small>
                 </div>
-              ) : <ol className="draft-nodes">
+              ) : selected.payload.type === 'task' && selected.payload.taskInput.kind === 'misc' ? null : <ol className="draft-nodes">
                 {selected.payload.nodes.map((node, index) => (
                   <li key={index} className="draft-node-row">
                     <span className="draft-node-idx">{index + 1}</span>
@@ -224,7 +242,7 @@ export default function DraftsPanel(): React.JSX.Element {
                   </li>
                 ))}
               </ol>}
-              {selected.payload.type !== 'action' && <Button icon={Plus} variant="ghost" onClick={() => mutatePayload((payload) => payload.type === 'action' ? payload : ({ ...payload, nodes: [...payload.nodes, { title: '', description: '', startUtc: null, endUtc: null }] }))}>添加节点</Button>}
+              {selected.payload.type !== 'action' && !(selected.payload.type === 'task' && selected.payload.taskInput.kind === 'misc') && <Button icon={Plus} variant="ghost" onClick={() => mutatePayload((payload) => payload.type === 'action' ? payload : ({ ...payload, nodes: [...payload.nodes, { title: '', description: '', startUtc: null, endUtc: null }] }))}>添加节点</Button>}
               {selected.payload.warnings.length > 0 && <div className="draft-warnings"><strong>需要留意</strong><p>{selected.payload.warnings.join('；')}</p></div>}
               <div className="draft-actions">
                 <Button variant="danger" disabled={busy} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button>

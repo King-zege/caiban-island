@@ -2,42 +2,52 @@ import { safeStorage } from 'electron';
 import type { AppService } from './appService';
 import type { SettingsService } from './settingsService';
 import type { AiStatus, DraftNodeProposal, DraftRecord } from '../shared/draftContracts';
-import { validateNodeInput, validateTaskInput } from '../shared/validation';
+import type { TaskCreateRequest } from '../shared/taskContracts';
+import { validateNodeInput, validateTaskCreateRequest } from '../shared/validation';
 
 const SYSTEM_PROMPT =
-  '你是采购任务规划助手。根据用户的任务描述，输出任务的时间轴节点拆分。' +
-  '节点要具体、可执行、按时间顺序，5-12 个为宜；如有明确的截止时间可给出节点起止时间（ISO8601 UTC）。' +
+  '你是采购任务规划助手。先判断用户意图：需要多阶段推进时生成 kind=task 的采购项目并拆分节点；单步骤、主要用于记录或到时提醒时生成 kind=misc 的杂事。' +
+  '项目节点要具体、可执行、按时间顺序，5-12 个为宜；杂事的 nodes 必须为空。所有时间使用 ISO8601 UTC。' +
   '必须通过工具调用 propose_task_draft 返回结果，不要输出其他内容。';
 
 const TOOL_DEF = {
   type: 'function',
   function: {
     name: 'propose_task_draft',
-    description: '提交任务拆分草稿',
+    description: '提交采购项目或杂事草稿',
     parameters: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: '任务名称' },
-        description: { type: 'string', description: '任务说明' },
-        deadlineUtc: { type: ['string', 'null'], description: '截止时间 ISO8601 UTC，可空' },
-        urgency: { type: 'string', enum: ['critical', 'high', 'normal', 'low'] },
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              description: { type: 'string' },
-              startUtc: { type: ['string', 'null'], description: '节点开始时间；确认草稿后会在此刻提醒' },
-              endUtc: { type: ['string', 'null'], description: '节点截止时间；仅用于计划' }
-            },
-            required: ['title'],
-            additionalProperties: false
-          }
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            kind: { const: 'task' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            deadlineUtc: { type: ['string', 'null'] },
+            urgency: { type: 'string', enum: ['critical', 'high', 'normal', 'low'] },
+            nodes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' }, description: { type: 'string' },
+                  startUtc: { type: ['string', 'null'] }, endUtc: { type: ['string', 'null'] }
+                },
+                required: ['title'], additionalProperties: false
+              }
+            }
+          },
+          required: ['kind', 'name', 'nodes'], additionalProperties: false
+        },
+        {
+          type: 'object',
+          properties: {
+            kind: { const: 'misc' }, name: { type: 'string' }, note: { type: 'string' },
+            remindAtUtc: { type: ['string', 'null'] }, nodes: { type: 'array', maxItems: 0 }
+          },
+          required: ['kind', 'name', 'nodes'], additionalProperties: false
         }
-      },
-      required: ['name', 'nodes'],
-      additionalProperties: false
+      ]
     }
   }
 };
@@ -119,7 +129,7 @@ export class LlmService {
       throw new AiError('模型未返回结果');
     };
 
-    const buildPayload = (raw: unknown): { name: string; description: string; deadlineUtc: string | null; urgency: string; nodes: DraftNodeProposal[] } => {
+    const buildPayload = (raw: unknown): { taskInput: TaskCreateRequest; nodes: DraftNodeProposal[] } => {
       const o = raw as Record<string, unknown>;
       const nodes = Array.isArray(o.nodes)
         ? o.nodes.map((n) => ({
@@ -129,24 +139,28 @@ export class LlmService {
             endUtc: (n as Record<string, unknown>).endUtc ? String((n as Record<string, unknown>).endUtc) : null
           }))
         : [];
+      const tzId = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (o.kind === 'misc') {
+        return {
+          taskInput: {
+            kind: 'misc', name: String(o.name ?? ''), note: String(o.note ?? ''),
+            remindAtUtc: o.remindAtUtc ? String(o.remindAtUtc) : null, tzId
+          },
+          nodes: []
+        };
+      }
       return {
-        name: String(o.name ?? ''),
-        description: String(o.description ?? ''),
-        deadlineUtc: o.deadlineUtc ? String(o.deadlineUtc) : null,
-        urgency: String(o.urgency ?? 'normal'),
+        taskInput: {
+          kind: 'task', name: String(o.name ?? ''), description: String(o.description ?? ''),
+          deadlineUtc: o.deadlineUtc ? String(o.deadlineUtc) : null,
+          urgency: String(o.urgency ?? 'normal') as 'critical' | 'high' | 'normal' | 'low', tzId
+        },
         nodes
       };
     };
 
     const tryCreate = (payload: ReturnType<typeof buildPayload>): { ok: true; draft: DraftRecord } | { ok: false; errors: string[] } => {
-      const tv = validateTaskInput({
-        name: payload.name,
-        description: payload.description,
-        kind: 'task',
-        urgency: payload.urgency as 'critical' | 'high' | 'normal' | 'low',
-        deadlineUtc: payload.deadlineUtc,
-        tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-      });
+      const tv = validateTaskCreateRequest(payload.taskInput);
       if (!tv.ok) return { ok: false, errors: tv.errors };
       for (const n of payload.nodes) {
         const nv = validateNodeInput(n);
@@ -156,14 +170,7 @@ export class LlmService {
         ok: true,
         draft: this.appSvc.drafts.create('api', {
           type: 'task',
-          taskInput: {
-            name: payload.name,
-            description: payload.description,
-            kind: 'task',
-            urgency: payload.urgency as 'critical' | 'high' | 'normal' | 'low',
-            deadlineUtc: payload.deadlineUtc,
-            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-          },
+          taskInput: payload.taskInput,
           nodes: payload.nodes,
           warnings: []
         })

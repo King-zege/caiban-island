@@ -10,7 +10,7 @@ import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { MemoryService } from './memoryService';
 import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, LinkInput, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskInput, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
+import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
 export function registerIpc(
@@ -48,6 +48,7 @@ export function registerIpc(
   ipcMain.handle('window:setL2Detail', (_e: IpcMainInvokeEvent, v: boolean) => {
     return c.setL2Detail(v);
   });
+  ipcMain.handle('window:setL2ContentMode', (_e: IpcMainInvokeEvent, mode: L2ContentMode) => c.setL2ContentMode(mode));
   ipcMain.handle('window:activate', () => {
     if (!c.win.isFocused()) c.win.focus();
     return true;
@@ -72,7 +73,7 @@ export function registerIpc(
 
   ipcMain.handle('tasks:list', () => wrap(() => tasks.listActive()));
   ipcMain.handle('tasks:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.getTaskDetail(id)));
-  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskInput) => wrap(() => appSvc.createTask(input)));
+  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskCreateRequest) => wrap(() => appSvc.createTask(input)));
   ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
   ipcMain.handle('tasks:setName', (_e: IpcMainInvokeEvent, request: TaskNameUpdateRequest) => wrap(() => appSvc.setTaskName(request)));
   ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => appSvc.setTaskUrgency(request)));
@@ -103,6 +104,8 @@ export function registerIpc(
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
+  ipcMain.handle('misc:setReminder', (_e: IpcMainInvokeEvent, request: MiscReminderUpdateRequest) => wrap(() => appSvc.setMiscReminder(request)));
+  ipcMain.handle('misc:resolveLegacyDeadline', (_e: IpcMainInvokeEvent, request: LegacyMiscDeadlineActionRequest) => wrap(() => appSvc.resolveLegacyMiscDeadline(request)));
 
   // —— 归档 ——
   ipcMain.handle('archive:list', () => wrap(() => archive.listArchived()));

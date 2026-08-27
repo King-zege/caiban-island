@@ -13,7 +13,7 @@ export function ToastHost(): React.JSX.Element | null {
     <div className="toast-stack" aria-live="polite" aria-atomic="true">
       {pendingUndo && (
         <div className="ui-toast undo">
-          <span>{pendingUndo.label}将在 5 秒后删除</span>
+          <span>{pendingUndo.label}将在 5 秒后{pendingUndo.operation === 'complete' ? '完成' : '删除'}</span>
           <Button icon={RotateCcw} variant="ghost" onClick={undoPending}>撤销</Button>
         </div>
       )}

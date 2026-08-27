@@ -19,6 +19,7 @@ const CARD: TaskCardData = {
     kind: 'task',
     urgency: 'high',
     deadlineUtc: '2026-08-20T08:00:00.000Z',
+    remindAtUtc: null,
     tzId: 'Asia/Shanghai',
     status: 'active',
     createdAtUtc: '2026-08-16T00:00:00.000Z',
@@ -32,7 +33,8 @@ const CARD: TaskCardData = {
     { id: 'node-2', title: '确认技术参数', startUtc: null, status: 'in_progress', position: 1 },
     { id: 'node-3', title: '签订合同', startUtc: null, status: 'pending', position: 2 }
   ],
-  overdue: false
+  overdue: false,
+  miscReminder: null
 };
 
 const NODES: TaskNode[] = [

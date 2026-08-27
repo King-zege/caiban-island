@@ -1,9 +1,10 @@
 export type IslandLevel = 'l1' | 'l2' | 'l3';
+export type L2ContentMode = 'empty' | 'project' | 'misc' | 'mixed';
 export type BackdropMode = 'transparent' | 'acrylic' | 'fallback';
 export type ColorScheme = 'dark' | 'light';
 export type RenderMode = 'composited' | 'software' | 'direct';
 export type IslandTransitionPhase = 'preparing' | 'animating' | 'settling';
-export type TransitionReason = 'level' | 'l2-detail' | 'display-change';
+export type TransitionReason = 'level' | 'l2-detail' | 'l2-content' | 'display-change';
 
 export interface Rect { x: number; y: number; width: number; height: number }
 export interface WorkArea { x: number; y: number; width: number; height: number }

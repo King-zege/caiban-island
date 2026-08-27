@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-16T05:30:14.899Z",
+  "generatedAt": "2026-08-26T15:30:00.000Z",
   "title": "Design System: 采办岛",
   "extensions": {
     "colorMeta": {
@@ -324,6 +324,14 @@
       "css": ".ds-procurement-trail { width: 360px; margin: 0; padding: 16px; list-style: none; color: #F5F7FA; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif; } .ds-procurement-trail li { display: grid; min-height: 64px; grid-template-columns: 32px 1fr; gap: 12px; } .ds-trail-axis { display: grid; justify-items: center; grid-template-rows: 28px 1fr; } .ds-trail-axis b { display: grid; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 999px; background: #111318; place-items: center; font-size: 13px; } .ds-trail-axis i { width: 1px; height: 100%; background: rgba(255,255,255,0.18); } .ds-procurement-trail li > span:last-child { display: grid; align-content: start; gap: 4px; padding: 4px 0 20px; } .ds-procurement-trail strong { font-size: 14px; } .ds-procurement-trail small { color: currentColor; font-size: 11px; } .ds-procurement-trail .completed { color: #32D74B; } .ds-procurement-trail .current { color: #64D2FF; } .ds-procurement-trail .pending { color: #FFD60A; } .ds-procurement-trail li:hover { background: rgba(255,255,255,0.10); } .ds-procurement-trail li:focus-within { outline: 2px solid #64D2FF; outline-offset: 2px; }"
     },
     {
+      "name": "Misc Work Order",
+      "kind": "card",
+      "refersTo": "surface-raised-dark",
+      "description": "L2 杂事层的 216×88px 工作单贴纸；两行名称、单行精确提醒状态与独立 44px 完成动作形成与采购凭条清晰但克制的层级差异。",
+      "html": "<article class=\"ds-misc-work-order\"><button class=\"ds-misc-open\" aria-label=\"打开杂事：联系物业续门禁卡，今天 16:30\"><strong>联系物业续门禁卡</strong><span>◷ 今天 16:30</span></button><button class=\"ds-misc-complete\" aria-label=\"完成杂事：联系物业续门禁卡\">✓</button></article>",
+      "css": ".ds-misc-work-order { position: relative; display: grid; width: 216px; min-width: 216px; min-height: 88px; grid-template-columns: minmax(0,1fr) 44px; overflow: hidden; border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; color: #F5F7FA; background: rgba(255,255,255,0.06); font-family: 'Segoe UI Variable','Microsoft YaHei UI','Segoe UI',system-ui,sans-serif; } .ds-misc-work-order::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: #64D2FF; opacity: .72; } .ds-misc-open { display: grid; min-width: 0; align-content: center; gap: 8px; padding: 12px 10px 12px 14px; border: 0; color: inherit; text-align: left; background: transparent; } .ds-misc-open strong { display: -webkit-box; overflow: hidden; font-size: 13px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; } .ds-misc-open span { overflow: hidden; color: #B8BDC7; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; } .ds-misc-complete { width: 44px; min-height: 44px; align-self: stretch; border: 0; border-left: 1px solid rgba(255,255,255,0.10); color: #B8BDC7; background: transparent; } .ds-misc-open:hover,.ds-misc-complete:hover { background: rgba(255,255,255,0.10); } .ds-misc-open:focus-visible,.ds-misc-complete:focus-visible { outline: 2px solid #64D2FF; outline-offset: -2px; }"
+    },
+    {
       "name": "External Target Confirmation",
       "kind": "custom",
       "refersTo": "dialog-dark",
@@ -334,11 +342,11 @@
   ],
   "narrative": {
     "northStar": "精密采购工作台",
-    "overview": "“精密采购工作台”把采购链路本身作为界面：L1 是低打扰入口，L2 把下一采购动作放在最前，L3 只围绕当前任务展开。采购凭条与由节点、连接线、状态标记组成的采购链路是视觉签名；它们不是装饰，而是行动顺序和风险的共同载体。\n\n系统借鉴 Apple 的信息层级、渐进披露与连续动效，但不模仿 macOS 外观。视觉世界由冷黑曜石外壳、自适应银内容面和单一冰蓝交互强调构成，强调精确、安静和可核对；深色是品牌主呈现，浅色、高对比度与减少动画模式跟随系统偏好。概念种子为 `6d4d8516`。\n\n材质集中在外壳，内容靠留白、细分隔和稳定网格建立层级。AI 建议始终以草稿呈现，安全敏感操作显式确认，界面优先让用户看清下一步、当前状态和真实目标。",
+    "overview": "“精密采购工作台”把工作按复杂度分层：L1 是低打扰入口，L2 上层把采购项目的下一动作放在最前，下层用短小工作单承载无需拆解的杂事，L3 只围绕当前项目或杂事展开。采购凭条、采购链路与杂事工作单共同构成视觉签名；它们不是装饰，而是行动顺序、工作复杂度和提醒状态的共同载体。\n\n系统借鉴 Apple 的信息层级、渐进披露与连续动效，但不模仿 macOS 外观。视觉世界由冷黑曜石外壳、自适应银内容面和单一冰蓝交互强调构成，强调精确、安静和可核对；深色是品牌主呈现，浅色、高对比度与减少动画模式跟随系统偏好。概念种子为 `6d4d8516`。\n\n材质集中在外壳，内容靠留白、细分隔和稳定网格建立层级。AI 建议始终以草稿呈现，安全敏感操作显式确认，界面优先让用户看清下一步、当前状态和真实目标。",
     "keyCharacteristics": [
-      "L1 低打扰、L2 下一采购动作优先、L3 当前任务单焦点。",
+      "L1 低打扰、L2 采购项目与杂事双层分工、L3 当前工作单焦点。",
       "冷黑曜石、自适应银与冰蓝构成品牌主世界，深色是主呈现。",
-      "采购凭条和采购链路是跨层级复用的视觉签名。",
+      "采购凭条、采购链路和克制的杂事工作单是跨层级复用的视觉签名。",
       "状态色保持微量，并始终与图标、文字、线型或描边共同出现。",
       "安全边界可见：外链先核对完整目标，凭据默认遮罩，AI 输出只作为草稿。"
     ],
@@ -347,6 +355,7 @@
       { "name": "The 微量状态 Rule", "body": "状态色只进入小图标、文字、2–4px 轨迹或描边，不铺满卡片或大面积容器。", "section": "colors" },
       { "name": "The 系统字形 Rule", "body": "后续界面继续使用系统 UI 字体和工具等宽字体，不用展示字体制造“高级感”。", "section": "typography" },
       { "name": "The 单焦点 Rule", "body": "L2 只回答“下一步做什么”，L3 只展开一个当前任务和一个主分区；新增功能不得把工作区改回多卡片仪表盘。", "section": "layout" },
+      { "name": "The 工作复杂度 Rule", "body": "采购项目使用凭条与节点链路，杂事使用短小工作单与精确提醒；不得用黄色便签、随机旋转或第二套字体制造区别。", "section": "components" },
       { "name": "The 壳体先行 Rule", "body": "材质和大阴影属于外壳或真实浮层；内容区默认平面，禁止卡片套卡片制造虚假层级。", "section": "elevation" },
       { "name": "The 外大内小 Rule", "body": "新组件先确定所在层级，再从既有圆角 token 选择；不得新增相邻但不一致的 10px、14px 或 20px 圆角。", "section": "shapes" },
       { "name": "The 安全边界 Rule", "body": "任何离开应用、暴露凭据或把草稿写入正式任务的动作，都必须在界面中显示真实目标与明确确认状态。", "section": "components" }

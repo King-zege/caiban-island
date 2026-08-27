@@ -20,6 +20,7 @@ interface CarouselProps {
   reducedMotion?: boolean;
   overscan?: number;
   renderLimit?: number;
+  ariaLabel?: string;
 }
 
 export default function Carousel({
@@ -31,7 +32,8 @@ export default function Carousel({
   onActiveIndexChange,
   reducedMotion = false,
   overscan = 2,
-  renderLimit = Number.POSITIVE_INFINITY
+  renderLimit = Number.POSITIVE_INFINITY,
+  ariaLabel = '活跃采购任务'
 }: CarouselProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState(0);
@@ -138,7 +140,7 @@ export default function Carousel({
     if ((event.target as HTMLElement).closest('[data-carousel-no-drag="true"]')) return;
     stopAnim();
     if (wheelTimer.current) clearTimeout(wheelTimer.current);
-    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     drag.current = { startX: event.clientX, startOffset: offsetRef.current, lastX: event.clientX, lastT: performance.now(), v: 0, totalMove: 0 };
   };
 
@@ -159,7 +161,7 @@ export default function Carousel({
     const state = drag.current;
     drag.current = null;
     if (!state) return;
-    try { (event.target as HTMLElement).releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch { /* capture may already be released */ }
     suppressClick.current = state.totalMove >= 10;
     if (state.totalMove < 10) return;
     const target = snapOffsetWithVelocity(offsetRef.current, state.v, physics);
@@ -228,7 +230,7 @@ export default function Carousel({
   }
 
   return (
-    <div className={'carousel' + (computeMaxOffset(physics) > 0 ? ' scrollable' : '')} ref={viewportRef} onKeyDown={onKeyDown} aria-label="活跃采购任务">
+    <div className={'carousel' + (computeMaxOffset(physics) > 0 ? ' scrollable' : '')} ref={viewportRef} onKeyDown={onKeyDown} aria-label={ariaLabel}>
       <div
         className="carousel-track"
         style={{ transform: 'translate3d(' + offset + 'px, 0, 0)', width: totalWidth + 'px' }}

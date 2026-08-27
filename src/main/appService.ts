@@ -7,11 +7,14 @@ import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
 import type {
   LinkInput,
+  LegacyMiscDeadlineActionRequest,
+  MiscReminderUpdateRequest,
   NodeInput,
   NodeStatus,
   NodeTimeUpdateRequest,
   NodeTitleUpdateRequest,
   Task,
+  TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
   TaskUrgencyUpdateRequest,
@@ -50,13 +53,22 @@ export class AppService {
     this.drafts = new DraftService(db, this.reminders);
     this.llm = new LlmService(this, this.settings);
     this.reminders.reconcileFutureNodeReminders();
+    this.reminders.reconcileFutureMiscReminders();
   }
 
-  createTask(input: TaskInput): Task {
-    const t = this.tasks.createTask(input);
-    // FR-060：设置中配置了全局默认提前量时自动添加提醒
-    const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
-    if (t.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(t.id, defaults);
+  createTask(input: TaskCreateRequest | TaskInput): Task {
+    const t = this.withTransaction(() => {
+      const created = this.tasks.createTask(input);
+      if (input.kind === 'misc') {
+        const note = 'note' in input ? input.note : input.description;
+        if (note.trim()) this.tasks.saveNote(created.id, note.trim());
+        this.reminders.syncMiscReminder(created.id);
+      } else {
+        const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
+        if (created.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(created.id, defaults);
+      }
+      return created;
+    });
     this.emitChanged();
     return t;
   }
@@ -114,6 +126,7 @@ export class AppService {
       this.archive.restoreTask(id);
       this.reminders.recomputeForTask(id);
       this.reminders.syncTaskNodeReminders(id);
+      this.reminders.syncMiscReminder(id, new Date(), true);
     });
     this.emitChanged();
     return this.tasks.getTask(id) as Task;
@@ -122,6 +135,27 @@ export class AppService {
   setReminders(taskId: string, offsets: number[]): void {
     this.reminders.setOffsets(taskId, offsets);
     this.emitChanged();
+  }
+
+  setMiscReminder(request: MiscReminderUpdateRequest): Task {
+    const changed = request.remindAtUtc !== request.expectedRemindAtUtc;
+    const task = this.withTransaction(() => {
+      const updated = this.tasks.setMiscReminder(request);
+      this.reminders.syncMiscReminder(updated.id);
+      return updated;
+    });
+    if (changed) this.emitChanged();
+    return task;
+  }
+
+  resolveLegacyMiscDeadline(request: LegacyMiscDeadlineActionRequest): Task {
+    const task = this.withTransaction(() => {
+      const updated = this.tasks.resolveLegacyMiscDeadline(request);
+      this.reminders.syncMiscReminder(updated.id);
+      return updated;
+    });
+    this.emitChanged();
+    return task;
   }
 
   addNode(taskId: string, input: NodeInput): TaskNode {
@@ -200,8 +234,11 @@ export class AppService {
     const result = this.drafts.confirm(id);
     if (result.type === 'task') {
       const task = this.tasks.getTask(result.taskId);
-      const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
-      if (task?.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(result.taskId, defaults);
+      if (task?.kind === 'misc') this.reminders.syncMiscReminder(result.taskId);
+      else {
+        const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
+        if (task?.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(result.taskId, defaults);
+      }
     }
     this.emitChanged();
     return result;

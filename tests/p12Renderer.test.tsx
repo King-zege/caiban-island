@@ -14,6 +14,7 @@ function card(index: number): TaskCard {
       kind: 'task',
       urgency: 'normal',
       deadlineUtc: null,
+      remindAtUtc: null,
       tzId: 'Asia/Shanghai',
       status: 'active',
       createdAtUtc: '2026-08-18T00:00:00.000Z',
@@ -23,13 +24,14 @@ function card(index: number): TaskCard {
     },
     progress: { done: 0, total: 0, nextTitle: null },
     nodes: [],
-    overdue: false
+    overdue: false,
+    miscReminder: null
   };
 }
 
 function detail(index: number): TaskDetail {
   const item = card(index);
-  return { task: item.task, nodes: [], links: [], note: '' };
+  return { task: item.task, nodes: [], links: [], note: '', miscReminder: null };
 }
 
 function setApi(api: Partial<Window['api']>): void {

@@ -72,6 +72,24 @@ describe('MCP 工具集（FR-041）', () => {
     await f.close();
   });
 
+  it('propose_task_draft 可生成无节点的杂事草稿与精确提醒', async () => {
+    const f = await fresh();
+    const remindAtUtc = '2099-09-01T08:30:00.000Z';
+    const r = await f.client.callTool({
+      name: 'propose_task_draft',
+      arguments: { kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc, nodes: [] }
+    });
+    expect(r.isError).not.toBe(true);
+    const draft = f.app.drafts.listPending()[0];
+    expect(f.app.tasks.listActive()).toEqual([]);
+    expect(draft.payload.type).toBe('task');
+    if (draft.payload.type === 'task') {
+      expect(draft.payload.taskInput).toMatchObject({ kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc });
+      expect(draft.payload.nodes).toEqual([]);
+    }
+    await f.close();
+  });
+
   it('非法输入返回 isError', async () => {
     const f = await fresh();
     const r = await f.client.callTool({

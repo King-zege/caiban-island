@@ -98,6 +98,14 @@ app.on('child-process-gone', (_event, details) => {
         controller.win.focus();
       };
 
+      const openMisc = (reminder: Extract<DueReminder, { kind: 'misc' }>): void => {
+        if (!controller) return;
+        sendEvent({ type: 'open-misc', taskId: reminder.taskId });
+        if (controller.paused) controller.togglePause();
+        controller.setLevel('l3');
+        controller.win.focus();
+      };
+
       const openTaskList = (): void => {
         if (!controller) return;
         if (controller.paused) controller.togglePause();
@@ -116,7 +124,9 @@ app.on('child-process-gone', (_event, details) => {
           const message = due.length === 1
             ? first.kind === 'node'
               ? '节点「' + first.nodeTitle + '」现在开始'
-              : '任务“' + first.taskName + '”的截止提醒已到'
+              : first.kind === 'misc'
+                ? '杂事「' + first.taskName + '」到时间了'
+                : '任务“' + first.taskName + '”的截止提醒已到'
             : '有 ' + due.length + ' 条提醒已到，请查看任务列表';
           showFallback(message);
           return;
@@ -125,6 +135,9 @@ app.on('child-process-gone', (_event, details) => {
           if (reminder.kind === 'node') {
             const body = '节点「' + reminder.nodeTitle + '」现在开始';
             showToast('采办岛：' + reminder.taskName, body, () => openNode(reminder), () => showFallback(body));
+          } else if (reminder.kind === 'misc') {
+            const body = '杂事「' + reminder.taskName + '」到时间了';
+            showToast('采办岛：杂事提醒', body, () => openMisc(reminder), () => showFallback(body));
           } else {
             const deadlineText = new Date(reminder.deadlineUtc).toLocaleString('zh-CN', { hour12: false });
             const body = '任务“' + reminder.taskName + '”的截止提醒已到';
@@ -136,9 +149,12 @@ app.on('child-process-gone', (_event, details) => {
       const deliverMissed = (missed: DueReminder[]): void => {
         if (missed.length === 0 || !controller) return;
         const nodeCount = missed.filter((item) => item.kind === 'node').length;
-        const detail = nodeCount > 0
-          ? '，其中 ' + nodeCount + ' 条为节点提醒'
-          : '';
+        const miscCount = missed.filter((item) => item.kind === 'misc').length;
+        const parts = [
+          nodeCount > 0 ? nodeCount + ' 条节点提醒' : '',
+          miscCount > 0 ? miscCount + ' 条杂事提醒' : ''
+        ].filter(Boolean);
+        const detail = parts.length > 0 ? '，其中 ' + parts.join('、') : '';
         const message = '有 ' + missed.length + ' 条提醒在关机/睡眠期间错过' + detail + '，请查看任务列表';
         if (Notification.isSupported()) showToast('采办岛', message, openTaskList, () => {
           sendEvent({ type: 'fallback', message });

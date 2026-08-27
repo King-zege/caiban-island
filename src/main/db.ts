@@ -136,6 +136,29 @@ const SCHEMA_V4 = [
   'CREATE INDEX node_reminders_due ON node_reminders(fired, fire_at_utc)'
 ];
 
+const SCHEMA_V5 = [
+  'ALTER TABLE tasks ADD COLUMN remind_at_utc TEXT',
+  `CREATE TABLE misc_reminders(
+    task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+    fire_at_utc TEXT NOT NULL,
+    fired INTEGER NOT NULL DEFAULT 0
+  )`,
+  'CREATE INDEX misc_reminders_due ON misc_reminders(fired, fire_at_utc)',
+  `UPDATE notes
+   SET body = CASE
+       WHEN trim(body) = '' THEN (SELECT description FROM tasks WHERE tasks.id = notes.task_id)
+       ELSE body || char(10) || char(10) || '原任务说明' || char(10) || (SELECT description FROM tasks WHERE tasks.id = notes.task_id)
+     END,
+     updated_at = (SELECT updated_at FROM tasks WHERE tasks.id = notes.task_id)
+   WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'misc' AND trim(description) <> '')`,
+  `INSERT INTO notes(id, task_id, body, updated_at)
+   SELECT id, id, description, updated_at FROM tasks
+   WHERE kind = 'misc' AND trim(description) <> ''
+     AND NOT EXISTS (SELECT 1 FROM notes WHERE notes.task_id = tasks.id)`,
+  "UPDATE tasks SET description = '' WHERE kind = 'misc' AND trim(description) <> ''",
+  "DELETE FROM reminders WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'misc')"
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -151,8 +174,10 @@ export function migrate(db: DatabaseSync): void {
     db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
     const row = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as { v: number | null };
     const current = row.v ?? 0;
+    // 早期测试版数据库可能只记录了迁移号，却缺失部分 v1 基础表。
+    // v1 DDL 全部可幂等执行，先自愈基础结构再应用后续迁移。
+    for (const stmt of SCHEMA_V1) db.exec(stmt);
     if (current < 1) {
-      for (const stmt of SCHEMA_V1) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)').run(new Date().toISOString());
     }
     if (current < 2) {
@@ -166,6 +191,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 4) {
       for (const stmt of SCHEMA_V4) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(4, ?)').run(new Date().toISOString());
+    }
+    if (current < 5) {
+      for (const stmt of SCHEMA_V5) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(5, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {

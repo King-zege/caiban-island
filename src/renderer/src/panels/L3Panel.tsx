@@ -15,6 +15,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import AgentPanel from '../components/AgentPanel';
 import MemoryPanel from '../components/MemoryPanel';
 import RenameDialog from '../components/RenameDialog';
+import MiscEditor from '../components/MiscEditor';
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
   { id: 'overview', label: '概览', icon: Gauge },
@@ -124,7 +125,8 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
           <span className="sr-only">选择任务</span>
           <select value={selectedTaskId ?? ''} onChange={(event) => selectTask(event.target.value)}>
             {tasks.length === 0 && <option value="">暂无活跃任务</option>}
-            {tasks.map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}
+            {tasks.some((card) => card.task.kind === 'task') && <optgroup label="采购项目">{tasks.filter((card) => card.task.kind === 'task').map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}</optgroup>}
+            {tasks.some((card) => card.task.kind === 'misc') && <optgroup label="杂事">{tasks.filter((card) => card.task.kind === 'misc').map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}</optgroup>}
           </select>
         </label>
         <nav aria-label="移动工作区导航">
@@ -193,11 +195,11 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                       )}
                     </div>
                   </div>
-                  <span className={'workspace-urgency urgency-' + (currentTask?.task.urgency ?? detail?.task.urgency ?? 'normal')}>
+                  {(currentTask?.task.kind ?? detail?.task.kind) !== 'misc' && <span className={'workspace-urgency urgency-' + (currentTask?.task.urgency ?? detail?.task.urgency ?? 'normal')}>
                     {currentTask?.overdue ? '已逾期' : currentTask?.task.urgency === 'critical' ? '紧急' : currentTask?.task.urgency === 'high' ? '高优先级' : currentTask?.task.urgency === 'low' ? '低优先级' : '普通'}
-                  </span>
+                  </span>}
                 </div>
-                <nav className="task-section-tabs" role="tablist" aria-label="当前任务分区">
+                {(currentTask?.task.kind ?? detail?.task.kind) !== 'misc' && <nav className="task-section-tabs" role="tablist" aria-label="当前任务分区">
                   {TASK_SECTIONS.map((item) => {
                     const Icon = item.icon;
                     return (
@@ -213,7 +215,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                       </button>
                     );
                   })}
-                </nav>
+                </nav>}
                 <div className="workspace-scroll" role="tabpanel">
                   {detailLoading ? <p className="loading-state">正在打开任务</p> : detailError || !detail || detail.task.id !== selectedTaskId ? (
                     <EmptyState
@@ -222,7 +224,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                       description={detailError ?? '任务详情尚未准备好'}
                       action={selectedTaskId ? <Button variant="primary" onClick={() => void openDetail(selectedTaskId)}>重试</Button> : undefined}
                     />
-                  ) : <TaskEditor detail={detail} section={taskSection} />}
+                  ) : detail.task.kind === 'misc' ? <MiscEditor detail={detail} /> : <TaskEditor detail={detail} section={taskSection} />}
                 </div>
               </>
             )

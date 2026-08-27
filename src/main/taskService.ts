@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateNodeInput, validateNodeStartSchedule, validateNodeTitle, validateTaskInput, validateTaskName } from '../shared/validation';
+import { validateMiscReminderUpdate, validateNodeInput, validateNodeStartSchedule, validateNodeTitle, validateTaskCreateRequest, validateTaskInput, validateTaskName } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
 import { URGENCIES } from '../shared/taskContracts';
 import type {
   LinkInput,
   LinkKind,
+  LegacyMiscDeadlineActionRequest,
+  MiscReminderSummary,
+  MiscReminderUpdateRequest,
   NodeInput,
   NodeStatus,
   NodeTimeUpdateRequest,
@@ -13,6 +16,7 @@ import type {
   Task,
   TaskCard,
   TaskCardNode,
+  TaskCreateRequest,
   TaskDetail,
   TaskInput,
   TaskNameUpdateRequest,
@@ -29,6 +33,7 @@ function toTask(row: Record<string, unknown>): Task {
     kind: String(row.kind) as Task['kind'],
     urgency: String(row.urgency) as Task['urgency'],
     deadlineUtc: row.deadline_utc === null ? null : String(row.deadline_utc),
+    remindAtUtc: row.remind_at_utc === null || row.remind_at_utc === undefined ? null : String(row.remind_at_utc),
     tzId: String(row.tz_id),
     status: String(row.status) as Task['status'],
     createdAtUtc: String(row.created_at),
@@ -88,13 +93,20 @@ export class TaskService {
       });
       byTask.set(key, list);
     }
+    const miscRows = this.db.prepare('SELECT task_id, fire_at_utc, fired FROM misc_reminders').all() as unknown as Array<{
+      task_id: string;
+      fire_at_utc: string;
+      fired: number;
+    }>;
+    const miscByTask = new Map(miscRows.map((row) => [row.task_id, row]));
     return tasks.map((task) => {
       const nodes = byTask.get(task.id) ?? [];
       return {
         task,
         progress: computeProgress(nodes),
         nodes,
-        overdue: isOverdue(task, nowMs)
+        overdue: task.kind === 'task' && isOverdue(task, nowMs),
+        miscReminder: this.miscReminderSummary(task, miscByTask.get(task.id))
       };
     });
   }
@@ -114,38 +126,60 @@ export class TaskService {
       this.db.prepare('SELECT * FROM links WHERE task_id = ? ORDER BY rowid').all(id) as unknown as Record<string, unknown>[]
     ).map(toLink);
     const noteRow = this.db.prepare('SELECT body FROM notes WHERE task_id = ?').get(id) as { body: string } | undefined;
-    return { task, nodes, links, note: noteRow ? noteRow.body : '' };
+    const miscRow = this.db.prepare('SELECT task_id, fire_at_utc, fired FROM misc_reminders WHERE task_id = ?').get(id) as
+      | { task_id: string; fire_at_utc: string; fired: number }
+      | undefined;
+    return { task, nodes, links, note: noteRow ? noteRow.body : '', miscReminder: this.miscReminderSummary(task, miscRow) };
   }
 
-  createTask(input: TaskInput): Task {
-    const v = validateTaskInput(input);
+  createTask(input: TaskCreateRequest | TaskInput): Task {
+    const normalized: TaskCreateRequest = input.kind === 'misc'
+      ? {
+          kind: 'misc',
+          name: input.name,
+          note: 'note' in input ? input.note : input.description,
+          remindAtUtc: 'remindAtUtc' in input ? input.remindAtUtc : null,
+          tzId: input.tzId
+        }
+      : {
+          kind: 'task',
+          name: input.name,
+          description: input.description,
+          urgency: input.urgency,
+          deadlineUtc: input.deadlineUtc,
+          tzId: input.tzId
+        };
+    const v = validateTaskCreateRequest(normalized);
     if (!v.ok) throw new TaskError(v.errors.join('；'));
     const now = new Date().toISOString();
+    const isMisc = normalized.kind === 'misc';
     const task: Task = {
       id: randomUUID(),
-      name: input.name.trim(),
-      description: input.description.trim(),
-      kind: input.kind,
-      urgency: input.urgency,
-      deadlineUtc: input.deadlineUtc,
-      tzId: input.tzId,
+      name: normalized.name.trim(),
+      description: isMisc ? '' : normalized.description.trim(),
+      kind: normalized.kind,
+      urgency: isMisc ? 'normal' : normalized.urgency,
+      deadlineUtc: isMisc ? null : normalized.deadlineUtc,
+      remindAtUtc: isMisc ? normalized.remindAtUtc : null,
+      tzId: normalized.tzId,
       status: 'active',
       createdAtUtc: now,
       updatedAtUtc: now,
       archivedAt: null,
       archiveOutcome: null
     };
-    this.db.exec('BEGIN');
+    const ownsTransaction = !this.db.isTransaction;
+    if (ownsTransaction) this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)'
+          'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
         )
-        .run(task.id, task.name, task.description, task.kind, task.urgency, task.deadlineUtc, task.tzId, task.status, task.createdAtUtc, task.updatedAtUtc);
+        .run(task.id, task.name, task.description, task.kind, task.urgency, task.deadlineUtc, task.remindAtUtc, task.tzId, task.status, task.createdAtUtc, task.updatedAtUtc);
       this.logEvent(task.id, 'task_created', JSON.stringify({ name: task.name }));
-      this.db.exec('COMMIT');
+      if (ownsTransaction) this.db.exec('COMMIT');
     } catch (e) {
-      this.db.exec('ROLLBACK');
+      if (ownsTransaction) this.db.exec('ROLLBACK');
       throw e;
     }
     return task;
@@ -154,14 +188,16 @@ export class TaskService {
   updateTask(id: string, input: TaskInput): Task {
     const existing = this.getTask(id);
     if (!existing) throw new TaskError('任务不存在');
+    if (existing.kind !== input.kind) throw new TaskError('任务类型创建后不可修改');
+    if (existing.kind === 'misc') throw new TaskError('杂事请使用名称、提醒与备注的独立编辑入口');
     const v = validateTaskInput(input);
     if (!v.ok) throw new TaskError(v.errors.join('；'));
     const name = input.name.trim();
     const description = input.description.trim();
     const updated = new Date().toISOString();
     this.db
-      .prepare('UPDATE tasks SET name=?, description=?, kind=?, urgency=?, deadline_utc=?, tz_id=?, updated_at=? WHERE id=?')
-      .run(name, description, input.kind, input.urgency, input.deadlineUtc, input.tzId, updated, id);
+      .prepare('UPDATE tasks SET name=?, description=?, urgency=?, deadline_utc=?, tz_id=?, updated_at=? WHERE id=?')
+      .run(name, description, input.urgency, input.deadlineUtc, input.tzId, updated, id);
     this.logEvent(id, 'task_updated', JSON.stringify({ name }));
     return this.getTask(id) as Task;
   }
@@ -190,6 +226,7 @@ export class TaskService {
     const existing = this.getTask(request.taskId);
     if (!existing) throw new TaskError('任务不存在');
     if (existing.status !== 'active') throw new TaskError('只能调整活跃任务的紧急程度');
+    if (existing.kind === 'misc') throw new TaskError('杂事不设置紧急程度');
     if (existing.urgency !== request.expectedUrgency) throw new TaskError('任务紧急程度已变化，请刷新后重试');
     if (existing.urgency === request.urgency) return existing;
     const updatedAt = new Date().toISOString();
@@ -220,6 +257,48 @@ export class TaskService {
       .run('archived', now, outcome, now, id);
     this.logEvent(id, 'task_archived', JSON.stringify({ outcome }));
     return this.getTask(id) as Task;
+  }
+
+  setMiscReminder(request: MiscReminderUpdateRequest): Task {
+    const validation = validateMiscReminderUpdate(request);
+    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
+    const existing = this.getTask(request.taskId);
+    if (!existing) throw new TaskError('杂事不存在');
+    if (existing.kind !== 'misc') throw new TaskError('只有杂事可以设置精确提醒');
+    if (existing.status !== 'active') throw new TaskError('只能调整活跃杂事的提醒');
+    if (existing.remindAtUtc !== request.expectedRemindAtUtc) throw new TaskError('提醒时间已变化，请刷新后重试');
+    if (existing.remindAtUtc === request.remindAtUtc) return existing;
+    const updatedAt = new Date().toISOString();
+    const result = this.db.prepare(
+      "UPDATE tasks SET remind_at_utc = ?, updated_at = ? WHERE id = ? AND kind = 'misc' AND status = 'active' AND remind_at_utc IS ?"
+    ).run(request.remindAtUtc, updatedAt, request.taskId, request.expectedRemindAtUtc);
+    if (result.changes !== 1) throw new TaskError('提醒时间已变化，请刷新后重试');
+    this.logEvent(request.taskId, 'misc_reminder_updated', JSON.stringify({
+      from: request.expectedRemindAtUtc,
+      to: request.remindAtUtc
+    }));
+    return this.getTask(request.taskId) as Task;
+  }
+
+  resolveLegacyMiscDeadline(request: LegacyMiscDeadlineActionRequest): Task {
+    if (request.action !== 'convert' && request.action !== 'clear') throw new TaskError('无效的旧时间处理方式');
+    if (!Number.isFinite(Date.parse(request.expectedDeadlineUtc))) throw new TaskError('旧截止时间格式无效');
+    const existing = this.getTask(request.taskId);
+    if (!existing) throw new TaskError('杂事不存在');
+    if (existing.kind !== 'misc' || existing.status !== 'active') throw new TaskError('只能处理活跃杂事的旧截止时间');
+    if (existing.deadlineUtc !== request.expectedDeadlineUtc) throw new TaskError('旧截止时间已变化，请刷新后重试');
+    if (request.action === 'convert' && Date.parse(request.expectedDeadlineUtc) < Math.floor(Date.now() / 60000) * 60000) {
+      throw new TaskError('过去的截止时间不能转换为提醒，请清除旧时间');
+    }
+    const remindAtUtc = request.action === 'convert' ? request.expectedDeadlineUtc : existing.remindAtUtc;
+    const updatedAt = new Date().toISOString();
+    const result = this.db.prepare(
+      "UPDATE tasks SET deadline_utc = NULL, remind_at_utc = ?, updated_at = ? WHERE id = ? AND kind = 'misc' AND status = 'active' AND deadline_utc = ?"
+    ).run(remindAtUtc, updatedAt, request.taskId, request.expectedDeadlineUtc);
+    if (result.changes !== 1) throw new TaskError('旧截止时间已变化，请刷新后重试');
+    this.db.prepare('DELETE FROM reminders WHERE task_id = ?').run(request.taskId);
+    this.logEvent(request.taskId, 'misc_legacy_deadline_resolved', JSON.stringify({ action: request.action }));
+    return this.getTask(request.taskId) as Task;
   }
 
   deleteTask(id: string): void {
@@ -423,5 +502,31 @@ export class TaskService {
     this.db
       .prepare('INSERT INTO change_events(task_id, at_utc, kind, detail) VALUES(?,?,?,?)')
       .run(taskId, new Date().toISOString(), kind, detail);
+  }
+
+  private miscReminderSummary(
+    task: Task,
+    row?: { fire_at_utc: string; fired: number }
+  ): MiscReminderSummary | null {
+    if (task.kind !== 'misc') return null;
+    if (row) {
+      return {
+        state: row.fired === 1 ? 'fired' : 'scheduled',
+        fireAtUtc: row.fire_at_utc,
+        legacyDeadlineUtc: task.deadlineUtc
+      };
+    }
+    if (task.remindAtUtc) {
+      return {
+        state: Date.parse(task.remindAtUtc) <= Date.now() ? 'fired' : 'scheduled',
+        fireAtUtc: task.remindAtUtc,
+        legacyDeadlineUtc: task.deadlineUtc
+      };
+    }
+    return {
+      state: task.deadlineUtc ? 'legacy_deadline' : 'none',
+      fireAtUtc: null,
+      legacyDeadlineUtc: task.deadlineUtc
+    };
   }
 }

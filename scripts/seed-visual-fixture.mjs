@@ -60,6 +60,28 @@ try {
     db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?, ?, ?, ?)')
       .run(randomUUID(), taskId, '- 已确认预算范围\n- 等待第二家供应商回复', now.toISOString());
   }
+  const liveNow = Date.now();
+  const miscFixtures = [
+    { name: '联系物业续门禁卡', note: '带上旧卡和工牌。', remindAt: new Date(liveNow + 2 * 60 * 60 * 1000).toISOString() },
+    { name: '把样品柜钥匙交给行政', note: '交接后在备注里记录接收人。', remindAt: new Date(liveNow + 26 * 60 * 60 * 1000).toISOString() },
+    { name: '确认周五会议室', note: '无提醒的视觉回归杂事。', remindAt: null }
+  ];
+  for (let index = 0; index < miscFixtures.length; index += 1) {
+    const fixture = miscFixtures[index];
+    const taskId = randomUUID();
+    const updatedAt = new Date(liveNow - index * 60000).toISOString();
+    db.prepare(`INSERT INTO tasks(
+      id, name, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, archived_at, archive_outcome, created_at, updated_at
+    ) VALUES(?, ?, '', 'misc', 'normal', NULL, ?, 'Asia/Shanghai', 'active', NULL, NULL, ?, ?)`).run(
+      taskId, fixture.name, fixture.remindAt, updatedAt, updatedAt
+    );
+    db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?, ?, ?, ?)')
+      .run(randomUUID(), taskId, fixture.note, updatedAt);
+    if (fixture.remindAt) {
+      db.prepare('INSERT INTO misc_reminders(task_id, fire_at_utc, fired) VALUES(?,?,0)')
+        .run(taskId, fixture.remindAt);
+    }
+  }
   const archivedId = randomUUID();
   const archivedAt = new Date(now.getTime() - 3 * 86400000).toISOString();
   db.prepare(`INSERT INTO tasks(

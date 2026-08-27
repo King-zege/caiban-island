@@ -3,6 +3,7 @@ import { ArrowDownUp, ClipboardList, Maximize2, MoreHorizontal, Plus, Settings }
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import TaskCard from '../components/TaskCard';
+import MiscSticker from '../components/MiscSticker';
 import type { TaskCardAction } from '../components/TaskCard';
 import Carousel from '../components/Carousel';
 import NewTaskForm from '../components/NewTaskForm';
@@ -88,36 +89,80 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     return () => { void window.api.interacting(false); };
   }, [externalTarget, pendingNodeTime, pendingRename, pendingTaskAction, showForm]);
 
-  const sortedTasks = useMemo(() => [...tasks].filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)).sort((left, right) => {
+  const visibleTasks = useMemo(() => tasks.filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)), [pendingUndo, tasks]);
+  const projectTasks = useMemo(() => visibleTasks.filter((card) => card.task.kind === 'task').sort((left, right) => {
     if (sortMode === 'urgency') return compareTasks(left.task, right.task);
     if (sortMode === 'updated') return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || compareTasks(left.task, right.task);
     const leftDeadline = left.task.deadlineUtc ?? '9999';
     const rightDeadline = right.task.deadlineUtc ?? '9999';
     return leftDeadline.localeCompare(rightDeadline) || left.task.id.localeCompare(right.task.id);
-  }), [pendingUndo, sortMode, tasks]);
+  }), [sortMode, visibleTasks]);
+  const miscTasks = useMemo(() => visibleTasks.filter((card) => card.task.kind === 'misc').sort((left, right) => {
+    const rank = (card: typeof left): number => {
+      if (card.task.remindAtUtc && Date.parse(card.task.remindAtUtc) <= Date.now()) return 0;
+      if (card.task.remindAtUtc) return 1;
+      return 2;
+    };
+    const rankDiff = rank(left) - rank(right);
+    if (rankDiff !== 0) return rankDiff;
+    if (left.task.remindAtUtc && right.task.remindAtUtc) return left.task.remindAtUtc.localeCompare(right.task.remindAtUtc) || left.task.id.localeCompare(right.task.id);
+    return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || left.task.id.localeCompare(right.task.id);
+  }), [visibleTasks]);
+
+  const contentMode = projectTasks.length > 0 && miscTasks.length > 0
+    ? 'mixed'
+    : projectTasks.length > 0
+      ? 'project'
+      : miscTasks.length > 0
+        ? 'misc'
+        : 'empty';
 
   useEffect(() => {
-    if (sortedTasks.length === 0) {
+    const setContentMode = window.api.setL2ContentMode;
+    if (typeof setContentMode === 'function') void setContentMode(contentMode);
+  }, [contentMode]);
+
+  useEffect(() => {
+    if (projectTasks.length === 0) {
       setActiveIndex(0);
       setActiveTaskId(null);
       return;
     }
     if (activeTaskId) {
-      const preservedIndex = sortedTasks.findIndex((card) => card.task.id === activeTaskId);
+      const preservedIndex = projectTasks.findIndex((card) => card.task.id === activeTaskId);
       if (preservedIndex >= 0) {
         if (preservedIndex !== activeIndex) setActiveIndex(preservedIndex);
         return;
       }
     }
-    const nextIndex = Math.min(activeIndex, sortedTasks.length - 1);
+    const nextIndex = Math.min(activeIndex, projectTasks.length - 1);
     setActiveIndex(nextIndex);
-    setActiveTaskId(sortedTasks[nextIndex].task.id);
-  }, [activeIndex, activeTaskId, sortedTasks]);
+    setActiveTaskId(projectTasks[nextIndex].task.id);
+  }, [activeIndex, activeTaskId, projectTasks]);
+
+  const [activeMiscIndex, setActiveMiscIndex] = useState(0);
+  const [activeMiscId, setActiveMiscId] = useState<string | null>(null);
+  useEffect(() => {
+    if (miscTasks.length === 0) {
+      setActiveMiscIndex(0);
+      setActiveMiscId(null);
+      return;
+    }
+    const preserved = activeMiscId ? miscTasks.findIndex((card) => card.task.id === activeMiscId) : -1;
+    const nextIndex = preserved >= 0 ? preserved : Math.min(activeMiscIndex, miscTasks.length - 1);
+    if (nextIndex !== activeMiscIndex) setActiveMiscIndex(nextIndex);
+    setActiveMiscId(miscTasks[nextIndex].task.id);
+  }, [activeMiscId, activeMiscIndex, miscTasks]);
 
   useEffect(() => {
-    const taskId = sortedTasks[activeIndex]?.task.id;
+    const taskId = projectTasks[activeIndex]?.task.id;
     if (taskId) void prefetchDetail(taskId);
-  }, [activeIndex, prefetchDetail, sortedTasks]);
+  }, [activeIndex, prefetchDetail, projectTasks]);
+
+  useEffect(() => {
+    const taskId = miscTasks[activeMiscIndex]?.task.id;
+    if (taskId) void prefetchDetail(taskId);
+  }, [activeMiscIndex, miscTasks, prefetchDetail]);
 
   const enterWorkspace = (taskId?: string) => {
     if (taskId) {
@@ -141,6 +186,17 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const changeTaskUrgency = async (request: TaskUrgencyUpdateRequest) => {
     const error = await setTaskUrgency(request);
     notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
+  };
+
+  const quickCompleteMisc = (taskId: string, taskName: string) => {
+    const scheduled = scheduleUndo({
+      id: taskId,
+      kind: 'task',
+      operation: 'complete',
+      label: '杂事「' + taskName + '」',
+      commit: () => completeTask(taskId)
+    });
+    if (scheduled) notify('杂事将在 5 秒后完成，可撤销', 'info');
   };
 
   const saveRename = async (name: string): Promise<string | null> => {
@@ -204,11 +260,11 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         </div>
         <div className="l2-actions">
           <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>
-          <IconButton icon={Maximize2} label="展开工作台" onClick={() => enterWorkspace(sortedTasks[activeIndex]?.task.id)} />
+          <IconButton icon={Maximize2} label="展开工作台" onClick={() => enterWorkspace(projectTasks[activeIndex]?.task.id ?? miscTasks[activeMiscIndex]?.task.id)} />
           <details className="more-menu">
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal aria-hidden="true" size={20} strokeWidth={1.75} /></summary>
             <div className="more-menu-popover">
-              <span className="more-menu-label"><ArrowDownUp aria-hidden="true" size={15} />排序方式</span>
+              <span className="more-menu-label"><ArrowDownUp aria-hidden="true" size={15} />项目排序</span>
               <button className={sortMode === 'urgency' ? 'active' : ''} onClick={() => setSortMode('urgency')}>紧急程度（默认）</button>
               <button className={sortMode === 'deadline' ? 'active' : ''} onClick={() => setSortMode('deadline')}>截止时间</button>
               <button className={sortMode === 'updated' ? 'active' : ''} onClick={() => setSortMode('updated')}>最近更新</button>
@@ -218,7 +274,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           </details>
         </div>
       </header>
-      <main className="l2-body">
+      <main className={'l2-body l2-body-' + contentMode}>
         {loading || onboarded === null ? (
           <p className="loading-state">正在整理采购任务</p>
         ) : loadError ? (
@@ -230,27 +286,29 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           />
         ) : !onboarded ? (
           <WelcomeView onDone={() => setOnboarded(true)} />
-        ) : sortedTasks.length === 0 ? (
+        ) : visibleTasks.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
             title="开始第一项采购"
             description="创建任务后，这里会优先显示下一步要做的动作。"
             action={<Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>}
           />
-        ) : (
-          <Carousel
+        ) : <div className={'l2-lanes l2-lanes-' + contentMode}>
+          {projectTasks.length > 0 && <section className="l2-lane project-lane" aria-label="采购项目">
+            <Carousel
             itemWidth={248}
             gap={12}
-            itemCount={sortedTasks.length}
+            itemCount={projectTasks.length}
             activeIndex={activeIndex}
             onActiveIndexChange={(index) => {
               setActiveIndex(index);
-              setActiveTaskId(sortedTasks[index]?.task.id ?? null);
+              setActiveTaskId(projectTasks[index]?.task.id ?? null);
             }}
             reducedMotion={reducedMotion}
             renderLimit={cardRenderLimit}
+            ariaLabel="采购项目"
             renderItem={(index) => {
-              const card = sortedTasks[index];
+              const card = projectTasks[index];
               return (
               <TaskCard
                 key={card.task.id}
@@ -277,8 +335,35 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
               />
               );
             }}
-          />
-        )}
+            />
+          </section>}
+          {miscTasks.length > 0 && <section className="l2-lane misc-lane" aria-label="杂事">
+            <Carousel
+              itemWidth={216}
+              gap={10}
+              itemCount={miscTasks.length}
+              activeIndex={activeMiscIndex}
+              onActiveIndexChange={(index) => {
+                setActiveMiscIndex(index);
+                setActiveMiscId(miscTasks[index]?.task.id ?? null);
+              }}
+              reducedMotion={reducedMotion}
+              renderLimit={cardRenderLimit}
+              ariaLabel="杂事"
+              renderItem={(index) => {
+                const card = miscTasks[index];
+                return <MiscSticker
+                  key={card.task.id}
+                  card={card}
+                  tabIndex={index === activeMiscIndex ? 0 : -1}
+                  onFocus={() => { setActiveMiscIndex(index); setActiveMiscId(card.task.id); }}
+                  onOpen={() => enterWorkspace(card.task.id)}
+                  onComplete={() => quickCompleteMisc(card.task.id, card.task.name)}
+                />;
+              }}
+            />
+          </section>}
+        </div>}
       </main>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
       {pendingNodeTime && (

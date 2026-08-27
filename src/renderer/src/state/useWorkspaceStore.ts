@@ -7,6 +7,7 @@ export interface PendingUndoAction {
   id: string;
   kind: 'node' | 'link' | 'task';
   label: string;
+  operation?: 'delete' | 'complete';
   commit: () => Promise<string | null>;
 }
 
@@ -73,7 +74,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ pendingUndo: null });
       void active.commit().then((error) => {
         if (error) get().notify(error, 'error');
-        else get().notify(active.label + '已删除', 'success');
+        else get().notify(active.label + (active.operation === 'complete' ? '已完成' : '已删除'), 'success');
       });
     }, UNDO_DELAY_MS);
     return true;
@@ -84,7 +85,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     undoTimer = null;
     const active = get().pendingUndo;
     set({ pendingUndo: null });
-    if (active) get().notify('已撤销删除', 'success');
+    if (active) get().notify(active.operation === 'complete' ? '已撤销完成' : '已撤销删除', 'success');
   },
 
   notify: (message, tone = 'info') => {

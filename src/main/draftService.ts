@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateNodeInput, validateNodeStartSchedule, validateTaskInput } from '../shared/validation';
+import { validateNodeInput, validateNodeStartSchedule, validateTaskCreateRequest } from '../shared/validation';
 import type { DraftPayload, DraftRecord, DraftSource, DraftState, TaskDraftPayload } from '../shared/draftContracts';
 import type { AgentActionDraftPayload, AgentTaskAction } from '../shared/agentContracts';
 import { NODE_STATUSES } from '../shared/taskContracts';
@@ -12,11 +12,18 @@ export class DraftError extends Error {}
 function parsePayload(raw: string): DraftPayload {
   try {
     const value: unknown = JSON.parse(raw);
+    normalizeLegacyTaskDraft(value);
     assertPayloadShape(value);
     return value;
   } catch {
     throw new DraftError('草稿数据损坏');
   }
+}
+
+function normalizeLegacyTaskDraft(value: unknown): void {
+  if (!isRecord(value) || value.type !== 'task' || !isRecord(value.taskInput) || value.taskInput.kind !== 'misc') return;
+  if (typeof value.taskInput.note !== 'string') value.taskInput.note = typeof value.taskInput.description === 'string' ? value.taskInput.description : '';
+  if (value.taskInput.remindAtUtc === undefined) value.taskInput.remindAtUtc = null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,14 +56,12 @@ function assertPayloadShape(value: unknown): asserts value is DraftPayload {
     value.nodes.forEach(assertNodeShape);
     if (!isRecord(value.taskInput)) throw new DraftError('草稿数据损坏');
     const input = value.taskInput;
-    if (
-      typeof input.name !== 'string' ||
-      typeof input.description !== 'string' ||
-      typeof input.kind !== 'string' ||
-      typeof input.urgency !== 'string' ||
-      !isNullableString(input.deadlineUtc) ||
-      typeof input.tzId !== 'string'
-    ) {
+    const commonInvalid = typeof input.name !== 'string' || typeof input.kind !== 'string' || typeof input.tzId !== 'string';
+    const projectInvalid = input.kind === 'task' && (
+      typeof input.description !== 'string' || typeof input.urgency !== 'string' || !isNullableString(input.deadlineUtc)
+    );
+    const miscInvalid = input.kind === 'misc' && (typeof input.note !== 'string' || !isNullableString(input.remindAtUtc));
+    if (commonInvalid || projectInvalid || miscInvalid || (input.kind !== 'task' && input.kind !== 'misc')) {
       throw new DraftError('草稿数据损坏');
     }
     return;
@@ -102,8 +107,9 @@ export class DraftService {
   private validatePayload(payload: unknown): asserts payload is DraftPayload {
     assertPayloadShape(payload);
     if (payload.type === 'task') {
-      const v = validateTaskInput(payload.taskInput);
+      const v = validateTaskCreateRequest(payload.taskInput);
       if (!v.ok) throw new DraftError('任务字段校验失败：' + v.errors.join('；'));
+      if (payload.taskInput.kind === 'misc' && payload.nodes.length > 0) throw new DraftError('杂事草稿不能包含节点');
     } else if (payload.type === 'nodes') {
       const task = this.db.prepare("SELECT kind, status FROM tasks WHERE id = ?").get(payload.taskId) as
         | { kind: string; status: string }
@@ -182,6 +188,7 @@ export class DraftService {
         taskId = draft.payload.taskId;
       }
       this.reminders.syncTaskNodeReminders(taskId);
+      this.reminders.syncMiscReminder(taskId);
       this.db.prepare("UPDATE drafts SET state = 'confirmed' WHERE id = ?").run(id);
       this.db.exec('COMMIT');
       return { type: draft.payload.type, taskId };
@@ -197,9 +204,24 @@ export class DraftService {
     const input = p.taskInput;
     this.db
       .prepare(
-        'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)'
+        'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
       )
-      .run(taskId, input.name.trim(), input.description.trim(), input.kind, input.urgency, input.deadlineUtc, input.tzId, 'active', now, now);
+      .run(
+        taskId,
+        input.name.trim(),
+        input.kind === 'task' ? input.description.trim() : '',
+        input.kind,
+        input.kind === 'task' ? input.urgency : 'normal',
+        input.kind === 'task' ? input.deadlineUtc : null,
+        input.kind === 'misc' ? input.remindAtUtc : null,
+        input.tzId,
+        'active',
+        now,
+        now
+      );
+    if (input.kind === 'misc' && input.note.trim()) {
+      this.db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?,?,?,?)').run(taskId, taskId, input.note.trim(), now);
+    }
     this.db
       .prepare('INSERT INTO change_events(task_id, at_utc, kind, detail) VALUES(?,?,?,?)')
       .run(taskId, now, 'draft_confirmed', JSON.stringify({ source: 'draft', nodes: p.nodes.length }));

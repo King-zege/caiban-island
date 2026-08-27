@@ -16,6 +16,7 @@ export interface Task {
   kind: TaskKind;
   urgency: Urgency;
   deadlineUtc: string | null;
+  remindAtUtc: string | null;
   tzId: string;
   status: TaskStatus;
   createdAtUtc: string;
@@ -56,7 +57,8 @@ export interface NodeTitleUpdateRequest {
 
 export type ReminderEvent =
   | { type: 'fallback'; message: string }
-  | { type: 'open-node'; taskId: string; nodeId: string };
+  | { type: 'open-node'; taskId: string; nodeId: string }
+  | { type: 'open-misc'; taskId: string };
 
 export type LinkKind = 'url' | 'file';
 
@@ -82,6 +84,45 @@ export interface TaskInput {
   urgency: Urgency;
   deadlineUtc: string | null;
   tzId: string;
+}
+
+export interface ProjectTaskCreateRequest {
+  kind: 'task';
+  name: string;
+  description: string;
+  urgency: Urgency;
+  deadlineUtc: string | null;
+  tzId: string;
+}
+
+export interface MiscTaskCreateRequest {
+  kind: 'misc';
+  name: string;
+  note: string;
+  remindAtUtc: string | null;
+  tzId: string;
+}
+
+export type TaskCreateRequest = ProjectTaskCreateRequest | MiscTaskCreateRequest;
+
+export type MiscReminderState = 'none' | 'scheduled' | 'fired' | 'legacy_deadline';
+
+export interface MiscReminderSummary {
+  state: MiscReminderState;
+  fireAtUtc: string | null;
+  legacyDeadlineUtc: string | null;
+}
+
+export interface MiscReminderUpdateRequest {
+  taskId: string;
+  remindAtUtc: string | null;
+  expectedRemindAtUtc: string | null;
+}
+
+export interface LegacyMiscDeadlineActionRequest {
+  taskId: string;
+  action: 'convert' | 'clear';
+  expectedDeadlineUtc: string;
 }
 
 export interface TaskUrgencyUpdateRequest {
@@ -115,6 +156,7 @@ export interface TaskCard {
   progress: ProgressInfo;
   nodes: TaskCardNode[];
   overdue: boolean;
+  miscReminder: MiscReminderSummary | null;
 }
 
 export interface TaskDetail {
@@ -122,6 +164,7 @@ export interface TaskDetail {
   nodes: TaskNode[];
   links: TaskLink[];
   note: string;
+  miscReminder: MiscReminderSummary | null;
 }
 
 export interface ArchivedItem {

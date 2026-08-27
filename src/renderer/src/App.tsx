@@ -84,6 +84,11 @@ export default function App(): React.JSX.Element {
       notify(event.message, 'info');
       return;
     }
+    if (event.type === 'open-misc') {
+      openTask(event.taskId);
+      void openDetail(event.taskId);
+      return;
+    }
     openTask(event.taskId, 'nodes');
     highlightNode(event.nodeId);
     void openDetail(event.taskId);

@@ -8,14 +8,14 @@
 - 分支：`main`
 - 发布版本：`v0.2.0`
 - 发布基线：`ddeaa22`
-- 当前功能基线：`f861555`（P18）
-- 已完成里程碑：P0–P18
-- 数据库迁移：v1–v4
+- 当前功能基线：P19（本提交）
+- 已完成里程碑：P0–P19
+- 数据库迁移：v1–v5
 
-P18 提交前门禁结果：
+P19 提交前门禁结果：
 
 - `npm run typecheck`：通过
-- `npm test`：36 个测试文件、195 项测试通过
+- `npm test`：38 个测试文件、209 项测试通过
 - `npm run build`：通过
 - `npm run package`：通过
 - 凭据与私人路径检测：0 项
@@ -66,9 +66,11 @@ Pi 包为 ESM，打包时必须保留当前的 bundling/lazy-provider 处理。�
 - `src/main/agentService.ts`
 - `src/main/piAgentAdapter.ts`
 - `src/main/agentSessionService.ts`
-- `src/main/agentToolService.ts`
+- `src/main/agentTools.ts`
 - `src/main/memoryService.ts`
-- `src/shared/contracts.ts`
+- `src/shared/taskContracts.ts`
+- `src/shared/draftContracts.ts`
+- `src/renderer/src/components/`
 - `src/renderer/src/panels/`
 
 运行边界：
@@ -132,10 +134,11 @@ P15 的长期记忆采用两层有界结构：
 - v2：Agent 会话、可见消息、摘要、模型与使用量。
 - v3：`memories`、`memory_proposals` 和会话消息 FTS5 索引。
 - v4：一节点一条的 `node_reminders` 及到期索引。
+- v5：杂事精确提醒字段、`misc_reminders` 及到期索引；旧杂事说明并入备注，旧 deadline 保留为待处理字段但不再自动通知。
 
 所有 schema 变更必须新增版本化迁移，禁止启动时执行未版本化 DDL。升级测试要覆盖旧库迁移、失败回滚和重复启动幂等性。
 
-## 9. P16–P18 任务体验
+## 9. P16–P19 任务体验
 
 P16 已实现节点精确开始时间与提醒：
 
@@ -154,6 +157,17 @@ P18 已实现：
 - L2 可展开查看附加链接和文件地址；
 - 任务名和节点名提供后续编辑入口；
 - 名称修改仍经过 shared/main 校验和白名单 IPC。
+
+P19 已把任务分为两套明确模型：
+
+- 采购项目保留节点、资料、截止时间、紧急程度和项目提醒；
+- 杂事只保留名称、备注、链接/附件和一次精确提醒，不允许节点、截止时间和紧急程度；
+- L2 上层为项目卡片，下层为 216×88px 杂事工作单，并按已到时间、未来提醒、无提醒及稳定 ID 排序；
+- 杂事工作单正文进入 L3 无页签单页，独立完成按钮使用 5 秒撤销队列；
+- L3 侧栏和移动选择器按“采购项目 / 杂事”分组；
+- 杂事提醒与项目、节点提醒统一原子领取、漏发摘要和通知导航；
+- Pi、Qoder MCP 与旧简单 LLM 均按判别式 schema 生成两类草稿，确认前不写正式数据；
+- 归档 JSON 已升级为格式版本 2，CSV、Markdown 和飞书导出按任务类型输出字段。
 
 后续改动须保持键盘操作、焦点恢复、44×44px 触控目标、拖动隔离、读屏标签和高对比度行为。
 
@@ -191,7 +205,7 @@ Windows GUI Electron 没有可用 stdio 管道；Qoder MCP 继续通过 `scripts
 
 ## 12. 后续私人知识库
 
-P13–P18 尚未导入或索引用户文档。现有 `AgentContextProvider` 边界用于让任务、长期记忆、历史会话和未来知识库分别提供上下文。
+P13–P19 尚未导入或索引用户文档。现有 `AgentContextProvider` 边界用于让任务、长期记忆、历史会话和未来知识库分别提供上下文。
 
 私人知识库应作为独立里程碑设计，至少包括：
 

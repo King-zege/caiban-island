@@ -10,6 +10,7 @@ import type {
   BackdropMode,
   DisplayInfo,
   IslandLevel,
+  L2ContentMode,
   IslandState,
   IslandTransitionState,
   Rect,
@@ -29,6 +30,7 @@ export class IslandWindowController {
   backdrop: BackdropMode = 'fallback';
   paused = false;
   private l2Detail = false;
+  private l2ContentMode: L2ContentMode = 'empty';
   private baseRenderMode: RenderMode = 'software';
   private transitionState: IslandTransitionState | null = null;
   private pendingLevel: IslandLevel | null = null;
@@ -272,7 +274,7 @@ export class IslandWindowController {
   boundsFor(level: IslandLevel): Rect {
     const d = this.primaryDisplay();
     if (level === 'l1') return computeL1Bounds(d);
-    if (level === 'l2') return computeL2Bounds(d, this.l2Detail);
+    if (level === 'l2') return computeL2Bounds(d, this.l2Detail, this.l2ContentMode);
     return computeL3Bounds(d);
   }
 
@@ -281,6 +283,13 @@ export class IslandWindowController {
     this.l2Detail = value;
     if (this.currentOrTargetLevel() !== 'l2' || this.transitionState) return { accepted: true };
     return this.beginTransition('l2', 'l2-detail', this.boundsFor('l2'));
+  }
+
+  setL2ContentMode(value: L2ContentMode): TransitionRequestResult {
+    if (this.l2ContentMode === value) return { accepted: false };
+    this.l2ContentMode = value;
+    if (this.currentOrTargetLevel() !== 'l2' || this.transitionState) return { accepted: true };
+    return this.beginTransition('l2', 'l2-content', this.boundsFor('l2'));
   }
 
   private reconcileDisplayBounds(): void {

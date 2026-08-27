@@ -16,10 +16,13 @@ import type {
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
+  L2ContentMode,
   IslandState,
   IslandTransitionState,
   IpcResult,
   LinkInput,
+  LegacyMiscDeadlineActionRequest,
+  MiscReminderUpdateRequest,
   NodeInput,
   NodeStatus,
   NodeTimeUpdateRequest,
@@ -28,6 +31,7 @@ import type {
   Task,
   TaskCard,
   TaskDetail,
+  TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
   TaskNode,
@@ -43,6 +47,7 @@ const api = {
   interacting: (v: boolean): Promise<boolean> => ipcRenderer.invoke('ui:interacting', v),
   togglePause: (): Promise<boolean> => ipcRenderer.invoke('island:togglePause'),
   setL2Detail: (v: boolean): Promise<TransitionRequestResult> => ipcRenderer.invoke('window:setL2Detail', v),
+  setL2ContentMode: (mode: L2ContentMode): Promise<TransitionRequestResult> => ipcRenderer.invoke('window:setL2ContentMode', mode),
   transitionReady: (id: string): Promise<boolean> => ipcRenderer.invoke('window:transitionReady', id),
   transitionFinished: (id: string): Promise<boolean> => ipcRenderer.invoke('window:transitionFinished', id),
   activate: (): Promise<boolean> => ipcRenderer.invoke('window:activate'),
@@ -67,7 +72,7 @@ const api = {
 
   listTasks: (): Promise<IpcResult<TaskCard[]>> => ipcRenderer.invoke('tasks:list'),
   taskDetail: (id: string): Promise<IpcResult<TaskDetail>> => ipcRenderer.invoke('tasks:detail', id),
-  createTask: (input: TaskInput): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:create', input),
+  createTask: (input: TaskCreateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:create', input),
   updateTask: (id: string, input: TaskInput): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:update', id, input),
   setTaskName: (request: TaskNameUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setName', request),
   setTaskUrgency: (request: TaskUrgencyUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setUrgency', request),
@@ -89,6 +94,8 @@ const api = {
 
   listReminders: (taskId: string): Promise<IpcResult<number[]>> => ipcRenderer.invoke('reminders:list', taskId),
   setReminders: (taskId: string, offsets: number[]): Promise<IpcResult<boolean>> => ipcRenderer.invoke('reminders:set', taskId, offsets),
+  setMiscReminder: (request: MiscReminderUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('misc:setReminder', request),
+  resolveLegacyMiscDeadline: (request: LegacyMiscDeadlineActionRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('misc:resolveLegacyDeadline', request),
   onReminderEvent: (cb: (event: ReminderEvent) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, value: ReminderEvent) => cb(value);
     ipcRenderer.on('reminder:event', listener);

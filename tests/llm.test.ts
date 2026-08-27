@@ -95,6 +95,20 @@ describe('内置 LLM 通道（FR-042/FR-046）', () => {
     expect(requests).toHaveLength(1);
   });
 
+  it('单步骤意图可生成杂事草稿，确认前不写正式数据', async () => {
+    const app = freshApp();
+    const remindAtUtc = '2099-09-01T08:30:00.000Z';
+    const base = await startMock(() => toolCallResponse(JSON.stringify({
+      kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc, nodes: []
+    })));
+    app.llm.saveConfig(base, 'mock-model', 'k');
+    const draft = await app.llm.breakdown('明天下午提醒我联系物业续门禁卡');
+    expect(app.tasks.listActive()).toEqual([]);
+    if (draft.payload.type !== 'task') throw new Error('应生成任务草稿');
+    expect(draft.payload.taskInput).toMatchObject({ kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc });
+    expect(draft.payload.nodes).toEqual([]);
+  });
+
   it('校验失败自动修复一次；两次失败报错', async () => {
     const app = freshApp();
     // 第一次非法（空名称），第二次合法

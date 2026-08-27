@@ -85,7 +85,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     const restored = new AgentSessionService(reopened, f.dir).get(session.id);
     expect(restored.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
     const version = reopened.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(4);
+    expect(version.version).toBe(5);
     const service = new AgentSessionService(reopened, f.dir);
     service.delete(session.id);
     expect(service.list()).toHaveLength(0);
@@ -239,5 +239,32 @@ describe('Pi 事件可见性映射', () => {
     expect(events).toContain('tool_start');
     expect(events).toContain('tool_end');
     expect(events).toContain('assistant_message');
+  });
+
+  it('Pi faux provider 可提出无节点的杂事草稿，确认前不写正式数据', async () => {
+    const f = fresh();
+    const remindAtUtc = '2099-09-01T08:30:00.000Z';
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'deepseek-v4-flash' }] });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('propose_task_draft', {
+        kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc, nodes: []
+      }, { id: 'tool-misc' }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage('杂事草稿已送审')
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const runtimeModel = models.getModel('faux', 'deepseek-v4-flash');
+    if (!runtimeModel) throw new Error('faux model missing');
+    const adapter = new PiAgentAdapter(() => ({ model: runtimeModel, streamFn: models.streamSimple.bind(models) }));
+    await adapter.run({
+      sessionId: 'faux-misc', input: '提醒我联系物业', history: [], model: 'deepseek-v4-flash', apiKey: 'test-only',
+      systemPrompt: '只使用提供的工具。', tools: createAgentTools(f.app, 'faux-misc', f.sessions, f.memories), signal: new AbortController().signal,
+      onEvent: () => undefined
+    });
+    expect(f.app.tasks.listActive()).toEqual([]);
+    const draft = f.app.drafts.listPending()[0];
+    if (draft.payload.type !== 'task') throw new Error('应生成任务草稿');
+    expect(draft.payload.taskInput).toMatchObject({ kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc });
+    expect(draft.payload.nodes).toEqual([]);
   });
 });

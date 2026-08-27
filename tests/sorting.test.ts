@@ -9,6 +9,7 @@ function task(partial: Partial<Task> & { id: string }): Task {
     kind: 'task',
     urgency: 'normal',
     deadlineUtc: null,
+    remindAtUtc: null,
     tzId: 'Asia/Shanghai',
     status: 'active',
     createdAtUtc: '2026-01-01T00:00:00.000Z',

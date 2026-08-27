@@ -1,4 +1,4 @@
-import type { DisplayInfo, Rect } from './types';
+import type { DisplayInfo, L2ContentMode, Rect } from './types';
 
 export const ISLAND = {
   L1_WIDTH: 96,
@@ -7,6 +7,8 @@ export const ISLAND = {
   L1_NATIVE_HEIGHT: 35,    // Windows 无框窗口的安全最小逻辑高度；透明主体移到屏幕外
   L2_WIDTH: 760,
   L2_HEIGHT: 280,
+  L2_HEIGHT_MISC: 196,
+  L2_HEIGHT_MIXED: 376,
   L2_HEIGHT_DETAIL: 480,
   L2_MIN_WIDTH: 560,
   L2_MAX_WIDTH_RATIO: 0.8,
@@ -30,13 +32,18 @@ export function computeL1Bounds(display: DisplayInfo, nativeHeight: number = ISL
   };
 }
 
-export function computeL2Bounds(display: DisplayInfo, detail = false): Rect {
+export function computeL2Bounds(display: DisplayInfo, detail = false, contentMode: L2ContentMode = 'project'): Rect {
   let w = Math.min(ISLAND.L2_WIDTH, Math.floor(display.width * ISLAND.L2_MAX_WIDTH_RATIO));
   w = Math.max(Math.min(ISLAND.L2_MIN_WIDTH, display.width), w);
   if (w > display.width) w = display.width;
+  const baseHeight = contentMode === 'misc'
+    ? ISLAND.L2_HEIGHT_MISC
+    : contentMode === 'mixed'
+      ? ISLAND.L2_HEIGHT_MIXED
+      : ISLAND.L2_HEIGHT;
   const h = detail
     ? Math.min(ISLAND.L2_HEIGHT_DETAIL, Math.floor(display.height * ISLAND.L2_DETAIL_HEIGHT_RATIO))
-    : Math.min(ISLAND.L2_HEIGHT, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
+    : Math.min(baseHeight, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
   return {
     x: display.x + Math.round((display.width - w) / 2),
     y: Math.max(display.y, display.workArea.y),

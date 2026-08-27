@@ -21,13 +21,22 @@ const NodeSchema = Type.Object({
   startUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点开始时间 ISO8601 UTC；用户确认后会在此刻提醒' })),
   endUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点截止时间 ISO8601 UTC；仅用于计划，不额外提醒' }))
 }, { additionalProperties: false });
-const TaskDraftSchema = Type.Object({
+const ProjectTaskDraftSchema = Type.Object({
+  kind: Type.Literal('task'),
   name: Type.String(),
   description: Type.Optional(Type.String()),
   deadlineUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   urgency: Type.Optional(Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')])),
   nodes: Type.Array(NodeSchema)
 }, { additionalProperties: false });
+const MiscTaskDraftSchema = Type.Object({
+  kind: Type.Literal('misc'),
+  name: Type.String(),
+  note: Type.Optional(Type.String()),
+  remindAtUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  nodes: Type.Array(NodeSchema, { maxItems: 0 })
+}, { additionalProperties: false });
+const TaskDraftSchema = Type.Union([ProjectTaskDraftSchema, MiscTaskDraftSchema]);
 const NodeDraftSchema = Type.Object({ taskId: Type.String(), nodes: Type.Array(NodeSchema) }, { additionalProperties: false });
 const ActionSchema = Type.Object({
   taskId: Type.String(),
@@ -87,7 +96,8 @@ export function createAgentTools(
       checkCancelled(signal);
       return text(appSvc.tasks.listActive().map((card) => ({
         id: card.task.id, name: card.task.name, kind: card.task.kind, urgency: card.task.urgency,
-        deadlineUtc: card.task.deadlineUtc, progress: card.progress, overdue: card.overdue
+        deadlineUtc: card.task.deadlineUtc, remindAtUtc: card.task.remindAtUtc,
+        miscReminder: card.miscReminder, progress: card.progress, overdue: card.overdue
       })));
     }
   };
@@ -99,7 +109,7 @@ export function createAgentTools(
       return text({
         task: value.task,
         nodes: value.nodes,
-        reminders: appSvc.reminders.offsetsForTask(params.taskId),
+        reminders: value.task.kind === 'misc' ? value.miscReminder : appSvc.reminders.offsetsForTask(params.taskId),
         links: value.links.map((link) => ({ kind: link.kind, title: link.title, target: link.kind === 'url' ? link.target : '[本地文件]' })),
         note: value.note
       });
@@ -110,13 +120,26 @@ export function createAgentTools(
     executionMode: 'sequential',
     execute: async (_id, params, signal) => {
       checkCancelled(signal);
+      const taskInput = params.kind === 'misc'
+        ? {
+            kind: 'misc' as const,
+            name: params.name,
+            note: params.note ?? '',
+            remindAtUtc: params.remindAtUtc ?? null,
+            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
+          }
+        : {
+            kind: 'task' as const,
+            name: params.name,
+            description: params.description ?? '',
+            urgency: params.urgency ?? 'normal',
+            deadlineUtc: params.deadlineUtc ?? null,
+            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
+          };
       const draft = appSvc.drafts.create('pi', {
         type: 'task',
-        taskInput: {
-          name: params.name, description: params.description ?? '', kind: 'task', urgency: params.urgency ?? 'normal',
-          deadlineUtc: params.deadlineUtc ?? null, tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-        },
-        nodes: params.nodes.map(normalizeNode), warnings: []
+        taskInput,
+        nodes: params.kind === 'task' ? params.nodes.map(normalizeNode) : [], warnings: []
       });
       return text({ draftId: draft.id, status: 'pending', message: '任务草稿已进入审核区' }, { draftId: draft.id });
     }

@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 const dirs: string[] = [];
 const calls: string[] = [];
 let records = new Map<string, { record_id: string; fields: Record<string, unknown> }>();
+let tableFields = new Set<string>();
 let server: Server | null = null;
 let baseUrl = '';
 
@@ -40,7 +41,7 @@ beforeAll(async () => {
       calls.push(req.method + ' ' + url);
       try {
         if (req.method === 'GET' && url.startsWith('/bitable/v1/apps')) {
-          res.end(JSON.stringify(ok({ items: [] })));
+          res.end(JSON.stringify(ok({ items: [...tableFields].map((field_name) => ({ field_name })) })));
           return;
         }
         if (req.method === 'POST' && url === '/bitable/v1/apps') {
@@ -49,6 +50,12 @@ beforeAll(async () => {
         }
         if (req.method === 'POST' && url === '/bitable/v1/apps/mock_app_token/tables') {
           res.end(JSON.stringify(ok({ table_id: 'mock_table_id' })));
+          return;
+        }
+        if (req.method === 'POST' && url.endsWith('/fields')) {
+          const payload = JSON.parse(body) as { field_name?: string };
+          if (payload.field_name) tableFields.add(payload.field_name);
+          res.end(JSON.stringify(ok({ field: { field_name: payload.field_name } })));
           return;
         }
         if (req.method === 'POST' && url.endsWith('/records/search')) {
@@ -102,6 +109,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   records.clear();
+  tableFields.clear();
   calls.length = 0;
   for (const d of dirs.splice(0)) {
     try { rmSync(d, { recursive: true, force: true }); } catch { /* 忽略 */ }

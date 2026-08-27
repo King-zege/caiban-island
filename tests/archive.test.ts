@@ -37,7 +37,7 @@ describe('归档与快照（FR-070~075）', () => {
     expect(existsSync(path.join(dir, 'task.json'))).toBe(true);
     expect(existsSync(path.join(dir, 'task.md'))).toBe(true);
     const json = JSON.parse(readFileSync(path.join(dir, 'task.json'), 'utf8'));
-    expect(json.format_version).toBe(1);
+    expect(json.format_version).toBe(2);
     expect(json.app_version).toBe(APP_VERSION);
     expect(json.task.name).toBe('采购任务');
     expect(json.nodes).toHaveLength(1);
