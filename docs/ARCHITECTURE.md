@@ -78,9 +78,10 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 | settings:getAll / set | renderer→main | 设置（默认提醒、自启、磨砂开关） |
 | feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出（P6） |
 | mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置（P5） |
-| agent:start / send / cancel | renderer→main | 新建/继续/取消唯一活跃 Pi run（P14） |
+| agent:start / send / cancel / getRunSnapshot / setSurfaceVisible | renderer→main | 新建/继续/显式取消唯一活跃 Pi run；恢复后台 run 快照；同步对应会话是否正在可见（P20） |
 | agent:listSessions / getSession / deleteSession / clearSessions / exportSession | renderer→main | 本机会话读取、删除、清空与导出（P14） |
 | agent:event | main→renderer | 流式可见文本、脱敏工具状态、消息与 run 状态；不含 reasoning |
+| agent:attention | main→renderer | 系统通知点击或岛内回退后的结果定位；只含 sessionId 与可选草稿/记忆提案 ID |
 | deepseek:status / saveConfig / test | renderer→main | 固定官方 Base URL；模型选择与 safeStorage Key（P14） |
 | memory:list / listProposals / confirmProposal / discardProposal | renderer→main | 读取与审核长期记忆提案（P15） |
 | memory:update / delete / clear | renderer→main | 用户直接维护已确认记忆（P15） |
@@ -205,6 +206,9 @@ P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有�
       fired INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX node_reminders_due ON node_reminders(fired, fire_at_utc);
+    -- migration v6
+    ALTER TABLE drafts ADD COLUMN session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL;
+    CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at);
 
 规则：WAL + foreign_keys=ON；schema 变更只走 `db.ts` 中按版本登记的迁移；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
 
@@ -269,6 +273,15 @@ P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有�
 - 旧杂事 deadline 通过 `misc:resolveLegacyDeadline` 原子转换或清除，并携带预期 deadline。转换仅允许未来值：写入 `remind_at_utc`、清空 `deadline_utc`、删除旧提前量并建立精确提醒；过去值只允许清除。
 - `ReminderService` 把项目、节点、杂事统一为 `DueReminder`，三类记录分别按自身主键原子领取。杂事 Toast 点击发送 `{type:'open-misc', taskId}`，renderer 打开该杂事 L3 单页；漏发摘要只报告数量与分类，不携带备注或资料目标。
 - AI 三条通道的 `propose_task_draft` 使用 task/misc 判别 schema；确认仍由 `DraftService` 最终校验并经 AppService 事务写入。节点草稿和轻量节点操作继续拒绝杂事。
+
+## 7.5 L2 Agent、后台 run 与归档案例（P20）
+
+- renderer 在 App 根层只订阅一次 `agent:event`，由全局 Agent store 保存活动会话、消息、流式文本、run 状态、未读结果与待确认目标。L2/L3 只渲染不同密度的同一状态，不在组件卸载时取消 run。
+- `AgentService` 继续独占唯一活跃 run，并通过 `AgentRunSnapshot` 暴露只读恢复状态。main 记录本次 run 最近产生的草稿/记忆提案 ID；仅在对应会话界面不可见时发送通用完成通知。
+- 通知点击向 renderer 发送 `agent:attention`，再由 window controller 打开 L2；暂停或真正全屏时保留待打开意图，不绕过既有全屏退让。通知失败时只在安全状态无焦点展开。
+- migration v6 让草稿以可空外键关联 Agent 会话。Pi 工具创建的草稿写入 sessionId；Qoder、旧 API 与旧草稿保持 null。删除会话只把草稿关联置空，不删除待审核草稿。
+- 任务方案修订通过 `replacesDraftId` 显式完成：DraftService 先验证旧稿属于同一会话、同为任务草稿且仍 pending，再在一个事务中插入新稿并将旧稿标为 superseded。
+- Pi allowlist 新增 `search_archived_cases`。该工具只查询 SQLite 中的结构化归档记录，最多返回 5 项有限摘要；不调用 ArchiveService 的快照文件读取，也不返回 note、link target、文件路径或 change event detail。Qoder MCP 的四工具契约不变。
 
 ## 8. 安全
 

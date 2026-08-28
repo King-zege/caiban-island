@@ -159,6 +159,11 @@ const SCHEMA_V5 = [
   "DELETE FROM reminders WHERE task_id IN (SELECT id FROM tasks WHERE kind = 'misc')"
 ];
 
+const SCHEMA_V6 = [
+  'ALTER TABLE drafts ADD COLUMN session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL',
+  'CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at)'
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -195,6 +200,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 5) {
       for (const stmt of SCHEMA_V5) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(5, ?)').run(new Date().toISOString());
+    }
+    if (current < 6) {
+      for (const stmt of SCHEMA_V6) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(6, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {

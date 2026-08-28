@@ -2,7 +2,7 @@ import type { TaskCreateRequest } from './taskContracts';
 import type { AgentActionDraftPayload } from './agentContracts';
 
 export type DraftSource = 'mcp' | 'api' | 'pi';
-export type DraftState = 'pending' | 'confirmed' | 'discarded';
+export type DraftState = 'pending' | 'confirmed' | 'discarded' | 'superseded';
 
 export interface DraftNodeProposal {
   title: string;
@@ -30,6 +30,7 @@ export type DraftPayload = TaskDraftPayload | NodesDraftPayload | AgentActionDra
 export interface DraftRecord {
   id: string;
   source: DraftSource;
+  sessionId: string | null;
   payload: DraftPayload;
   state: DraftState;
   createdAt: string;

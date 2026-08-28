@@ -7,6 +7,8 @@ import type {
   AiStatus,
   AgentRunEvent,
   AgentRunRequest,
+  AgentRunSnapshot,
+  AgentAttentionEvent,
   AgentSessionDetail,
   AgentSessionSummary,
   DeepSeekModel,
@@ -126,10 +128,11 @@ const api = {
   openPath: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openPath', p),
   showInFolder: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:showInFolder', p),
 
-  listDrafts: (): Promise<IpcResult<DraftRecord[]>> => ipcRenderer.invoke('drafts:list'),
+  listDrafts: (sessionId?: string): Promise<IpcResult<DraftRecord[]>> => ipcRenderer.invoke('drafts:list', sessionId),
+  getDraft: (id: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:get', id),
   updateDraft: (id: string, payload: DraftPayload): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:update', id, payload),
   discardDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:discard', id),
-  confirmDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:confirm', id),
+  confirmDraft: (id: string): Promise<IpcResult<{ type: 'task' | 'nodes' | 'action'; taskId: string }>> => ipcRenderer.invoke('drafts:confirm', id),
 
   getMcpConfig: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:getConfig'),
   resetMcpToken: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:resetToken'),
@@ -141,6 +144,8 @@ const api = {
   agentStart: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:start', request),
   agentSend: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:send', request),
   agentCancel: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:cancel'),
+  getAgentRunSnapshot: (): Promise<IpcResult<AgentRunSnapshot>> => ipcRenderer.invoke('agent:getRunSnapshot'),
+  setAgentSurfaceVisible: (visible: boolean): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:setSurfaceVisible', visible),
   listAgentSessions: (): Promise<IpcResult<AgentSessionSummary[]>> => ipcRenderer.invoke('agent:listSessions'),
   getAgentSession: (id: string): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:getSession', id),
   deleteAgentSession: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:deleteSession', id),
@@ -150,6 +155,11 @@ const api = {
     const listener = (_event: IpcRendererEvent, value: AgentRunEvent) => cb(value);
     ipcRenderer.on('agent:event', listener);
     return () => ipcRenderer.removeListener('agent:event', listener);
+  },
+  onAgentAttention: (cb: (event: AgentAttentionEvent) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, value: AgentAttentionEvent) => cb(value);
+    ipcRenderer.on('agent:attention', listener);
+    return () => ipcRenderer.removeListener('agent:attention', listener);
   },
   getDeepSeekStatus: (): Promise<IpcResult<DeepSeekStatus>> => ipcRenderer.invoke('deepseek:status'),
   saveDeepSeekConfig: (model: DeepSeekModel, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('deepseek:saveConfig', model, key),

@@ -36,12 +36,14 @@ export function computeL2Bounds(display: DisplayInfo, detail = false, contentMod
   let w = Math.min(ISLAND.L2_WIDTH, Math.floor(display.width * ISLAND.L2_MAX_WIDTH_RATIO));
   w = Math.max(Math.min(ISLAND.L2_MIN_WIDTH, display.width), w);
   if (w > display.width) w = display.width;
-  const baseHeight = contentMode === 'misc'
+  const baseHeight = contentMode === 'agent'
+    ? ISLAND.L2_HEIGHT_DETAIL
+    : contentMode === 'misc'
     ? ISLAND.L2_HEIGHT_MISC
     : contentMode === 'mixed'
       ? ISLAND.L2_HEIGHT_MIXED
       : ISLAND.L2_HEIGHT;
-  const h = detail
+  const h = detail || contentMode === 'agent'
     ? Math.min(ISLAND.L2_HEIGHT_DETAIL, Math.floor(display.height * ISLAND.L2_DETAIL_HEIGHT_RATIO))
     : Math.min(baseHeight, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
   return {

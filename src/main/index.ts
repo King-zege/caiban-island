@@ -12,11 +12,12 @@ import { McpTokenVault } from './mcpTokenVault';
 import { AgentSessionService } from './agentSessionService';
 import { DeepSeekConfigService } from './deepSeekConfigService';
 import { AgentService } from './agentService';
+import { AgentNotificationTracker } from './agentNotification';
 import { MemoryContextProvider, MemoryService } from './memoryService';
 import { resolveUserDataPath } from './userData';
 import { classifyRenderMode } from '../shared/renderMode';
 import type { RenderMode } from '../shared/types';
-import type { ReminderEvent } from '../shared/types';
+import type { AgentAttentionEvent, AgentRunEvent, ReminderEvent } from '../shared/types';
 import type { DueReminder } from './reminderService';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
@@ -273,8 +274,35 @@ app.on('child-process-gone', (_event, details) => {
 
       controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
       controller.setRenderMode(detectedRenderMode);
+      const agentNotifications = new AgentNotificationTracker();
+      const sendAgentAttention = (attention: AgentAttentionEvent): void => {
+        if (!win.isDestroyed()) win.webContents.send('agent:attention', attention);
+      };
+      const openAgentAttention = (attention: AgentAttentionEvent): void => {
+        sendAgentAttention(attention);
+        if (!controller) return;
+        if (controller.paused) controller.togglePause();
+        controller.setLevel('l2');
+        win.focus();
+      };
+      const fallbackAgentAttention = (attention: AgentAttentionEvent): void => {
+        sendAgentAttention(attention);
+        if (!controller) return;
+        if (agentService?.isSurfaceVisible()) return;
+        if (controller.paused || fullscreenDetector?.isActive()) {
+          win.once('show', () => controller?.setLevel('l2'));
+          return;
+        }
+        controller.setLevel('l2');
+      };
+      const emitAgentEvent = (event: AgentRunEvent): void => {
+        if (!win.isDestroyed()) win.webContents.send('agent:event', event);
+        const notice = agentNotifications.handle(event, agentService?.isSurfaceVisible() ?? false);
+        if (!notice) return;
+        showToast('采办岛', notice.body, () => openAgentAttention(notice.attention), () => fallbackAgentAttention(notice.attention));
+      };
       agentService = new AgentService(
-        appSvc, agentSessions, deepSeek, (event) => win.webContents.send('agent:event', event),
+        appSvc, agentSessions, deepSeek, emitAgentEvent,
         undefined, memories, [new MemoryContextProvider(memories)]
       );
       registerIpc(controller, appSvc, feishu, mcpTokenVault, agentService, deepSeek, memories);

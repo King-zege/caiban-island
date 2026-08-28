@@ -9,6 +9,7 @@ import L3Panel from './panels/L3Panel';
 import { ToastHost } from './components/ui/ToastHost';
 import { useTaskStore } from './state/useStore';
 import { useWorkspaceStore } from './state/useWorkspaceStore';
+import { useAgentStore } from './state/useAgentStore';
 
 const INITIAL_PREFERENCES: UiPreferences = {
   colorScheme: 'dark',
@@ -61,6 +62,7 @@ function motionStyle(transition: IslandTransitionState, started: boolean): CSSPr
 export default function App(): React.JSX.Element {
   const [level, setLevel] = useState<IslandLevel>('l1');
   const [backdrop, setBackdrop] = useState<IslandState['backdrop']>('fallback');
+  const [paused, setPaused] = useState(false);
   const [transition, setTransition] = useState<IslandTransitionState | null>(null);
   const [startedTransitionId, setStartedTransitionId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<UiPreferences>(INITIAL_PREFERENCES);
@@ -69,6 +71,9 @@ export default function App(): React.JSX.Element {
   const ensureOnboarded = useTaskStore((state) => state.ensureOnboarded);
   const openDetail = useTaskStore((state) => state.openDetail);
   const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
+  const section = useWorkspaceStore((state) => state.section);
+  const l2View = useWorkspaceStore((state) => state.l2View);
+  const setL2View = useWorkspaceStore((state) => state.setL2View);
   const openTask = useWorkspaceStore((state) => state.openTask);
   const highlightNode = useWorkspaceStore((state) => state.highlightNode);
   const notify = useWorkspaceStore((state) => state.notify);
@@ -78,6 +83,28 @@ export default function App(): React.JSX.Element {
     void ensureLoaded();
     void ensureOnboarded();
   }, [ensureLoaded, ensureOnboarded]);
+
+  useEffect(() => {
+    void useAgentStore.getState().bootstrap();
+    const offEvent = typeof window.api.onAgentEvent === 'function'
+      ? window.api.onAgentEvent((event) => useAgentStore.getState().handleEvent(event))
+      : () => undefined;
+    const offAttention = typeof window.api.onAgentAttention === 'function' ? window.api.onAgentAttention((event) => {
+      setL2View('agent');
+      void useAgentStore.getState().handleAttention(event);
+    }) : () => undefined;
+    return () => {
+      offEvent();
+      offAttention();
+    };
+  }, [setL2View]);
+
+  useEffect(() => {
+    const effectiveLevel = transition?.to ?? level;
+    const visible = !paused && ((effectiveLevel === 'l2' && l2View === 'agent')
+      || (effectiveLevel === 'l3' && section === 'agent'));
+    if (typeof window.api.setAgentSurfaceVisible === 'function') void window.api.setAgentSurfaceVisible(visible);
+  }, [l2View, level, paused, section, transition?.to]);
 
   useEffect(() => window.api.onReminderEvent((event) => {
     if (event.type === 'fallback') {
@@ -100,12 +127,14 @@ export default function App(): React.JSX.Element {
       if (!active) return;
       setLevel(state.level);
       setBackdrop(state.backdrop);
+      setPaused(state.paused);
       setTransition(state.transition);
     });
     void window.api.getUiPreferences().then((next) => { if (active) setPreferences(next); });
     const offState = window.api.onState((state) => {
       setLevel(state.level);
       setBackdrop(state.backdrop);
+      setPaused(state.paused);
       setTransition(state.transition);
     });
     const offTransition = window.api.onTransition(setTransition);
@@ -151,13 +180,17 @@ export default function App(): React.JSX.Element {
       if (level === 'l3') {
         document.querySelector<HTMLElement>('[data-transition-focus="l3"]')?.focus();
       } else if (level === 'l2' && completed.from === 'l3') {
+        if (l2View === 'agent') {
+          document.querySelector<HTMLElement>('[aria-label="发送给 Pi Agent"]')?.focus();
+          return;
+        }
         const selector = selectedTaskId
           ? `[data-carousel-card="true"][data-task-id="${CSS.escape(selectedTaskId)}"]`
           : '[data-carousel-card="true"]';
         document.querySelector<HTMLElement>(selector)?.focus();
       }
     });
-  }, [level, selectedTaskId, transition]);
+  }, [l2View, level, selectedTaskId, transition]);
 
   const tokenStyle = useMemo(
     () => designTokenCssVariables(preferences.colorScheme) as CSSProperties,

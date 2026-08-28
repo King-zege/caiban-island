@@ -1,5 +1,5 @@
 export type IslandLevel = 'l1' | 'l2' | 'l3';
-export type L2ContentMode = 'empty' | 'project' | 'misc' | 'mixed';
+export type L2ContentMode = 'empty' | 'project' | 'misc' | 'mixed' | 'agent';
 export type BackdropMode = 'transparent' | 'acrylic' | 'fallback';
 export type ColorScheme = 'dark' | 'light';
 export type RenderMode = 'composited' | 'software' | 'direct';

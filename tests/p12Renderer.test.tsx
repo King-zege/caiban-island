@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskCard, TaskDetail } from '../src/shared/types';
 import L2Panel from '../src/renderer/src/panels/L2Panel';
 import { useTaskStore } from '../src/renderer/src/state/useStore';
+import { useWorkspaceStore } from '../src/renderer/src/state/useWorkspaceStore';
 
 function card(index: number): TaskCard {
   return {
@@ -58,6 +59,7 @@ beforeEach(() => {
     detailCache: {},
     onboarded: true
   });
+  useWorkspaceStore.setState({ l2View: 'overview' });
 });
 
 afterEach(() => {

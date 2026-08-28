@@ -85,7 +85,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     const restored = new AgentSessionService(reopened, f.dir).get(session.id);
     expect(restored.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
     const version = reopened.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(5);
+    expect(version.version).toBe(6);
     const service = new AgentSessionService(reopened, f.dir);
     service.delete(session.id);
     expect(service.list()).toHaveLength(0);
@@ -109,7 +109,7 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
     expect(() => f.deepSeek.save('unsupported' as 'deepseek-v4-pro', '')).toThrow('不支持');
   });
 
-  it('Agent 单次运行持久化可见消息与用量，且只暴露七个 allowlist 工具', async () => {
+  it('Agent 单次运行持久化可见消息与用量，且只暴露八个 allowlist 工具', async () => {
     const f = fresh();
     const events: AgentRunEvent[] = [];
     const runner = new CompletingRunner();
@@ -152,17 +152,19 @@ describe('P14 Agent 会话与 DeepSeek 配置', () => {
 describe('P14 工具与轻量操作提案', () => {
   it('工具集不含文件、shell、URL 或正式写入工具', () => {
     const f = fresh();
-    const names = createAgentTools(f.app, 'session-1', f.sessions, f.memories).map((tool) => tool.name);
+    const session = f.sessions.create('deepseek-v4-flash', '工具边界');
+    const names = createAgentTools(f.app, session.id, f.sessions, f.memories).map((tool) => tool.name);
     expect(names).toEqual(AGENT_TOOL_NAMES);
-    expect(names.some((name) => /(file|shell|url|archive|delete_task)/i.test(name))).toBe(false);
+    expect(names.some((name) => /(file|shell|url|delete_task)/i.test(name))).toBe(false);
   });
 
   it('轻量操作确认前不生效，确认只执行一次', () => {
     const f = fresh();
     const task = f.app.createTask({ name: '采购', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
     const node = f.app.addNode(task.id, { title: '询价', description: '', startUtc: null, endUtc: null });
+    const session = f.sessions.create('deepseek-v4-flash', '调整节点');
     const actions = new AgentActionService(f.app);
-    const draft = actions.propose({ taskId: task.id, sessionId: 'session-1', kind: 'set_node_status', nodeId: node.id, status: 'in_progress' });
+    const draft = actions.propose({ taskId: task.id, sessionId: session.id, kind: 'set_node_status', nodeId: node.id, status: 'in_progress' });
     expect(f.app.tasks.getTaskDetail(task.id).nodes[0].status).toBe('pending');
     expect(() => f.app.drafts.updatePayload(draft.id, draft.payload)).toThrow('不可编辑');
     expect(f.app.confirmDraft(draft.id).type).toBe('action');
@@ -174,7 +176,8 @@ describe('P14 工具与轻量操作提案', () => {
     const f = fresh();
     const task = f.app.createTask({ name: '采购', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' });
     const node = f.app.addNode(task.id, { title: '询价', description: '', startUtc: null, endUtc: null });
-    const draft = new AgentActionService(f.app).propose({ taskId: task.id, sessionId: 'session-1', kind: 'set_node_status', nodeId: node.id, status: 'in_progress' });
+    const session = f.sessions.create('deepseek-v4-flash', '调整节点');
+    const draft = new AgentActionService(f.app).propose({ taskId: task.id, sessionId: session.id, kind: 'set_node_status', nodeId: node.id, status: 'in_progress' });
     f.app.setNodeStatus(node.id, 'completed');
     expect(() => f.app.confirmDraft(draft.id)).toThrow('数据已变化');
     expect(f.app.tasks.getTaskDetail(task.id).nodes[0].status).toBe('completed');
@@ -186,13 +189,14 @@ describe('P14 工具与轻量操作提案', () => {
     const task = f.app.createTask({ name: '采购', description: '', kind: 'task', urgency: 'normal', deadlineUtc: '2026-09-01T00:00:00.000Z', tzId: 'Asia/Shanghai' });
     const first = f.app.addNode(task.id, { title: '询价', description: '', startUtc: null, endUtc: null });
     const second = f.app.addNode(task.id, { title: '比价', description: '', startUtc: null, endUtc: null });
+    const session = f.sessions.create('deepseek-v4-flash', '批量规划');
     const actions = new AgentActionService(f.app);
     const requests = [
-      actions.propose({ taskId: task.id, sessionId: 's', kind: 'set_reminders', offsets: [60, 1440] }),
-      actions.propose({ taskId: task.id, sessionId: 's', kind: 'add_node', node: { title: '比价', description: '', startUtc: null, endUtc: null } }),
-      actions.propose({ taskId: task.id, sessionId: 's', kind: 'update_node', nodeId: first.id, node: { title: '正式询价', description: '', startUtc: null, endUtc: null } }),
-      actions.propose({ taskId: task.id, sessionId: 's', kind: 'delete_node', nodeId: first.id }),
-      actions.propose({ taskId: task.id, sessionId: 's', kind: 'reorder_nodes', orderedNodeIds: [second.id, first.id] })
+      actions.propose({ taskId: task.id, sessionId: session.id, kind: 'set_reminders', offsets: [60, 1440] }),
+      actions.propose({ taskId: task.id, sessionId: session.id, kind: 'add_node', node: { title: '比价', description: '', startUtc: null, endUtc: null } }),
+      actions.propose({ taskId: task.id, sessionId: session.id, kind: 'update_node', nodeId: first.id, node: { title: '正式询价', description: '', startUtc: null, endUtc: null } }),
+      actions.propose({ taskId: task.id, sessionId: session.id, kind: 'delete_node', nodeId: first.id }),
+      actions.propose({ taskId: task.id, sessionId: session.id, kind: 'reorder_nodes', orderedNodeIds: [second.id, first.id] })
     ];
     expect(requests.every((draft) => draft.payload.type === 'action')).toBe(true);
     expect(f.app.tasks.getTaskDetail(task.id).nodes).toHaveLength(2);
@@ -256,9 +260,10 @@ describe('Pi 事件可见性映射', () => {
     const runtimeModel = models.getModel('faux', 'deepseek-v4-flash');
     if (!runtimeModel) throw new Error('faux model missing');
     const adapter = new PiAgentAdapter(() => ({ model: runtimeModel, streamFn: models.streamSimple.bind(models) }));
+    const session = f.sessions.create('deepseek-v4-flash', '提醒我联系物业');
     await adapter.run({
-      sessionId: 'faux-misc', input: '提醒我联系物业', history: [], model: 'deepseek-v4-flash', apiKey: 'test-only',
-      systemPrompt: '只使用提供的工具。', tools: createAgentTools(f.app, 'faux-misc', f.sessions, f.memories), signal: new AbortController().signal,
+      sessionId: session.id, input: '提醒我联系物业', history: [], model: 'deepseek-v4-flash', apiKey: 'test-only',
+      systemPrompt: '只使用提供的工具。', tools: createAgentTools(f.app, session.id, f.sessions, f.memories), signal: new AbortController().signal,
       onEvent: () => undefined
     });
     expect(f.app.tasks.listActive()).toEqual([]);

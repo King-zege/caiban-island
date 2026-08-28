@@ -27,14 +27,16 @@ const ProjectTaskDraftSchema = Type.Object({
   description: Type.Optional(Type.String()),
   deadlineUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   urgency: Type.Optional(Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')])),
-  nodes: Type.Array(NodeSchema)
+  nodes: Type.Array(NodeSchema),
+  replacesDraftId: Type.Optional(Type.String())
 }, { additionalProperties: false });
 const MiscTaskDraftSchema = Type.Object({
   kind: Type.Literal('misc'),
   name: Type.String(),
   note: Type.Optional(Type.String()),
   remindAtUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  nodes: Type.Array(NodeSchema, { maxItems: 0 })
+  nodes: Type.Array(NodeSchema, { maxItems: 0 }),
+  replacesDraftId: Type.Optional(Type.String())
 }, { additionalProperties: false });
 const TaskDraftSchema = Type.Union([ProjectTaskDraftSchema, MiscTaskDraftSchema]);
 const NodeDraftSchema = Type.Object({ taskId: Type.String(), nodes: Type.Array(NodeSchema) }, { additionalProperties: false });
@@ -64,6 +66,10 @@ const MemorySchema = Type.Object({
 const SearchSessionsSchema = Type.Object({
   query: Type.String({ minLength: 1, maxLength: 200 }),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 }))
+}, { additionalProperties: false });
+const SearchArchivedCasesSchema = Type.Object({
+  query: Type.String({ minLength: 1, maxLength: 200 }),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 }))
 }, { additionalProperties: false });
 
 function text(value: unknown, details: ToolDetails = {}): { content: [{ type: 'text'; text: string }]; details: ToolDetails } {
@@ -140,7 +146,7 @@ export function createAgentTools(
         type: 'task',
         taskInput,
         nodes: params.kind === 'task' ? params.nodes.map(normalizeNode) : [], warnings: []
-      });
+      }, { sessionId, replacesDraftId: params.replacesDraftId });
       return text({ draftId: draft.id, status: 'pending', message: '任务草稿已进入审核区' }, { draftId: draft.id });
     }
   };
@@ -149,7 +155,7 @@ export function createAgentTools(
     executionMode: 'sequential',
     execute: async (_id, params, signal) => {
       checkCancelled(signal);
-      const draft = appSvc.drafts.create('pi', { type: 'nodes', taskId: params.taskId, nodes: params.nodes.map(normalizeNode), warnings: [] });
+      const draft = appSvc.drafts.create('pi', { type: 'nodes', taskId: params.taskId, nodes: params.nodes.map(normalizeNode), warnings: [] }, { sessionId });
       return text({ draftId: draft.id, status: 'pending', message: '节点草稿已进入审核区' }, { draftId: draft.id });
     }
   };
@@ -172,7 +178,17 @@ export function createAgentTools(
       return text({ draftId: draft.id, status: 'pending', summary: draft.payload.type === 'action' ? draft.payload.summary : '' }, { draftId: draft.id });
     }
   };
-  const tools: AgentTool[] = [list, detail, taskDraft, nodeDraft, action];
+  const archivedCases: AgentTool<typeof SearchArchivedCasesSchema, ToolDetails> = {
+    name: 'search_archived_cases',
+    label: '搜索归档案例',
+    description: '只读检索已归档项目与杂事的有限结构化摘要；不返回备注、链接目标、文件路径、快照或变更详情',
+    parameters: SearchArchivedCasesSchema,
+    execute: async (_id, params, signal) => {
+      checkCancelled(signal);
+      return text(appSvc.archive.searchCases(params.query, params.limit ?? 5));
+    }
+  };
+  const tools: AgentTool[] = [list, detail, taskDraft, nodeDraft, action, archivedCases];
   if (memories) {
     const memory: AgentTool<typeof MemorySchema, ToolDetails> = {
       name: 'propose_memory', label: '提出长期记忆',
@@ -207,5 +223,5 @@ export function createAgentTools(
 
 export const AGENT_TOOL_NAMES = [
   'list_active_tasks', 'get_task_detail', 'propose_task_draft', 'propose_node_draft', 'propose_task_action',
-  'propose_memory', 'search_sessions'
+  'search_archived_cases', 'propose_memory', 'search_sessions'
 ] as const;

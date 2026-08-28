@@ -83,7 +83,7 @@ beforeEach(() => {
     detailLoading: false, detailError: null, detailCache: {}, onboarded: true
   });
   useWorkspaceStore.setState({
-    section: 'tasks', taskSection: 'overview', selectedTaskId: null,
+    section: 'tasks', l2View: 'overview', taskSection: 'overview', selectedTaskId: null,
     highlightedNodeId: null, pendingUndo: null, toast: null
   });
 });

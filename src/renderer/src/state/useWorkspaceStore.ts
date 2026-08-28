@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export type WorkspaceSection = 'tasks' | 'agent' | 'memory' | 'drafts' | 'archive' | 'settings';
 export type TaskWorkspaceSection = 'overview' | 'nodes' | 'materials' | 'reminders' | 'notes';
+export type L2View = 'agent' | 'overview';
 
 export interface PendingUndoAction {
   id: string;
@@ -18,12 +19,14 @@ export interface WorkspaceToast {
 
 interface WorkspaceState {
   section: WorkspaceSection;
+  l2View: L2View;
   taskSection: TaskWorkspaceSection;
   selectedTaskId: string | null;
   highlightedNodeId: string | null;
   pendingUndo: PendingUndoAction | null;
   toast: WorkspaceToast | null;
   openSection: (section: WorkspaceSection) => void;
+  setL2View: (view: L2View) => void;
   openTask: (taskId: string, section?: TaskWorkspaceSection) => void;
   clearTaskSelection: () => void;
   setTaskSection: (section: TaskWorkspaceSection) => void;
@@ -41,6 +44,7 @@ let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   section: 'tasks',
+  l2View: 'agent',
   taskSection: 'overview',
   selectedTaskId: null,
   highlightedNodeId: null,
@@ -48,6 +52,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   toast: null,
 
   openSection: (section) => set({ section }),
+  setL2View: (l2View) => set({ l2View }),
   openTask: (taskId, section = 'overview') => set({ section: 'tasks', selectedTaskId: taskId, taskSection: section, highlightedNodeId: null }),
   clearTaskSelection: () => set({ selectedTaskId: null, taskSection: 'overview', highlightedNodeId: null }),
   setTaskSection: (taskSection) => set({ taskSection }),

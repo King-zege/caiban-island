@@ -74,7 +74,7 @@ export class AgentActionService {
       action,
       summary,
       warnings: action.kind === 'delete_node' ? ['删除节点需要二次确认，并保留 5 秒撤销时间'] : []
-    });
+    }, { sessionId: request.sessionId });
   }
 
   private normalizeOffsets(value: number[] | undefined): number[] {

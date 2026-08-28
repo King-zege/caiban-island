@@ -57,7 +57,7 @@ describe('P19 数据迁移与任务分层', () => {
     expect(db.prepare("SELECT body FROM notes WHERE task_id='m1'").get()).toEqual({ body: '原备注\n\n原任务说明\n旧说明一' });
     expect(db.prepare("SELECT body FROM notes WHERE task_id='m2'").get()).toEqual({ body: '旧说明二' });
     expect(db.prepare('SELECT COUNT(*) AS count FROM reminders').get()).toEqual({ count: 0 });
-    expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 5 });
+    expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 6 });
     db.close();
   });
 

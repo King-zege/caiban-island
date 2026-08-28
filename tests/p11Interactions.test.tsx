@@ -13,7 +13,7 @@ function setApi(api: Partial<Window['api']>): void {
 
 beforeEach(() => {
   useTaskStore.setState({ tasks: [], loading: false, detail: null, detailLoading: false });
-  useWorkspaceStore.setState({ section: 'tasks', taskSection: 'overview', selectedTaskId: null, highlightedNodeId: null, pendingUndo: null, toast: null });
+  useWorkspaceStore.setState({ section: 'tasks', l2View: 'overview', taskSection: 'overview', selectedTaskId: null, highlightedNodeId: null, pendingUndo: null, toast: null });
 });
 
 afterEach(() => {

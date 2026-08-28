@@ -10,6 +10,20 @@ export interface AgentRunRequest {
 
 export type AgentRunState = 'idle' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'error' | 'limit_reached';
 
+export interface AgentRunSnapshot {
+  sessionId: string | null;
+  state: AgentRunState;
+  startedAt: string | null;
+  latestDraftId?: string;
+  latestMemoryProposalId?: string;
+}
+
+export interface AgentAttentionEvent {
+  sessionId: string;
+  draftId?: string;
+  memoryProposalId?: string;
+}
+
 export type AgentRunEvent =
   | { type: 'state'; sessionId: string; state: AgentRunState }
   | { type: 'text_delta'; sessionId: string; delta: string }

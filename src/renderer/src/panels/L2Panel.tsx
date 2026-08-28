@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownUp, ClipboardList, Maximize2, MoreHorizontal, Plus, Settings } from 'lucide-react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { ArrowDownUp, Bot, ClipboardList, LayoutGrid, Maximize2, MoreHorizontal, Plus, Settings } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import TaskCard from '../components/TaskCard';
@@ -17,6 +18,7 @@ import { ExternalTargetDialog } from '../components/ui/ExternalTargetDialog';
 import type { ExternalTarget } from '../components/ui/ExternalTargetDialog';
 import { compareTasks } from '../../../shared/sorting';
 import type { TaskCardNode, TaskUrgencyUpdateRequest } from '../../../shared/types';
+import AgentConversation from '../components/AgentConversation';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 
@@ -56,6 +58,8 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const setNodeStartTime = useTaskStore((state) => state.setNodeStartTime);
   const openTask = useWorkspaceStore((state) => state.openTask);
   const openSection = useWorkspaceStore((state) => state.openSection);
+  const l2View = useWorkspaceStore((state) => state.l2View);
+  const setL2View = useWorkspaceStore((state) => state.setL2View);
   const pendingUndo = useWorkspaceStore((state) => state.pendingUndo);
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
@@ -110,13 +114,14 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || left.task.id.localeCompare(right.task.id);
   }), [visibleTasks]);
 
-  const contentMode = projectTasks.length > 0 && miscTasks.length > 0
+  const overviewContentMode = projectTasks.length > 0 && miscTasks.length > 0
     ? 'mixed'
     : projectTasks.length > 0
       ? 'project'
       : miscTasks.length > 0
         ? 'misc'
         : 'empty';
+  const contentMode = l2View === 'agent' ? 'agent' : overviewContentMode;
 
   useEffect(() => {
     const setContentMode = window.api.setL2ContentMode;
@@ -177,6 +182,14 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const openSettings = () => {
     openSection('settings');
     void window.api.setLevel('l3');
+  };
+
+  const moveL2ViewFocus = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const nextView = event.key === 'ArrowLeft' || event.key === 'Home' ? 'agent' : 'overview';
+    setL2View(nextView);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-l2-view="${nextView}"]`)?.focus();
   };
 
   const changeNodeStatus = async (taskId: string, nodeId: string, status: Parameters<typeof setNodeStatus>[2]) => {
@@ -256,9 +269,20 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           <span className="brand-mark" aria-hidden="true" />
           <span><strong>采办岛</strong><small>采购工作台</small></span>
         </div>
+        <div className="l2-view-switch" role="tablist" aria-label="L2 内容">
+          <button type="button" role="tab" data-l2-view="agent" aria-selected={l2View === 'agent'} tabIndex={l2View === 'agent' ? 0 : -1} className={l2View === 'agent' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('agent')}><Bot aria-hidden="true" size={16} />AI 对话</button>
+          <button type="button" role="tab" data-l2-view="overview" aria-selected={l2View === 'overview'} tabIndex={l2View === 'overview' ? 0 : -1} className={l2View === 'overview' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('overview')}><LayoutGrid aria-hidden="true" size={16} />任务速览</button>
+        </div>
         <div className="l2-actions">
-          <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>
-          <IconButton icon={Maximize2} label="展开工作台" onClick={() => enterWorkspace(projectTasks[activeIndex]?.task.id ?? miscTasks[activeMiscIndex]?.task.id)} />
+          {l2View === 'overview' && <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>}
+          <IconButton icon={Maximize2} label="展开工作台" onClick={() => {
+            if (l2View === 'agent') {
+              openSection('agent');
+              void window.api.setLevel('l3');
+              return;
+            }
+            enterWorkspace(projectTasks[activeIndex]?.task.id ?? miscTasks[activeMiscIndex]?.task.id);
+          }} />
           <details className="more-menu">
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal aria-hidden="true" size={20} strokeWidth={1.75} /></summary>
             <div className="more-menu-popover">
@@ -273,7 +297,18 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         </div>
       </header>
       <main className={'l2-body l2-body-' + contentMode}>
-        {loading || onboarded === null ? (
+        {l2View === 'agent' ? (
+          <AgentConversation
+            compact
+            onHide={() => void window.api.setLevel('l1')}
+            onTaskConfirmed={(taskId) => {
+              setActiveTaskId(taskId);
+              setActiveMiscId(taskId);
+              setL2View('overview');
+              requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`)?.focus());
+            }}
+          />
+        ) : loading || onboarded === null ? (
           <p className="loading-state">正在整理采购任务</p>
         ) : loadError ? (
           <EmptyState

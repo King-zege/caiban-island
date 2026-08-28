@@ -13,10 +13,34 @@ export interface ArchivedItem {
   archivedAt: string;
 }
 
+export interface ArchivedCase {
+  id: string;
+  name: string;
+  kind: string;
+  description: string;
+  outcome: 'completed' | 'cancelled';
+  archivedAt: string;
+  nodes: Array<{
+    title: string;
+    status: string;
+    startUtc: string | null;
+    endUtc: string | null;
+  }>;
+}
+
 function safeName(name: string): string {
   // 去除 Windows 非法字符与控制字符
   const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
   return (cleaned || '未命名任务').slice(0, 60);
+}
+
+function redactCaseText(value: string, maxLength: number): string {
+  return value
+    .replace(/https?:\/\/\S+/gi, '[链接已隐藏]')
+    .replace(/(?:[A-Za-z]:\\|\\\\)[^\s，。；、]+/g, '[本地路径已隐藏]')
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|Authorization\s*:\s*\S+)/gi, '[敏感内容已隐藏]')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, maxLength);
 }
 
 // FR-070~075：完成/取消 → 归档 + 导出 task.json/task.md 快照；归档查询/恢复
@@ -111,6 +135,42 @@ export class ArchiveService {
     }
     sql += ' ORDER BY archived_at DESC';
     return this.db.prepare(sql).all(...params) as unknown as ArchivedItem[];
+  }
+
+  searchCases(rawQuery: string, rawLimit = 5): ArchivedCase[] {
+    const query = rawQuery.trim();
+    if (query.length < 1 || query.length > 200) throw new Error('案例查询长度必须为 1–200 个字符');
+    const limit = Math.max(1, Math.min(5, Math.trunc(rawLimit)));
+    const like = '%' + query + '%';
+    const rows = this.db.prepare(
+      `SELECT id, name, kind, description, archive_outcome AS outcome, archived_at AS archivedAt
+       FROM tasks
+       WHERE status = 'archived'
+         AND (name LIKE ? OR description LIKE ? OR EXISTS(
+           SELECT 1 FROM nodes WHERE nodes.task_id = tasks.id AND (nodes.title LIKE ? OR nodes.description LIKE ?)
+         ))
+       ORDER BY archived_at DESC, id ASC
+       LIMIT ?`
+    ).all(like, like, like, like, limit) as unknown as Array<{
+      id: string;
+      name: string;
+      kind: string;
+      description: string;
+      outcome: 'completed' | 'cancelled';
+      archivedAt: string;
+    }>;
+    const readNodes = this.db.prepare(
+      'SELECT title, status, start_utc AS startUtc, end_utc AS endUtc FROM nodes WHERE task_id = ? ORDER BY position, id'
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      name: redactCaseText(row.name, 200),
+      kind: row.kind,
+      description: redactCaseText(row.description, 600),
+      outcome: row.outcome,
+      archivedAt: row.archivedAt,
+      nodes: (readNodes.all(row.id) as unknown as ArchivedCase['nodes']).map((node) => ({ ...node, title: redactCaseText(node.title, 200) }))
+    }));
   }
 
   restoreTask(id: string): void {

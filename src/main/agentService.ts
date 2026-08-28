@@ -8,6 +8,8 @@ import type { MemoryService } from './memoryService';
 import type {
   AgentRunEvent,
   AgentRunRequest,
+  AgentRunSnapshot,
+  AgentRunState,
   AgentSessionDetail,
   AgentSessionSummary
 } from '../shared/agentContracts';
@@ -21,7 +23,9 @@ const SYSTEM_PROMPT = `你是采办岛的原生采购任务 Agent。你可以读
 2. propose_task_action 一次只能提出一个操作。允许节点四态、提醒，以及节点新增、修改、删除、重排。
 3. 禁止修改任务名称、说明、deadline、紧急度；禁止完成、取消、归档、恢复或永久删除任务。
 4. 禁止文件、shell、URL 请求和额外网络访问；不要索取或复述 API Key、Authorization 或本地绝对路径。
-5. 只输出用户可见结论，不输出内部推理。信息不足时先使用只读工具核对。`;
+5. 只输出用户可见结论，不输出内部推理。信息不足时先使用只读工具核对。
+6. 规划前可用 search_archived_cases 检索有限归档案例；它不是正式数据写入能力。
+7. 用户要求修订某份待确认任务方案时，propose_task_draft 必须携带该方案的 replacesDraftId；新建独立任务时不要携带。`;
 
 export class AgentRunError extends Error {}
 
@@ -31,10 +35,15 @@ interface ActiveRun {
   timer: ReturnType<typeof setTimeout>;
   promise: Promise<void>;
   timedOut: boolean;
+  state: AgentRunState;
+  startedAt: string;
+  latestDraftId?: string;
+  latestMemoryProposalId?: string;
 }
 
 export class AgentService {
   private active: ActiveRun | null = null;
+  private surfaceVisible = false;
   private readonly contextCache = new Map<string, string>();
 
   constructor(
@@ -65,6 +74,7 @@ export class AgentService {
 
   cancel(): boolean {
     if (!this.active) return false;
+    this.active.state = 'cancelling';
     this.emit({ type: 'state', sessionId: this.active.sessionId, state: 'cancelling' });
     this.active.controller.abort();
     return true;
@@ -91,6 +101,20 @@ export class AgentService {
   }
 
   exportSession(id: string, format: 'json' | 'markdown'): string { return this.sessions.export(id, format); }
+
+  runSnapshot(): AgentRunSnapshot {
+    if (!this.active) return { sessionId: null, state: 'idle', startedAt: null };
+    return {
+      sessionId: this.active.sessionId,
+      state: this.active.state,
+      startedAt: this.active.startedAt,
+      latestDraftId: this.active.latestDraftId,
+      latestMemoryProposalId: this.active.latestMemoryProposalId
+    };
+  }
+
+  setSurfaceVisible(visible: boolean): void { this.surfaceVisible = visible; }
+  isSurfaceVisible(): boolean { return this.surfaceVisible; }
 
   async waitForIdle(): Promise<void> {
     await this.active?.promise;
@@ -119,6 +143,8 @@ export class AgentService {
       sessionId: session.id,
       controller,
       timedOut: false,
+      state: 'running',
+      startedAt: new Date().toISOString(),
       timer: setTimeout(() => {
         active.timedOut = true;
         controller.abort();
@@ -154,15 +180,19 @@ export class AgentService {
         onEvent: (event) => this.handleRunnerEvent(session.id, event)
       });
       if (active.timedOut) {
+        active.state = 'limit_reached';
         this.emit({ type: 'error', sessionId: session.id, message: '本次运行超过 3 分钟，输入和会话已保留，可重试', retryable: true });
         this.emit({ type: 'state', sessionId: session.id, state: 'limit_reached' });
       } else if (result === 'limit_reached') {
+        active.state = 'limit_reached';
         this.emit({ type: 'error', sessionId: session.id, message: '已达到 12 个模型轮次上限，输入和会话已保留', retryable: true });
         this.emit({ type: 'state', sessionId: session.id, state: 'limit_reached' });
       } else {
-        this.emit({ type: 'state', sessionId: session.id, state: result === 'cancelled' ? 'cancelled' : 'completed' });
+        active.state = result === 'cancelled' ? 'cancelled' : 'completed';
+        this.emit({ type: 'state', sessionId: session.id, state: active.state });
       }
     } catch (error) {
+      active.state = 'error';
       const message = error instanceof Error ? error.message : String(error);
       this.emit({ type: 'error', sessionId: session.id, message, retryable: true });
       this.emit({ type: 'state', sessionId: session.id, state: 'error' });
@@ -185,6 +215,10 @@ export class AgentService {
       return;
     }
     const label = event.isError ? '执行失败' : event.draftId ? '已生成待确认草稿' : event.memoryProposalId ? '已生成待审核记忆' : '读取完成';
+    if (!event.isError && this.active?.sessionId === sessionId) {
+      if (event.draftId) this.active.latestDraftId = event.draftId;
+      if (event.memoryProposalId) this.active.latestMemoryProposalId = event.memoryProposalId;
+    }
     const message = this.sessions.append(sessionId, 'tool', `${event.toolName}：${label}`, event.toolName);
     this.emit({ type: 'message', sessionId, message });
     this.emit({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId, memoryProposalId: event.memoryProposalId });
@@ -204,6 +238,10 @@ export class AgentService {
       .slice(-12)
       .map((message) => `- ${message.id}（${message.role}）：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`)
       .join('\n');
-    return `${SYSTEM_PROMPT}\n6. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n7. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[当前会话可引用证据]\n${evidence}`;
+    const pendingPlans = this.appSvc.drafts.listPending(sessionId)
+      .filter((draft) => draft.payload.type === 'task')
+      .map((draft) => `- draftId=${draft.id}：${JSON.stringify(draft.payload)}`)
+      .join('\n');
+    return `${SYSTEM_PROMPT}\n8. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n9. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[当前会话待确认任务方案]\n${pendingPlans || '无'}\n\n[当前会话可引用证据]\n${evidence}`;
   }
 }

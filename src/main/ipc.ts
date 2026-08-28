@@ -136,7 +136,8 @@ export function registerIpc(
   });
 
   // —— AI 草稿 ——
-  ipcMain.handle('drafts:list', () => wrap(() => appSvc.drafts.listPending()));
+  ipcMain.handle('drafts:list', (_e: IpcMainInvokeEvent, sessionId?: string) => wrap(() => appSvc.drafts.listPending(sessionId)));
+  ipcMain.handle('drafts:get', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.get(id)));
   ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
   ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
   ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.confirmDraft(id)));
@@ -179,6 +180,11 @@ export function registerIpc(
   ipcMain.handle('agent:start', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.start(request)));
   ipcMain.handle('agent:send', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.send(request)));
   ipcMain.handle('agent:cancel', () => wrap(() => agent.cancel()));
+  ipcMain.handle('agent:getRunSnapshot', () => wrap(() => agent.runSnapshot()));
+  ipcMain.handle('agent:setSurfaceVisible', (_e: IpcMainInvokeEvent, visible: boolean) => wrap(() => {
+    agent.setSurfaceVisible(visible);
+    return true;
+  }));
   ipcMain.handle('agent:listSessions', () => wrap(() => agent.listSessions()));
   ipcMain.handle('agent:getSession', (_e: IpcMainInvokeEvent, id: string) => wrap(() => agent.getSession(id)));
   ipcMain.handle('agent:deleteSession', (_e: IpcMainInvokeEvent, id: string) => wrap(() => { agent.deleteSession(id); return true; }));

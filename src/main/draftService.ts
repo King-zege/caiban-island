@@ -9,6 +9,11 @@ import type { ReminderService } from './reminderService';
 
 export class DraftError extends Error {}
 
+export interface DraftCreateOptions {
+  sessionId?: string;
+  replacesDraftId?: string;
+}
+
 function parsePayload(raw: string): DraftPayload {
   try {
     const value: unknown = JSON.parse(raw);
@@ -88,20 +93,50 @@ export class DraftService {
     private readonly reminders: ReminderService
   ) {}
 
-  create(source: DraftSource, payload: DraftPayload): DraftRecord {
+  create(source: DraftSource, payload: DraftPayload, options: DraftCreateOptions = {}): DraftRecord {
     if (payload.type === 'action' && source !== 'pi') throw new DraftError('轻量操作提案只能由 Pi Agent 创建');
     this.validatePayload(payload);
+    const sessionId = options.sessionId ?? null;
+    if (sessionId) {
+      const session = this.db.prepare('SELECT id FROM agent_sessions WHERE id = ?').get(sessionId) as { id: string } | undefined;
+      if (!session) throw new DraftError('Agent 会话不存在');
+    }
+    if (options.replacesDraftId) this.assertReplacement(options.replacesDraftId, sessionId, payload);
     const record: DraftRecord = {
       id: randomUUID(),
       source,
+      sessionId,
       payload,
       state: 'pending',
       createdAt: new Date().toISOString()
     };
-    this.db
-      .prepare('INSERT INTO drafts(id, source, payload, state, created_at) VALUES(?,?,?,?,?)')
-      .run(record.id, record.source, JSON.stringify(record.payload), record.state, record.createdAt);
+    const ownsTransaction = !this.db.isTransaction;
+    if (ownsTransaction) this.db.exec('BEGIN');
+    try {
+      this.db
+        .prepare('INSERT INTO drafts(id, source, session_id, payload, state, created_at) VALUES(?,?,?,?,?,?)')
+        .run(record.id, record.source, record.sessionId, JSON.stringify(record.payload), record.state, record.createdAt);
+      if (options.replacesDraftId) {
+        const changed = this.db.prepare("UPDATE drafts SET state = 'superseded' WHERE id = ? AND state = 'pending'").run(options.replacesDraftId);
+        if (changed.changes !== 1) throw new DraftError('原草稿已变化，请重新规划');
+      }
+      if (ownsTransaction) this.db.exec('COMMIT');
+    } catch (error) {
+      if (ownsTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
     return record;
+  }
+
+  private assertReplacement(replacesDraftId: string, sessionId: string | null, payload: DraftPayload): void {
+    if (!sessionId) throw new DraftError('替代草稿必须关联 Agent 会话');
+    if (payload.type !== 'task') throw new DraftError('只有任务规划草稿支持替代修订');
+    const row = this.db.prepare('SELECT source, session_id AS sessionId, payload, state FROM drafts WHERE id = ?').get(replacesDraftId) as
+      | { source: string; sessionId: string | null; payload: string; state: string }
+      | undefined;
+    if (!row || row.state !== 'pending') throw new DraftError('原草稿不存在或已处理');
+    if (row.source !== 'pi' || row.sessionId !== sessionId) throw new DraftError('不能替代其他会话的草稿');
+    if (parsePayload(row.payload).type !== 'task') throw new DraftError('只能替代任务规划草稿');
   }
 
   private validatePayload(payload: unknown): asserts payload is DraftPayload {
@@ -129,13 +164,14 @@ export class DraftService {
     }
   }
 
-  listPending(): DraftRecord[] {
-    const rows = this.db
-      .prepare("SELECT id, source, payload, state, created_at AS createdAt FROM drafts WHERE state = 'pending' ORDER BY created_at DESC")
-      .all() as unknown as Array<{ id: string; source: string; payload: string; state: string; createdAt: string }>;
+  listPending(sessionId?: string): DraftRecord[] {
+    const rows = (sessionId
+      ? this.db.prepare("SELECT id, source, session_id AS sessionId, payload, state, created_at AS createdAt FROM drafts WHERE state = 'pending' AND session_id = ? ORDER BY created_at DESC, id DESC").all(sessionId)
+      : this.db.prepare("SELECT id, source, session_id AS sessionId, payload, state, created_at AS createdAt FROM drafts WHERE state = 'pending' ORDER BY created_at DESC, id DESC").all()) as unknown as Array<{ id: string; source: string; sessionId: string | null; payload: string; state: string; createdAt: string }>;
     return rows.map((r) => ({
       id: r.id,
       source: r.source as DraftSource,
+      sessionId: r.sessionId,
       payload: parsePayload(r.payload),
       state: r.state as DraftState,
       createdAt: r.createdAt
@@ -143,13 +179,14 @@ export class DraftService {
   }
 
   get(id: string): DraftRecord {
-    const row = this.db.prepare('SELECT id, source, payload, state, created_at AS createdAt FROM drafts WHERE id = ?').get(id) as
-      | { id: string; source: string; payload: string; state: string; createdAt: string }
+    const row = this.db.prepare('SELECT id, source, session_id AS sessionId, payload, state, created_at AS createdAt FROM drafts WHERE id = ?').get(id) as
+      | { id: string; source: string; sessionId: string | null; payload: string; state: string; createdAt: string }
       | undefined;
     if (!row) throw new DraftError('草稿不存在');
     return {
       id: row.id,
       source: row.source as DraftSource,
+      sessionId: row.sessionId,
       payload: parsePayload(row.payload),
       state: row.state as DraftState,
       createdAt: row.createdAt

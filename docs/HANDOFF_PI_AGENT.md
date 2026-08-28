@@ -8,13 +8,13 @@
 - 分支：`main`
 - 发布版本：`v0.2.0`
 - 已推送功能基线：`8371f4d`（P19，`origin/main`）
-- 当前本地功能基线：`7006979`（P19 杂事完成改为立即提交）
+- 当前本地 P19 基线：`a749077`（含杂事立即归档反馈与交接更新）；P20 在当前里程碑提交中实现
 - Release 页面：<https://github.com/King-zege/caiban-island/releases/tag/v0.2.0>
 - Release 资产：`Caiban-Island-0.2.0-Windows-x64.exe`
 - Release 资产 SHA-256：`A34E1B631571031FD817B72D9150150CFEBA0481614C4FD438B88D415CBE52EC`
 - 历史 `v0.2.0` 标签仍指向 `ddeaa22`，本次发布没有强制改写标签；Release 说明中已明确链接 P19 源码提交 `8371f4d`
-- 已完成里程碑：P0–P19
-- 数据库迁移：v1–v5
+- 已完成里程碑：P0–P20
+- 数据库迁移：v1–v6
 
 P19 提交前门禁结果：
 
@@ -23,6 +23,16 @@ P19 提交前门禁结果：
 - `npm run build`：通过
 - `npm run package`：通过
 - 凭据与私人路径检测：0 项
+
+P20 提交前门禁结果：
+
+- `npm run typecheck`：通过
+- `npm test`：40 个测试文件、219 项测试通过
+- `npm run build`：通过
+- `npm run package`：通过；portable SHA-256 `D7819F5CC439C68D71E34318648891D42B328EBBD92777B98259C6935A15F799`
+- Impeccable detector：本次新增 TSX 0 项；全局 CSS 的 11 项提示均经 blame 确认为 P20 前既有样式，本次未新增
+- Windows 冒烟：150% DPI 下逻辑 760×480 的 L2 AI 默认态截图通过；打包后 ASAR 主进程与 renderer 正常启动；L1 隐藏期间同一 Agent run 快照仍为 `running`
+- 凭据与私人路径检测：0 项真实命中
 
 ### P19 后续调整
 
@@ -35,7 +45,7 @@ P19 提交前门禁结果：
 采办岛是一个 Windows Electron 桌面任务应用，主要界面分为三层：
 
 - L1：折叠岛，仅展示精简状态。
-- L2：任务卡片与快捷操作区。
+- L2：默认完整 AI 对话，可切换到任务卡片、杂事贴纸与手动创建速览。
 - L3：任务详情、草稿审核、Agent、记忆和设置等完整工作区。
 
 Renderer 不直接访问 Node API、SQLite、文件系统或网络。所有能力必须通过 preload 白名单 IPC 进入 main；正式数据的变更统一由 `AppService` 编排并在事务提交后发送通知。
@@ -67,7 +77,7 @@ Pi 包为 ESM，打包时必须保留当前的 bundling/lazy-provider 处理。�
 
 固定数据流为：
 
-`L3 Agent UI → preload 白名单 IPC → AgentService → PiAgentAdapter → allowlist 工具 → 草稿/操作/记忆提案 → 用户确认 → AppService 事务写入`
+`L2/L3 共用 Agent UI → preload 白名单 IPC → AgentService → PiAgentAdapter → allowlist 工具 → 草稿/操作/记忆提案 → 用户确认 → AppService 事务写入`
 
 主要实现位于：
 
@@ -86,7 +96,8 @@ Pi 包为 ESM，打包时必须保留当前的 bundling/lazy-provider 处理。�
 - 同一时间只允许一个活跃 Agent run；
 - 会话支持多轮对话和本地长期保留；
 - 单请求超时 60 秒，整次 run 最长 3 分钟，最多 12 个模型轮次；
-- L3 收起、取消、超时或应用退出时中止 provider 和工具调用；
+- 收起 L2、切换速览、进入 L3 或离开 Agent 页面都不中止；仅显式取消、超时、12 轮上限或应用退出会中止 provider 和工具调用；
+- renderer 重载后通过 `agent:getRunSnapshot` 恢复后台运行状态；App 根层常驻订阅事件，L2/L3 只渲染同一全局 store；
 - 不保存或展示模型内部 reasoning，只持久化用户可见文本、必要协议和脱敏工具结果。
 
 Pi 是默认原生通道；Qoder MCP 与旧简单 LLM 仍作为兼容和故障回退，配置彼此独立。
@@ -103,13 +114,14 @@ Pi 是默认原生通道；Qoder MCP 与旧简单 LLM 仍作为兼容和故障�
 
 ## 6. 工具与正式数据边界
 
-当前 Agent allowlist 共七个工具：
+当前 Agent allowlist 共八个工具：
 
 - `list_active_tasks`
 - `get_task_detail`
 - `propose_task_draft`
 - `propose_node_draft`
 - `propose_task_action`
+- `search_archived_cases`
 - `propose_memory`
 - `search_sessions`
 
@@ -118,6 +130,8 @@ Agent 永远不能直接写正式任务数据。任务和节点规划进入草�
 轻量操作提案保存预期旧值，确认时进行乐观并发检查。正式数据已变化时必须拒绝执行并要求重新规划。节点删除继续使用二次确认和 5 秒撤销。
 
 Agent 不得获得任意文件、Shell、URL 或通用网络工具。未来新增工具时，必须同步更新 shared DTO、IPC 白名单、校验、审计和测试。
+
+`search_archived_cases` 只返回已归档任务的类型、名称、有限说明、归档结果、时间和有序节点摘要，查询长度与返回数量有上限。它不得返回备注、链接/文件目标、绝对路径、快照内容或变更详情，且不会加入 Qoder MCP 外部工具集。
 
 ## 7. 会话与长期记忆
 
@@ -143,6 +157,7 @@ P15 的长期记忆采用两层有界结构：
 - v3：`memories`、`memory_proposals` 和会话消息 FTS5 索引。
 - v4：一节点一条的 `node_reminders` 及到期索引。
 - v5：杂事精确提醒字段、`misc_reminders` 及到期索引；旧杂事说明并入备注，旧 deadline 保留为待处理字段但不再自动通知。
+- v6：`drafts.session_id` 可空外键（删除会话时 `SET NULL`）与 `(session_id, state, created_at)` 索引；旧草稿保持 `NULL`。
 
 所有 schema 变更必须新增版本化迁移，禁止启动时执行未版本化 DDL。升级测试要覆盖旧库迁移、失败回滚和重复启动幂等性。
 
@@ -176,6 +191,15 @@ P19 已把任务分为两套明确模型：
 - 杂事提醒与项目、节点提醒统一原子领取、漏发摘要和通知导航；
 - Pi、Qoder MCP 与旧简单 LLM 均按判别式 schema 生成两类草稿，确认前不写正式数据；
 - 归档 JSON 已升级为格式版本 2，CSV、Markdown 和飞书导出按任务类型输出字段。
+
+P20 已把 Agent 前移到日常入口：
+
+- 每次启动 L2 默认 AI 对话，本次运行内可切到任务速览；AI 页使用 760×480 详细高度，速览继续按任务构成动态计算；
+- 当前/最近会话、新对话、流式文本、脱敏工具状态、显式取消和“隐藏并继续”都在 L2 可用，L3 复用同一对话核心；
+- 任务、节点、轻量操作和记忆四类提案在会话内只读展示，继续对话即可要求修订；确认任务后刷新速览并定位新凭条或贴纸；
+- 任务草稿修订使用 `replacesDraftId` 在同一事务中把旧稿标为 `superseded`，跨会话替代被拒绝，其他独立提案不受影响；
+- 后台完成仅发送通用 Windows 文案。点击通知打开对应 L2 会话；通知不可用时只在未暂停、非真正全屏状态下无焦点展开，其他情况延后呈现；
+- 节点删除仍需额外确认和 5 秒撤销；记忆确认后明确提示只在新建或重新载入会话时进入上下文；手动创建继续作为完整回退。
 
 后续改动须保持键盘操作、焦点恢复、44×44px 触控目标、拖动隔离、读屏标签和高对比度行为。
 
@@ -213,7 +237,7 @@ Windows GUI Electron 没有可用 stdio 管道；Qoder MCP 继续通过 `scripts
 
 ## 12. 后续私人知识库
 
-P13–P19 尚未导入或索引用户文档。现有 `AgentContextProvider` 边界用于让任务、长期记忆、历史会话和未来知识库分别提供上下文。
+P13–P20 尚未导入或索引用户文档。现有 `AgentContextProvider` 边界用于让任务、长期记忆、历史会话和未来知识库分别提供上下文；P20 的“归档案例”只读取 SQLite 中的结构化归档任务。
 
 私人知识库应作为独立里程碑设计，至少包括：
 

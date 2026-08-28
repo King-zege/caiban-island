@@ -22,6 +22,8 @@ export class FullscreenDetector {
     this.restore();
   }
 
+  isActive(): boolean { return this.autoHidden; }
+
   private isOwnWindow(hwnd: bigint): boolean {
     try {
       const win = this.controller.win.getNativeWindowHandle();
