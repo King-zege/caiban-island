@@ -1,7 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ArchiveService } from './archiveService';
 import { DraftService } from './draftService';
-import { LlmService } from './llmService';
 import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
@@ -22,14 +21,13 @@ import type {
   TaskNode
 } from '../shared/taskContracts';
 
-// 组合根：任务/归档/提醒/设置/AI 的跨服务事务编排
+// 组合根：任务/归档/提醒/设置的跨服务事务编排
 export class AppService {
   readonly tasks: TaskService;
   readonly archive: ArchiveService;
   readonly reminders: ReminderService;
   readonly settings: SettingsService;
   readonly drafts: DraftService;
-  readonly llm: LlmService;
 
   private listeners: Array<() => void> = [];
 
@@ -51,7 +49,6 @@ export class AppService {
     this.reminders = new ReminderService(db);
     this.settings = new SettingsService(db);
     this.drafts = new DraftService(db, this.reminders);
-    this.llm = new LlmService(this, this.settings);
     this.reminders.reconcileFutureNodeReminders();
     this.reminders.reconcileFutureMiscReminders();
   }

@@ -8,13 +8,13 @@
 - 分支：`main`
 - 发布版本：`v0.2.0`
 - 已推送功能基线：`8371f4d`（P19，`origin/main`）
-- 当前本地 P19 基线：`a749077`（含杂事立即归档反馈与交接更新）；P20 在当前里程碑提交中实现
+- P21 起始基线：`9650a1c`（P20）；P21 由当前里程碑提交完整承载
 - Release 页面：<https://github.com/King-zege/caiban-island/releases/tag/v0.2.0>
 - Release 资产：`Caiban-Island-0.2.0-Windows-x64.exe`
 - Release 资产 SHA-256：`A34E1B631571031FD817B72D9150150CFEBA0481614C4FD438B88D415CBE52EC`
 - 历史 `v0.2.0` 标签仍指向 `ddeaa22`，本次发布没有强制改写标签；Release 说明中已明确链接 P19 源码提交 `8371f4d`
-- 已完成里程碑：P0–P20
-- 数据库迁移：v1–v6
+- 已完成里程碑：P0–P21
+- 数据库迁移：v1–v7
 
 P19 提交前门禁结果：
 
@@ -23,6 +23,17 @@ P19 提交前门禁结果：
 - `npm run build`：通过
 - `npm run package`：通过
 - 凭据与私人路径检测：0 项
+
+P21 提交前门禁结果：
+
+- `npm run typecheck`：通过
+- `npm test`：38 个测试文件、209 项测试通过
+- `npm run build`：通过
+- 100 条合成任务生产构建过渡基准：通过
+- Impeccable detector：仅执行一次，发现项修复后由代码与视觉验收复核
+- Windows 150% DPI、高对比度、减少动画与无障碍验收：通过
+- `npm run package`：通过；portable EXE 87,905,900 字节，ZIP 142,780,936 字节
+- 凭据、Authorization 字面量、私人绝对路径、敏感 Agent 日志和包内旧应用通道扫描：0 项
 
 P20 提交前门禁结果：
 
@@ -100,7 +111,7 @@ Pi 包为 ESM，打包时必须保留当前的 bundling/lazy-provider 处理。�
 - renderer 重载后通过 `agent:getRunSnapshot` 恢复后台运行状态；App 根层常驻订阅事件，L2/L3 只渲染同一全局 store；
 - 不保存或展示模型内部 reasoning，只持久化用户可见文本、必要协议和脱敏工具结果。
 
-Pi 是默认原生通道；Qoder MCP 与旧简单 LLM 仍作为兼容和故障回退，配置彼此独立。
+Pi 是唯一原生 Agent 通道。P21 删除 Qoder MCP 与旧简单 LLM 的新请求入口；遗留 pending 草稿不删除，统一显示在 AgentWorkspace 待确认区域。
 
 ## 5. DeepSeek 配置
 
@@ -129,9 +140,9 @@ Agent 永远不能直接写正式任务数据。任务和节点规划进入草�
 
 轻量操作提案保存预期旧值，确认时进行乐观并发检查。正式数据已变化时必须拒绝执行并要求重新规划。节点删除继续使用二次确认和 5 秒撤销。
 
-Agent 不得获得任意文件、Shell、URL 或通用网络工具。未来新增工具时，必须同步更新 shared DTO、IPC 白名单、校验、审计和测试。
+Agent 只可使用 AppCommand 与授权目录文件工具，不得获得任意 Shell、URL 或通用网络工具。授权目录之外及符号链接/联接逃逸必须在 main 拒绝。
 
-`search_archived_cases` 只返回已归档任务的类型、名称、有限说明、归档结果、时间和有序节点摘要，查询长度与返回数量有上限。它不得返回备注、链接/文件目标、绝对路径、快照内容或变更详情，且不会加入 Qoder MCP 外部工具集。
+`search_archived_cases` 只返回已归档任务的类型、名称、有限说明、归档结果、时间和有序节点摘要，查询长度与返回数量有上限。它不得返回备注、链接/文件目标、绝对路径、快照内容或变更详情，且不进入任何外部工具通道。
 
 ## 7. 会话与长期记忆
 
@@ -189,12 +200,12 @@ P19 已把任务分为两套明确模型：
 - 杂事工作单正文进入 L3 无页签单页；独立完成按钮立即归档并显示结果反馈；
 - L3 侧栏和移动选择器按“采购项目 / 杂事”分组；
 - 杂事提醒与项目、节点提醒统一原子领取、漏发摘要和通知导航；
-- Pi、Qoder MCP 与旧简单 LLM 均按判别式 schema 生成两类草稿，确认前不写正式数据；
+- 历史 P19 中 Pi、Qoder MCP 与旧简单 LLM 均生成草稿；P21 已停止后两条通道的新请求，遗留 pending 草稿仍保留；
 - 归档 JSON 已升级为格式版本 2，CSV、Markdown 和飞书导出按任务类型输出字段。
 
 P20 已把 Agent 前移到日常入口：
 
-- 每次启动 L2 默认 AI 对话，本次运行内可切到任务速览；AI 页使用 760×480 详细高度，速览继续按任务构成动态计算；
+- 历史 P20 曾让 L2 默认 Agent；P21 已改为默认任务卡片、按需切换统一 AgentWorkspace；
 - 当前/最近会话、新对话、流式文本、脱敏工具状态、显式取消和“隐藏并继续”都在 L2 可用，L3 复用同一对话核心；
 - 任务、节点、轻量操作和记忆四类提案在会话内只读展示，继续对话即可要求修订；确认任务后刷新速览并定位新凭条或贴纸；
 - 任务草稿修订使用 `replacesDraftId` 在同一事务中把旧稿标为 `superseded`，跨会话替代被拒绝，其他独立提案不受影响；
@@ -205,12 +216,12 @@ P20 已把 Agent 前移到日常入口：
 
 ## 10. 安全边界
 
-- API Key、MCP token 和 PersonalBaseToken 同级保护，只能使用 `safeStorage`。
-- MCP 只绑定 `127.0.0.1` 并校验 token。
+- API Key、本地命令令牌和 PersonalBaseToken 同级保护，只能使用 `safeStorage`。
+- 本地命令端点只绑定 `127.0.0.1` 并校验令牌，只调用 AppCommand。
 - 日志只记录工具名、耗时及成功/失败类别。
 - Markdown 禁用原始 HTML/脚本，外链打开前展示实际目标。
 - 快照、导出和测试数据不得包含凭据、reasoning、Authorization 或私人绝对路径。
-- AI 输出始终是草稿或提案；用户确认是正式写入的必要条件。
+- Agent 只能经 AppCommand/AppService 正式写入；确认要求由三档权限决定，Bypass 仍不能越过授权目录、受限 CLI、safeStorage 和回环边界。
 
 提交前除常规门禁外，应对 SQLite、日志、快照、导出和打包产物做凭据与私人路径扫描。
 
@@ -233,9 +244,16 @@ npm run package
 - L1/L2/L3 切换、透明点击、软件渲染及睡眠唤醒提醒；
 - SQLite、日志和导出中没有 Key、token、reasoning 或测试凭据。
 
-Windows GUI Electron 没有可用 stdio 管道；Qoder MCP 继续通过 `scripts/caiban-stdio.mjs` 桥接本地 SSE，不要把 stdio server 直接嵌入打包 EXE。
+Windows GUI Electron 不承载 stdio 服务。P21 的 `scripts/caiban-cli.mjs` 只连接本机回环命令端点并调用注册 AppCommand，不得执行任意 shell。
 
-## 12. 后续私人知识库
+## 12. P21 完成交接
+
+- L2 默认任务卡片；L2/L3 使用同一 AgentWorkspace，L3 只移除“AI 草稿”。从 L3 返回一律回到 L2 任务卡片。
+- 三档权限跨重启保持；Bypass 首次确认且始终有警示标识。审批批准后继续同一工具循环，拒绝/取消反馈给 Agent。
+- 有序事件和运行快照补偿发送后无回应、早到/丢失事件、重载与后台运行；快照含流文本、工具、审批和脱敏错误。
+- 自动化验收必须在隔离数据与临时授权目录中使用 faux provider 驱动真实 Pi 工具循环，完成生成、修改、删除卡片和整理文件四项；不得读取或写入真实 Key、私人文件或正式任务。
+
+## 13. 后续私人知识库
 
 P13–P20 尚未导入或索引用户文档。现有 `AgentContextProvider` 边界用于让任务、长期记忆、历史会话和未来知识库分别提供上下文；P20 的“归档案例”只读取 SQLite 中的结构化归档任务。
 
@@ -250,7 +268,7 @@ P13–P20 尚未导入或索引用户文档。现有 `AgentContextProvider` 边�
 
 不得把文档原文塞入 `memories`，也不得让 Agent 获得任意文件系统访问。
 
-## 13. 新会话建议提示
+## 14. 新会话建议提示
 
 后续接手时可使用：
 

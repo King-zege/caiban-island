@@ -26,7 +26,7 @@
 - renderer 不得直接访问 Node API、SQLite、文件系统或 HTTP；一切经 preload 白名单 IPC。
 - main 进程独占数据库、文件、网络、窗口与系统集成；业务规则（校验、排序、进度）放 shared/main 服务层，UI 不复制业务验证。
 - shared 不得引用 Electron 或渲染层依赖。
-- 任何 AI 输出（Qoder MCP 或内置 API）永远是草稿；只有用户确认后的应用服务事务能创建/修改正式数据。
+- Agent 只能经统一 `AppCommand` 注册表和 AppService 操作正式数据；是否需要用户确认由“每次写入确认 / 低风险自动写入 / Bypass”三档权限决定。即使是 Bypass，也不得绕过 renderer/main 分层、授权目录、受限 CLI、safeStorage 与本地回环边界。
 - SQLite schema 变更必须使用版本化迁移；禁止启动时执行未版本化 DDL。
 - 行为或公共契约变化必须在同一改动中更新对应文档与测试。
 - 飞书同步仅单向导出（岛 → 多维表格），以岛内数据为准；禁止从表格回写本地正式数据。
@@ -34,11 +34,11 @@
 ## 4. 安全与隐私底线
 
 - API Key 仅经 safeStorage 加密保存；禁止进入 SQLite 明文、日志、快照、备份、测试夹具与源代码。
-- MCP 服务只绑定 127.0.0.1 并校验 token；日志只记录工具名、耗时、成功/失败类别，禁止完整请求正文与 Authorization header。
+- 本地命令端点只绑定 127.0.0.1 并校验 safeStorage 令牌；日志只记录命令/工具名、阶段、耗时、权限决策和错误类别，禁止完整请求正文与 Authorization header。
 - Markdown 渲染禁用原始 HTML/脚本；外部链接打开前显示实际目标。
 - 禁止记录用户文件内容与敏感绝对路径（日志脱敏为类别）。
 - PersonalBaseToken 与 API Key 同级待遇：safeStorage 加密保存，禁止进入日志、快照、备份、测试夹具与源代码。
-- 测试不得使用真实 API Key、真实 MCP token、PersonalBaseToken 或私人文件。
+- 自动化测试不得使用真实 API Key、本地命令令牌、PersonalBaseToken 或私人文件；Agent 端到端测试使用 faux provider 与合成数据。
 
 ## 5. 编码与依赖规则
 
@@ -55,7 +55,7 @@
 - 透明窗口：BrowserWindow(frame:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, hasShadow:false)；置顶层级用 screen-saver 级别，但不得挡住真正全屏应用（P7 检测）。
 - 点击穿透：折叠态用 setIgnoreMouseEvents(true, {forward:true}) 配合屏幕坐标轮询热区；禁止大范围透明覆盖窗口吞掉下层点击。
 - 磨砂：koffi 调用 SetWindowCompositionAttribute（ACCENT_ENABLE_ACRYLICBLURBEHIND，失败级联 BLURBEHIND）；HWND 必须从 getNativeWindowHandle() 的 Buffer 读出数值按 int64 传参（把 Buffer 当指针会静默失败）；全部失败回退纯色 #111216；高对比度/减少动画时关闭。
-- MCP/stdio：Windows GUI 子系统程序（Electron 打包的 exe）没有可用 stdio 管道，无法直接做 STDIO MCP 服务；使用 scripts/caiban-stdio.mjs（Node）桥接到 GUI 的 SSE 端点。MCP Server 实例只能连接一个传输，多会话须各自 new Server；"创建会话"请求才校验 token（sessionId 即会话凭据）。
+- 本地 CLI：Windows GUI 子系统程序不承载 stdio 服务；`scripts/caiban-cli.mjs` 只连接 GUI 提供的 `127.0.0.1` 命令端点，并携带 safeStorage 保存的随机令牌。CLI 只能调用 `AppCommand` 注册表，禁止转发任意 PowerShell/CMD、任意网络请求或未授权路径。
 - DPI：per-monitor 感知；所有窗口尺寸用逻辑像素并做显示器换算。
 - 通知：app.setAppUserModelId 并确保开始菜单快捷方式存在（Win10 图标显示所需）；无证书不影响 Toast。
 - 单实例：app.requestSingleInstanceLock；二次启动时唤起已运行实例。

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -98,33 +98,23 @@ describe('P10 完整界面与安全交互', () => {
     expect(openUrl).toHaveBeenCalledTimes(2);
   });
 
-  it('Qoder 连接地址默认遮罩，显示与复制都由用户明确触发', async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  it('设置只保留原生 Agent 通道，不再出现 Qoder 或旧内置 AI', async () => {
     setApi({
       getSettings: vi.fn(async () => ({ ok: true as const, data: { reminder_default_offsets: [], autostart: false, acrylic_disabled: true } })),
-      getMcpConfig: vi.fn(async () => ({ ok: true as const, data: { url: 'http://127.0.0.1:3210/sse?token=session-secret', token: 'session-secret', stdioCommand: 'node bridge session-secret' } })),
       getFeishuStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, autoSync: false, target: null } })),
-      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } })),
       getDeepSeekStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: 'https://api.deepseek.com' as const, model: 'deepseek-v4-flash' as const } }))
     });
     const { container } = render(<SettingsView />);
-    await screen.findByRole('tab', { name: 'AI 与 Qoder' });
-    await userEvent.click(screen.getByRole('tab', { name: 'AI 与 Qoder' }));
-
-    expect(container.textContent).not.toContain('session-secret');
-    await userEvent.click(screen.getByRole('button', { name: '显示' }));
-    expect(container.textContent).toContain('http://127.0.0.1:3210/sse?token=session-secret');
-    await userEvent.click(screen.getByRole('button', { name: '复制地址' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://127.0.0.1:3210/sse?token=session-secret'));
+    await userEvent.click(await screen.findByRole('tab', { name: 'Agent' }));
+    expect(container.textContent).toContain('Pi Agent · DeepSeek');
+    expect(container.textContent).not.toContain('Qoder');
+    expect(container.textContent).not.toContain('内置 AI');
   });
 
   it('设置主分区没有 serious 或 critical 的 axe 问题', async () => {
     setApi({
       getSettings: vi.fn(async () => ({ ok: true as const, data: { reminder_default_offsets: [], autostart: false, acrylic_disabled: true } })),
-      getMcpConfig: vi.fn(async () => ({ ok: true as const, data: { url: 'http://127.0.0.1:3210/sse?token=masked', token: 'masked', stdioCommand: 'node bridge' } })),
       getFeishuStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, autoSync: false, target: null } })),
-      getAiStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: '', model: '' } })),
       getDeepSeekStatus: vi.fn(async () => ({ ok: true as const, data: { configured: false, baseUrl: 'https://api.deepseek.com' as const, model: 'deepseek-v4-flash' as const } }))
     });
     const { container } = render(<SettingsView />);

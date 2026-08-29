@@ -164,6 +164,10 @@ const SCHEMA_V6 = [
   'CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at)'
 ];
 
+const SCHEMA_V7 = [
+  "DELETE FROM settings WHERE key IN ('mcp_token', 'mcp_token_encrypted', 'mcp_port', 'api_base_url', 'api_model', 'api_key_enc')"
+];
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -204,6 +208,10 @@ export function migrate(db: DatabaseSync): void {
     if (current < 6) {
       for (const stmt of SCHEMA_V6) db.exec(stmt);
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(6, ?)').run(new Date().toISOString());
+    }
+    if (current < 7) {
+      for (const stmt of SCHEMA_V7) db.exec(stmt);
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(7, ?)').run(new Date().toISOString());
     }
     db.exec('COMMIT');
   } catch (e) {

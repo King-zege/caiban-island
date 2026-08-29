@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowLeft, Bell, Bot, Brain, ClipboardList, Gauge, ListChecks, Paperclip, Pencil, Plus, Search, Settings, Sparkles, StickyNote } from 'lucide-react';
+import { Archive, ArrowLeft, Bell, Bot, Brain, ClipboardList, Gauge, ListChecks, Paperclip, Pencil, Plus, Search, Settings, StickyNote } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -7,7 +7,6 @@ import type { TaskWorkspaceSection, WorkspaceSection } from '../state/useWorkspa
 import TaskEditor from '../components/TaskEditor';
 import ArchiveView from '../components/ArchiveView';
 import SettingsView from '../components/SettingsView';
-import DraftsPanel from '../components/DraftsPanel';
 import NewTaskForm from '../components/NewTaskForm';
 import VirtualTaskSwitcher from '../components/VirtualTaskSwitcher';
 import { Button, IconButton } from '../components/ui/Button';
@@ -28,7 +27,6 @@ const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: Luci
 const WORKSPACE_NAV: Array<{ id: Exclude<WorkspaceSection, 'tasks'>; label: string; icon: LucideIcon }> = [
   { id: 'agent', label: 'Agent', icon: Bot },
   { id: 'memory', label: '记忆', icon: Brain },
-  { id: 'drafts', label: 'AI 草稿', icon: Sparkles },
   { id: 'archive', label: '归档', icon: Archive },
   { id: 'settings', label: '设置', icon: Settings }
 ];
@@ -47,6 +45,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const taskSection = useWorkspaceStore((state) => state.taskSection);
   const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
   const openSection = useWorkspaceStore((state) => state.openSection);
+  const setL2View = useWorkspaceStore((state) => state.setL2View);
   const openTask = useWorkspaceStore((state) => state.openTask);
   const clearTaskSelection = useWorkspaceStore((state) => state.clearTaskSelection);
   const setTaskSection = useWorkspaceStore((state) => state.setTaskSection);
@@ -116,7 +115,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
         </div>
         <div className="l3-actions">
           <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>
-          <Button icon={ArrowLeft} variant="ghost" onClick={() => void window.api.setLevel('l2')}>返回速览</Button>
+          <Button icon={ArrowLeft} variant="ghost" onClick={() => { setL2View('overview'); void window.api.setLevel('l2'); }}>返回任务卡片</Button>
         </div>
       </header>
 
@@ -229,7 +228,6 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
               </>
             )
           )}
-          {section === 'drafts' && <div className="workspace-scroll standalone-section"><DraftsPanel /></div>}
           {section === 'agent' && <div className="workspace-scroll standalone-section"><AgentPanel /></div>}
           {section === 'memory' && <div className="workspace-scroll standalone-section"><MemoryPanel /></div>}
           {section === 'archive' && <div className="workspace-scroll standalone-section"><ArchiveView /></div>}

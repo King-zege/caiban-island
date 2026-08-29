@@ -39,7 +39,7 @@ describe('P11 三级返回与交互锁', () => {
     expect(interacting).toHaveBeenLastCalledWith(false);
   });
 
-  it('L3 提供可见返回速览按钮并返回 L2', async () => {
+  it('L3 提供可见返回任务卡片按钮并返回 L2', async () => {
     const setLevel = vi.fn(async () => ({ accepted: true }));
     setApi({
       listTasks: vi.fn(async () => ({ ok: true as const, data: [] })),
@@ -48,7 +48,7 @@ describe('P11 三级返回与交互锁', () => {
     });
 
     render(<L3Panel />);
-    await userEvent.click(screen.getByRole('button', { name: '返回速览' }));
+    await userEvent.click(screen.getByRole('button', { name: '返回任务卡片' }));
     expect(setLevel).toHaveBeenCalledWith('l2');
   });
 });

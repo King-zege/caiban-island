@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import type {
+  AgentApprovalDecision,
+  AgentApprovalRequest,
   AgentAttentionEvent,
+  AgentPermissionMode,
+  AgentPermissionSettings,
   AgentRunEvent,
+  AgentRunPhase,
+  AgentRunSnapshot,
   AgentRunState,
   AgentSessionDetail,
   AgentSessionSummary,
@@ -11,21 +17,34 @@ import type {
 import { useTaskStore } from './useStore';
 
 const RUNNING_STATES: AgentRunState[] = ['running', 'cancelling'];
+const EMPTY_PERMISSIONS: AgentPermissionSettings = { mode: 'confirm_all', bypassWarningAccepted: false, authorizedDirectories: [] };
 
 interface AgentStoreState {
   sessions: AgentSessionSummary[];
   detail: AgentSessionDetail | null;
   runState: AgentRunState;
+  runPhase: AgentRunPhase;
   runningSessionId: string | null;
   streaming: string;
   activeToolName: string | null;
   error: string | null;
+  errorCategory: string | null;
+  lastSequence: number;
+  lastActivityAt: string | null;
+  pendingApproval: AgentApprovalRequest | null;
+  permissions: AgentPermissionSettings;
   drafts: DraftRecord[];
   memoryProposals: MemoryProposal[];
   attention: AgentAttentionEvent | null;
   bootstrapped: boolean;
   bootstrap: () => Promise<void>;
+  syncRunSnapshot: () => Promise<void>;
   refreshSessions: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
+  setPermissionMode: (mode: AgentPermissionMode, bypassWarningAccepted?: boolean) => Promise<string | null>;
+  chooseAuthorizedDirectory: () => Promise<string | null>;
+  removeAuthorizedDirectory: (id: string) => Promise<string | null>;
+  resolveApproval: (id: string, decision: AgentApprovalDecision) => Promise<string | null>;
   openSession: (id: string) => Promise<void>;
   newConversation: () => void;
   send: (content: string) => Promise<string | null>;
@@ -41,43 +60,47 @@ interface AgentStoreState {
   clearSessions: () => Promise<number | string>;
 }
 
+function snapshotState(snapshot: AgentRunSnapshot): Partial<AgentStoreState> {
+  return {
+    runState: snapshot.state,
+    runPhase: snapshot.phase,
+    runningSessionId: RUNNING_STATES.includes(snapshot.state) ? snapshot.sessionId : null,
+    streaming: snapshot.partialText,
+    activeToolName: snapshot.activeTool?.toolName ?? null,
+    error: snapshot.error?.message ?? null,
+    errorCategory: snapshot.error?.category ?? null,
+    lastSequence: snapshot.sequence,
+    lastActivityAt: snapshot.lastActivityAt,
+    pendingApproval: snapshot.pendingApproval
+  };
+}
+
 export const useAgentStore = create<AgentStoreState>((set, get) => ({
-  sessions: [],
-  detail: null,
-  runState: 'idle',
-  runningSessionId: null,
-  streaming: '',
-  activeToolName: null,
-  error: null,
-  drafts: [],
-  memoryProposals: [],
-  attention: null,
-  bootstrapped: false,
+  sessions: [], detail: null, runState: 'idle', runPhase: 'idle', runningSessionId: null,
+  streaming: '', activeToolName: null, error: null, errorCategory: null, lastSequence: 0,
+  lastActivityAt: null, pendingApproval: null, permissions: EMPTY_PERMISSIONS,
+  drafts: [], memoryProposals: [], attention: null, bootstrapped: false,
 
   bootstrap: async () => {
     if (get().bootstrapped) return;
     set({ bootstrapped: true });
     if (typeof window.api.listAgentSessions !== 'function') return;
-    const runSnapshot = typeof window.api.getAgentRunSnapshot === 'function'
-      ? window.api.getAgentRunSnapshot()
-      : Promise.resolve({ ok: true as const, data: { sessionId: null, state: 'idle' as const, startedAt: null } });
-    const [sessionsResult, runResult] = await Promise.all([
-      window.api.listAgentSessions(),
-      runSnapshot
+    const [sessionsResult] = await Promise.all([
+      window.api.listAgentSessions(), get().syncRunSnapshot(), get().refreshPermissions()
     ]);
-    if (!sessionsResult.ok) {
-      set({ error: sessionsResult.error });
-      return;
-    }
-    set({
-      sessions: sessionsResult.data,
-      runState: runResult.ok ? runResult.data.state : 'idle',
-      runningSessionId: runResult.ok ? runResult.data.sessionId : null
-    });
-    const targetId = runResult.ok && runResult.data.sessionId
-      ? runResult.data.sessionId
-      : sessionsResult.data[0]?.id;
+    if (!sessionsResult.ok) { set({ error: sessionsResult.error }); return; }
+    set({ sessions: sessionsResult.data });
+    const targetId = get().runningSessionId ?? sessionsResult.data[0]?.id;
     if (targetId) await get().openSession(targetId);
+    await get().syncRunSnapshot();
+  },
+
+  syncRunSnapshot: async () => {
+    if (typeof window.api.getAgentRunSnapshot !== 'function') return;
+    const result = await window.api.getAgentRunSnapshot();
+    if (!result.ok) { set({ error: result.error }); return; }
+    if (result.data.sequence < get().lastSequence) return;
+    set(snapshotState(result.data));
   },
 
   refreshSessions: async () => {
@@ -86,16 +109,51 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     set({ sessions: result.data });
   },
 
+  refreshPermissions: async () => {
+    if (typeof window.api.getAgentPermissions !== 'function') return;
+    const result = await window.api.getAgentPermissions();
+    if (!result.ok) { set({ error: result.error }); return; }
+    set({ permissions: result.data });
+  },
+
+  setPermissionMode: async (mode, bypassWarningAccepted = false) => {
+    const result = await window.api.setAgentPermissionMode(mode, bypassWarningAccepted);
+    if (!result.ok) { set({ error: result.error }); return result.error; }
+    set({ permissions: result.data, error: null });
+    return null;
+  },
+
+  chooseAuthorizedDirectory: async () => {
+    const result = await window.api.chooseAgentAuthorizedDirectory();
+    if (!result.ok) { set({ error: result.error }); return result.error; }
+    set({ permissions: result.data, error: null });
+    return null;
+  },
+
+  removeAuthorizedDirectory: async (id) => {
+    const result = await window.api.removeAgentAuthorizedDirectory(id);
+    if (!result.ok) { set({ error: result.error }); return result.error; }
+    set({ permissions: result.data, error: null });
+    return null;
+  },
+
+  resolveApproval: async (id, decision) => {
+    const result = await window.api.resolveAgentApproval(id, decision);
+    if (!result.ok) { set({ error: result.error }); return result.error; }
+    if (!result.data) return '该确认已处理或已过期';
+    return null;
+  },
+
   openSession: async (id) => {
     const result = await window.api.getAgentSession(id);
     if (!result.ok) { set({ error: result.error }); return; }
-    set({ detail: result.data, streaming: '', activeToolName: null, error: null, attention: null });
-    await get().refreshProposals(id);
+    set({ detail: result.data, error: null, attention: null });
+    await Promise.all([get().refreshProposals(id), get().syncRunSnapshot()]);
   },
 
   newConversation: () => {
     if (RUNNING_STATES.includes(get().runState)) return;
-    set({ detail: null, streaming: '', activeToolName: null, error: null, drafts: [], memoryProposals: [], attention: null, runState: 'idle' });
+    set({ detail: null, streaming: '', activeToolName: null, error: null, errorCategory: null, drafts: [], memoryProposals: [], attention: null, runState: 'idle', runPhase: 'idle' });
   },
 
   send: async (rawContent) => {
@@ -103,89 +161,79 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!content) return '请输入要处理的内容';
     if (RUNNING_STATES.includes(get().runState)) return '已有 Agent 任务正在运行';
     const current = get().detail;
-    set({ error: null, streaming: '', activeToolName: null, runState: 'running', runningSessionId: current?.session.id ?? null });
+    set({ error: null, errorCategory: null, streaming: '', activeToolName: null, runState: 'running', runPhase: 'connecting', runningSessionId: current?.session.id ?? null });
     const result = current
       ? await window.api.agentSend({ sessionId: current.session.id, input: content })
       : await window.api.agentStart({ input: content });
-    if (!result.ok) {
-      set({ runState: 'error', runningSessionId: null, error: result.error });
-      return result.error;
-    }
+    if (!result.ok) { set({ runState: 'error', runPhase: 'error', runningSessionId: null, error: result.error }); return result.error; }
     set({ detail: result.data, runningSessionId: result.data.session.id });
-    await get().refreshSessions();
+    await Promise.all([get().refreshSessions(), get().syncRunSnapshot()]);
     return null;
   },
 
   cancel: async () => {
     const result = await window.api.agentCancel();
     if (!result.ok) set({ error: result.error });
+    await get().syncRunSnapshot();
   },
 
   handleEvent: (event) => {
+    if (event.sequence <= get().lastSequence) return;
+    if (get().lastSequence > 0 && event.sequence > get().lastSequence + 1) void get().syncRunSnapshot();
+    set({ lastSequence: event.sequence, lastActivityAt: event.at });
     if (event.type === 'state') {
       const running = RUNNING_STATES.includes(event.state);
-      set({ runState: event.state, runningSessionId: running ? event.sessionId : null });
+      set({ runState: event.state, runPhase: event.phase, runningSessionId: running ? event.sessionId : null });
       if (!running) {
-        set({ streaming: '', activeToolName: null });
-        void get().refreshSessions();
-        if (get().detail?.session.id === event.sessionId) {
-          void get().openSession(event.sessionId);
-        }
+        set({ activeToolName: null, pendingApproval: null });
+        void Promise.all([get().refreshSessions(), get().syncRunSnapshot(), useTaskStore.getState().load()]);
+        if (get().detail?.session.id === event.sessionId) void get().openSession(event.sessionId);
       }
       return;
     }
     if (event.type === 'text_delta') {
+      set({ runPhase: 'streaming' });
       if (get().detail?.session.id === event.sessionId) set((state) => ({ streaming: state.streaming + event.delta }));
       return;
     }
     if (event.type === 'tool_start') {
+      set({ runPhase: 'tool' });
       if (get().detail?.session.id === event.sessionId) set({ activeToolName: event.toolName });
       return;
     }
+    if (event.type === 'approval_required') { set({ pendingApproval: event.request, runPhase: 'awaiting_approval' }); return; }
+    if (event.type === 'approval_resolved') { set({ pendingApproval: null, runPhase: event.decision === 'approve' ? 'applying' : 'tool' }); return; }
     if (event.type === 'message') {
-      set((state) => state.detail?.session.id === event.sessionId
-        ? {
-            detail: {
-              ...state.detail,
-              messages: state.detail.messages.some((message) => message.id === event.message.id)
-                ? state.detail.messages
-                : [...state.detail.messages, event.message]
-            },
-            streaming: event.message.role === 'assistant' ? '' : state.streaming
-          }
-        : {});
+      set((state) => state.detail?.session.id === event.sessionId ? {
+        detail: { ...state.detail, messages: state.detail.messages.some((message) => message.id === event.message.id) ? state.detail.messages : [...state.detail.messages, event.message] },
+        streaming: event.message.role === 'assistant' ? '' : state.streaming
+      } : {});
       return;
     }
     if (event.type === 'tool_end') {
-      if (get().detail?.session.id === event.sessionId) set({ activeToolName: null });
+      set({ activeToolName: null, runPhase: event.isError ? 'tool' : 'applying' });
       if (!event.isError && (event.draftId || event.memoryProposalId)) {
         set({ attention: { sessionId: event.sessionId, draftId: event.draftId, memoryProposalId: event.memoryProposalId } });
         if (get().detail?.session.id === event.sessionId) void get().refreshProposals(event.sessionId);
       }
       return;
     }
-    if (event.type === 'error') set({ error: event.message, activeToolName: null });
+    if (event.type === 'error') set({ error: event.message, errorCategory: event.category, activeToolName: null, runPhase: 'error' });
   },
 
   handleAttention: async (event) => {
     if (get().detail?.session.id !== event.sessionId) await get().openSession(event.sessionId);
     set({ attention: event });
-    await get().refreshProposals(event.sessionId);
+    await Promise.all([get().refreshProposals(event.sessionId), get().syncRunSnapshot()]);
   },
 
   refreshProposals: async (sessionId = get().detail?.session.id) => {
-    if (!sessionId) { set({ drafts: [], memoryProposals: [] }); return; }
-    const [draftResult, memoryResult] = await Promise.all([
-      window.api.listDrafts(sessionId),
-      window.api.listMemoryProposals()
-    ]);
+    const [draftResult, memoryResult] = await Promise.all([window.api.listDrafts(), window.api.listMemoryProposals()]);
     if (!draftResult.ok) set({ error: draftResult.error });
     if (!memoryResult.ok) set({ error: memoryResult.error });
     set({
-      drafts: draftResult.ok ? draftResult.data : get().drafts,
-      memoryProposals: memoryResult.ok
-        ? memoryResult.data.filter((proposal) => proposal.sourceSessionId === sessionId && proposal.state === 'pending')
-        : get().memoryProposals
+      drafts: draftResult.ok ? draftResult.data.filter((draft) => draft.sessionId === null || draft.sessionId === sessionId) : get().drafts,
+      memoryProposals: memoryResult.ok && sessionId ? memoryResult.data.filter((proposal) => proposal.sourceSessionId === sessionId && proposal.state === 'pending') : []
     });
   },
 
@@ -195,28 +243,21 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     await Promise.all([get().refreshProposals(), useTaskStore.getState().load()]);
     return result.data;
   },
-
   discardDraft: async (id) => {
     const result = await window.api.discardDraft(id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
-    await get().refreshProposals();
-    return null;
+    await get().refreshProposals(); return null;
   },
-
   confirmMemoryProposal: async (id) => {
     const result = await window.api.confirmMemoryProposal(id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
-    await get().refreshProposals();
-    return null;
+    await get().refreshProposals(); return null;
   },
-
   discardMemoryProposal: async (id) => {
     const result = await window.api.discardMemoryProposal(id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
-    await get().refreshProposals();
-    return null;
+    await get().refreshProposals(); return null;
   },
-
   deleteCurrentSession: async () => {
     const current = get().detail;
     if (!current) return null;
@@ -228,7 +269,6 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (first) await get().openSession(first.id);
     return null;
   },
-
   clearSessions: async () => {
     const result = await window.api.clearAgentSessions();
     if (!result.ok) { set({ error: result.error }); return result.error; }
@@ -237,6 +277,4 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   }
 }));
 
-export function isAgentRunning(state: AgentRunState): boolean {
-  return RUNNING_STATES.includes(state);
-}
+export function isAgentRunning(state: AgentRunState): boolean { return RUNNING_STATES.includes(state); }

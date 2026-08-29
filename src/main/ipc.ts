@@ -1,38 +1,32 @@
 import path from 'node:path';
-import { app, ipcMain, shell } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { IslandWindowController } from './windowController';
 import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
-import type { McpTokenVault } from './mcpTokenVault';
 import type { AgentService } from './agentService';
 import type { DeepSeekConfigService } from './deepSeekConfigService';
 import type { MemoryService } from './memoryService';
+import type { AgentPermissionService } from './agentPermissionService';
+import type { LocalCommandRuntime } from './localCommandServer';
+import type { AppCommandService } from './appCommandService';
 import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
-import type { AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
+import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 
 export function registerIpc(
   c: IslandWindowController,
   appSvc: AppService,
   feishu: FeishuService,
-  tokenVault: McpTokenVault,
   agent: AgentService,
   deepSeek: DeepSeekConfigService,
-  memories: MemoryService
+  memories: MemoryService,
+  permissions: AgentPermissionService,
+  localCommands: LocalCommandRuntime,
+  commands: AppCommandService
 ): void {
-  const mcpConfig = () => {
-    const port = Number(appSvc.settings.get('mcp_port') ?? 0);
-    const token = tokenVault.current();
-    const bridge = path.join(app.getAppPath(), 'scripts', 'caiban-stdio.mjs');
-    return {
-      url: 'http://127.0.0.1:' + port + '/mcp?token=' + token,
-      token,
-      port,
-      stdioCommand: 'node "' + bridge + '"'
-    };
-  };
+  const holdIsolatedTestLevel = !app.isPackaged && Boolean(process.env['CAIBAN_TEST_USER_DATA_DIR']) && process.env['CAIBAN_TEST_HOLD_LEVEL'] === '1';
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
     return c.setLevel(level);
   });
@@ -41,7 +35,7 @@ export function registerIpc(
   ipcMain.handle('app:getState', () => c.state());
   ipcMain.handle('ui:getPreferences', () => c.uiPreferences());
   ipcMain.handle('ui:interacting', (_e: IpcMainInvokeEvent, v: boolean) => {
-    c.setInteracting(v);
+    if (!(holdIsolatedTestLevel && !v)) c.setInteracting(v);
     return true;
   });
   ipcMain.handle('island:togglePause', () => c.togglePause());
@@ -73,45 +67,45 @@ export function registerIpc(
 
   ipcMain.handle('tasks:list', () => wrap(() => tasks.listActive()));
   ipcMain.handle('tasks:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => tasks.getTaskDetail(id)));
-  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskCreateRequest) => wrap(() => appSvc.createTask(input)));
-  ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => appSvc.updateTask(id, input)));
-  ipcMain.handle('tasks:setName', (_e: IpcMainInvokeEvent, request: TaskNameUpdateRequest) => wrap(() => appSvc.setTaskName(request)));
-  ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => appSvc.setTaskUrgency(request)));
-  ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.completeTask(id)));
-  ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.cancelTask(id)));
-  ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.deleteTask(id)));
+  ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskCreateRequest) => wrap(() => commands.execute({ name: 'create_task', input }).data));
+  ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => commands.execute({ name: 'update_task', input: { taskId: id, task: input } }).data));
+  ipcMain.handle('tasks:setName', (_e: IpcMainInvokeEvent, request: TaskNameUpdateRequest) => wrap(() => commands.execute({ name: 'set_task_name', input: request }).data));
+  ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => commands.execute({ name: 'set_task_urgency', input: request }).data));
+  ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'complete_task', input: { taskId: id } }).data));
+  ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'cancel_task', input: { taskId: id } }).data));
+  ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'delete_task', input: { taskId: id } }).data));
 
-  ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => appSvc.addNode(taskId, input)));
-  ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => appSvc.updateNode(nodeId, input)));
-  ipcMain.handle('nodes:setTitle', (_e: IpcMainInvokeEvent, request: NodeTitleUpdateRequest) => wrap(() => appSvc.setNodeTitle(request)));
-  ipcMain.handle('nodes:setStartTime', (_e: IpcMainInvokeEvent, request: NodeTimeUpdateRequest) => wrap(() => appSvc.setNodeStartTime(request)));
-  ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => appSvc.removeNode(nodeId)));
-  ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => appSvc.setNodeStatus(nodeId, status)));
-  ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => appSvc.reorderNodes(taskId, orderedIds)));
+  ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'add_node', input: { taskId, node: input } }).data));
+  ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'update_node', input: { nodeId, node: input } }).data));
+  ipcMain.handle('nodes:setTitle', (_e: IpcMainInvokeEvent, request: NodeTitleUpdateRequest) => wrap(() => commands.execute({ name: 'set_node_title', input: request }).data));
+  ipcMain.handle('nodes:setStartTime', (_e: IpcMainInvokeEvent, request: NodeTimeUpdateRequest) => wrap(() => commands.execute({ name: 'set_node_start_time', input: request }).data));
+  ipcMain.handle('nodes:remove', (_e: IpcMainInvokeEvent, nodeId: string) => wrap(() => commands.execute({ name: 'remove_node', input: { nodeId } }).data));
+  ipcMain.handle('nodes:setStatus', (_e: IpcMainInvokeEvent, nodeId: string, status: NodeStatus) => wrap(() => commands.execute({ name: 'set_node_status', input: { nodeId, status } }).data));
+  ipcMain.handle('nodes:reorder', (_e: IpcMainInvokeEvent, taskId: string, orderedIds: string[]) => wrap(() => commands.execute({ name: 'reorder_nodes', input: { taskId, orderedNodeIds: orderedIds } }).data));
 
-  ipcMain.handle('links:add', (_e: IpcMainInvokeEvent, taskId: string, input: LinkInput) => wrap(() => appSvc.addLink(taskId, input)));
-  ipcMain.handle('links:remove', (_e: IpcMainInvokeEvent, linkId: string) => wrap(() => appSvc.removeLink(linkId)));
+  ipcMain.handle('links:add', (_e: IpcMainInvokeEvent, taskId: string, input: LinkInput) => wrap(() => commands.execute({ name: 'add_link', input: { taskId, link: input } }).data));
+  ipcMain.handle('links:remove', (_e: IpcMainInvokeEvent, linkId: string) => wrap(() => commands.execute({ name: 'remove_link', input: { linkId } }).data));
 
-  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, taskId: string, body: string) => wrap(() => appSvc.saveNote(taskId, body)));
+  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, taskId: string, body: string) => wrap(() => commands.execute({ name: 'save_note', input: { taskId, body } }).data));
 
   // —— 提醒 ——
   ipcMain.handle('reminders:list', (_e: IpcMainInvokeEvent, taskId: string) => wrap(() => reminders.offsetsForTask(taskId)));
   ipcMain.handle('reminders:set', (_e: IpcMainInvokeEvent, taskId: string, offsets: number[]) => {
     try {
-      appSvc.setReminders(taskId, offsets);
+      commands.execute({ name: 'set_reminders', input: { taskId, offsets } });
       return { ok: true, data: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
-  ipcMain.handle('misc:setReminder', (_e: IpcMainInvokeEvent, request: MiscReminderUpdateRequest) => wrap(() => appSvc.setMiscReminder(request)));
-  ipcMain.handle('misc:resolveLegacyDeadline', (_e: IpcMainInvokeEvent, request: LegacyMiscDeadlineActionRequest) => wrap(() => appSvc.resolveLegacyMiscDeadline(request)));
+  ipcMain.handle('misc:setReminder', (_e: IpcMainInvokeEvent, request: MiscReminderUpdateRequest) => wrap(() => commands.execute({ name: 'set_misc_reminder', input: request }).data));
+  ipcMain.handle('misc:resolveLegacyDeadline', (_e: IpcMainInvokeEvent, request: LegacyMiscDeadlineActionRequest) => wrap(() => commands.execute({ name: 'resolve_legacy_misc_deadline', input: request }).data));
 
   // —— 归档 ——
   ipcMain.handle('archive:list', () => wrap(() => archive.listArchived()));
   ipcMain.handle('archive:search', (_e: IpcMainInvokeEvent, q: string, outcome?: string) => wrap(() => archive.searchArchived(q, outcome)));
   ipcMain.handle('archive:get', (_e: IpcMainInvokeEvent, id: string) => wrap(() => archive.getArchivedDetail(id)));
-  ipcMain.handle('archive:restore', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.restoreTask(id)));
+  ipcMain.handle('archive:restore', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'restore_task', input: { taskId: id } }).data));
 
   // —— 设置 ——
   ipcMain.handle('settings:getAll', () =>
@@ -135,46 +129,12 @@ export function registerIpc(
     return err === '' ? { ok: true, data: true } : { ok: false, error: err };
   });
 
-  // —— AI 草稿 ——
+  // —— 遗留待确认草稿（只在 Agent 工作区呈现） ——
   ipcMain.handle('drafts:list', (_e: IpcMainInvokeEvent, sessionId?: string) => wrap(() => appSvc.drafts.listPending(sessionId)));
   ipcMain.handle('drafts:get', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.get(id)));
   ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
   ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
-  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.confirmDraft(id)));
-
-  // —— MCP 配置 ——
-  ipcMain.handle('mcp:getConfig', () => wrap(() => mcpConfig()));
-  ipcMain.handle('mcp:resetToken', () => {
-    tokenVault.reset();
-    return { ok: true, data: mcpConfig() };
-  });
-
-  // —— 内置 AI ——
-  ipcMain.handle('ai:status', () => wrap(() => appSvc.llm.status()));
-  ipcMain.handle('ai:saveConfig', (_e: IpcMainInvokeEvent, baseUrl: string, model: string, key: string) => {
-    try {
-      appSvc.llm.saveConfig(baseUrl, model, key);
-      return { ok: true, data: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle('ai:test', async () => {
-    try {
-      const msg = await appSvc.llm.test();
-      return { ok: true, data: msg };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle('ai:breakdown', async (_e: IpcMainInvokeEvent, description: string) => {
-    try {
-      const draft = await appSvc.llm.breakdown(description);
-      return { ok: true, data: draft };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'confirm_legacy_draft', input: { draftId: id } }).data));
 
   // —— 原生 Pi Agent / DeepSeek ——
   ipcMain.handle('agent:start', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.start(request)));
@@ -191,6 +151,18 @@ export function registerIpc(
   ipcMain.handle('agent:clearSessions', () => wrap(() => agent.clearSessions()));
   ipcMain.handle('agent:exportSession', (_e: IpcMainInvokeEvent, id: string, format: 'json' | 'markdown') =>
     wrap(() => agent.exportSession(id, format)));
+  ipcMain.handle('agent:getPermissions', () => wrap(() => permissions.snapshot()));
+  ipcMain.handle('agent:setPermissionMode', (_e: IpcMainInvokeEvent, mode: AgentPermissionMode, bypassWarningAccepted: boolean) =>
+    wrap(() => permissions.setMode(mode, bypassWarningAccepted)));
+  ipcMain.handle('agent:chooseAuthorizedDirectory', async () => {
+    const selected = await dialog.showOpenDialog(c.win, { properties: ['openDirectory'], title: '授权 Agent 使用此目录' });
+    if (selected.canceled || selected.filePaths.length === 0) return { ok: true as const, data: permissions.snapshot() };
+    return wrap(() => permissions.addDirectory(selected.filePaths[0]));
+  });
+  ipcMain.handle('agent:removeAuthorizedDirectory', (_e: IpcMainInvokeEvent, id: string) => wrap(() => permissions.removeDirectory(id)));
+  ipcMain.handle('agent:resolveApproval', (_e: IpcMainInvokeEvent, id: string, decision: AgentApprovalDecision) =>
+    wrap(() => permissions.resolveApproval(id, decision)));
+  ipcMain.handle('localCommands:getConfig', () => wrap(() => localCommands.config()));
   ipcMain.handle('deepseek:status', () => wrap(() => deepSeek.status()));
   ipcMain.handle('deepseek:saveConfig', (_e: IpcMainInvokeEvent, model: DeepSeekModel, key: string) =>
     wrap(() => { deepSeek.save(model, key); return true; }));

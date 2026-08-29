@@ -85,7 +85,6 @@ export default function App(): React.JSX.Element {
   }, [ensureLoaded, ensureOnboarded]);
 
   useEffect(() => {
-    void useAgentStore.getState().bootstrap();
     const offEvent = typeof window.api.onAgentEvent === 'function'
       ? window.api.onAgentEvent((event) => useAgentStore.getState().handleEvent(event))
       : () => undefined;
@@ -93,6 +92,7 @@ export default function App(): React.JSX.Element {
       setL2View('agent');
       void useAgentStore.getState().handleAttention(event);
     }) : () => undefined;
+    void useAgentStore.getState().bootstrap();
     return () => {
       offEvent();
       offAttention();
@@ -104,6 +104,7 @@ export default function App(): React.JSX.Element {
     const visible = !paused && ((effectiveLevel === 'l2' && l2View === 'agent')
       || (effectiveLevel === 'l3' && section === 'agent'));
     if (typeof window.api.setAgentSurfaceVisible === 'function') void window.api.setAgentSurfaceVisible(visible);
+    if (visible) void useAgentStore.getState().syncRunSnapshot();
   }, [l2View, level, paused, section, transition?.to]);
 
   useEffect(() => window.api.onReminderEvent((event) => {
@@ -180,17 +181,14 @@ export default function App(): React.JSX.Element {
       if (level === 'l3') {
         document.querySelector<HTMLElement>('[data-transition-focus="l3"]')?.focus();
       } else if (level === 'l2' && completed.from === 'l3') {
-        if (l2View === 'agent') {
-          document.querySelector<HTMLElement>('[aria-label="发送给 Pi Agent"]')?.focus();
-          return;
-        }
+        setL2View('overview');
         const selector = selectedTaskId
           ? `[data-carousel-card="true"][data-task-id="${CSS.escape(selectedTaskId)}"]`
           : '[data-carousel-card="true"]';
         document.querySelector<HTMLElement>(selector)?.focus();
       }
     });
-  }, [l2View, level, selectedTaskId, transition]);
+  }, [level, selectedTaskId, setL2View, transition]);
 
   const tokenStyle = useMemo(
     () => designTokenCssVariables(preferences.colorScheme) as CSSProperties,
@@ -200,9 +198,10 @@ export default function App(): React.JSX.Element {
   const handleEsc = useCallback((event: KeyboardEvent) => {
     if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
       const effectiveLevel = transition?.to ?? level;
+      if (effectiveLevel === 'l3') setL2View('overview');
       void window.api.setLevel(effectiveLevel === 'l3' ? 'l2' : 'l1');
     }
-  }, [level, transition?.to]);
+  }, [level, setL2View, transition?.to]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleEsc);

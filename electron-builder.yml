@@ -6,7 +6,7 @@ directories:
 files:
   - out/**
   - resources/**
-  - scripts/caiban-stdio.mjs
+  - scripts/caiban-cli.mjs
   - package.json
 win:
   target:

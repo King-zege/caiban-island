@@ -4,12 +4,13 @@ import { createModels } from '@earendil-works/pi-ai';
 import { deepseekProvider } from '@earendil-works/pi-ai/providers/deepseek';
 import type { Api, Model } from '@earendil-works/pi-ai';
 import type { AgentMessageDto, DeepSeekModel } from '../shared/agentContracts';
+import type { BeforeToolCallResult } from '@earendil-works/pi-agent-core';
 
 export type PiAdapterEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'assistant_message'; text: string; inputTokens: number; outputTokens: number }
   | { type: 'tool_start'; toolCallId: string; toolName: string }
-  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; draftId?: string; memoryProposalId?: string };
+  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; errorMessage?: string; draftId?: string; memoryProposalId?: string };
 
 export interface PiRunOptions {
   sessionId: string;
@@ -21,6 +22,7 @@ export interface PiRunOptions {
   tools: AgentTool[];
   signal: AbortSignal;
   onEvent: (event: PiAdapterEvent) => void | Promise<void>;
+  beforeToolCall?: (toolCallId: string, toolName: string, args: unknown, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 }
 
 export type PiRunResult = 'completed' | 'cancelled' | 'limit_reached';
@@ -81,10 +83,12 @@ export class PiAgentAdapter implements PiAgentRunner {
 
   async run(options: PiRunOptions): Promise<PiRunResult> {
     const runtime = this.runtimeFactory(options.model, options.apiKey);
+    const beforeToolCall = options.beforeToolCall;
 
     let turnCount = 0;
     let limitReached = false;
     let providerError: string | null = null;
+    let receivedVisibleOutput = false;
     const agent = new Agent({
       initialState: {
         systemPrompt: options.systemPrompt,
@@ -104,7 +108,10 @@ export class PiAgentAdapter implements PiAgentRunner {
       getApiKey: () => options.apiKey,
       sessionId: options.sessionId,
       toolExecution: 'sequential',
-      maxRetryDelayMs: 60000
+      maxRetryDelayMs: 60000,
+      beforeToolCall: beforeToolCall
+        ? ({ toolCall, args }, signal) => beforeToolCall(toolCall.id, toolCall.name, args, signal)
+        : undefined
     });
 
     const unsubscribe = agent.subscribe(async (event) => {
@@ -118,12 +125,14 @@ export class PiAgentAdapter implements PiAgentRunner {
       }
       const delta = visibleDeltaFromPiEvent(event);
       if (delta !== null) {
+        if (delta) receivedVisibleOutput = true;
         await options.onEvent({ type: 'text_delta', delta });
         return;
       }
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const text = visibleAssistantText(event.message);
         if (text) {
+          receivedVisibleOutput = true;
           await options.onEvent({
             type: 'assistant_message', text,
             inputTokens: event.message.usage.input + event.message.usage.cacheRead,
@@ -138,11 +147,15 @@ export class PiAgentAdapter implements PiAgentRunner {
         return;
       }
       if (event.type === 'tool_execution_end') {
+        receivedVisibleOutput = true;
         const raw: unknown = event.result;
         const details = isRecord(raw) && isRecord(raw.details) ? raw.details : null;
+        const errorMessage = isRecord(raw) && Array.isArray(raw.content)
+          ? raw.content.flatMap((block) => isRecord(block) && block.type === 'text' && typeof block.text === 'string' ? [block.text] : []).join(' ').slice(0, 240)
+          : undefined;
         const draftId = details && typeof details.draftId === 'string' ? details.draftId : undefined;
         const memoryProposalId = details && typeof details.memoryProposalId === 'string' ? details.memoryProposalId : undefined;
-        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId, memoryProposalId });
+        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, errorMessage: event.isError ? errorMessage : undefined, draftId, memoryProposalId });
       }
     });
 
@@ -155,6 +168,7 @@ export class PiAgentAdapter implements PiAgentRunner {
       if (options.signal.aborted) return 'cancelled';
       if (providerError) throw new Error(providerError);
       if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
+      if (!receivedVisibleOutput) throw new Error('模型返回了空响应，请重试');
       return 'completed';
     } finally {
       options.signal.removeEventListener('abort', abort);

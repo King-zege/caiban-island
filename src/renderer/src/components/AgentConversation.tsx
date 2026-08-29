@@ -17,10 +17,13 @@ interface AgentConversationProps {
 const TOOL_LABELS: Record<string, string> = {
   list_active_tasks: '正在读取活跃任务',
   get_task_detail: '正在核对任务详情',
-  propose_task_draft: '正在整理任务方案',
-  propose_nodes_draft: '正在整理节点方案',
-  propose_task_action: '正在生成操作差异',
+  execute_app_command: '正在应用采办岛操作',
   search_archived_cases: '正在检索脱敏归档案例',
+  list_authorized_files: '正在列举授权目录',
+  read_authorized_file: '正在读取授权文件',
+  write_authorized_file: '正在写入授权文件',
+  move_authorized_file: '正在整理授权文件',
+  delete_authorized_file: '正在删除授权文件',
   propose_memory: '正在整理记忆提案',
   search_sessions: '正在检索历史会话'
 };
@@ -29,12 +32,14 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   const sessions = useAgentStore((state) => state.sessions);
   const detail = useAgentStore((state) => state.detail);
   const runState = useAgentStore((state) => state.runState);
+  const runPhase = useAgentStore((state) => state.runPhase);
   const streaming = useAgentStore((state) => state.streaming);
   const activeToolName = useAgentStore((state) => state.activeToolName);
   const error = useAgentStore((state) => state.error);
   const drafts = useAgentStore((state) => state.drafts);
   const memoryProposals = useAgentStore((state) => state.memoryProposals);
   const attention = useAgentStore((state) => state.attention);
+  const pendingApproval = useAgentStore((state) => state.pendingApproval);
   const openSession = useAgentStore((state) => state.openSession);
   const newConversation = useAgentStore((state) => state.newConversation);
   const send = useAgentStore((state) => state.send);
@@ -43,15 +48,25 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   const discardDraft = useAgentStore((state) => state.discardDraft);
   const confirmMemory = useAgentStore((state) => state.confirmMemoryProposal);
   const discardMemory = useAgentStore((state) => state.discardMemoryProposal);
+  const resolveApproval = useAgentStore((state) => state.resolveApproval);
   const notify = useWorkspaceStore((state) => state.notify);
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteDraft, setDeleteDraft] = useState<DraftRecord | null>(null);
   const [hiddenDraftIds, setHiddenDraftIds] = useState<Set<string>>(() => new Set());
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [firstPacketSlow, setFirstPacketSlow] = useState(false);
 
   const running = isAgentRunning(runState);
   const proposals = useMemo(() => drafts.filter((draft) => !hiddenDraftIds.has(draft.id)), [drafts, hiddenDraftIds]);
+
+  useEffect(() => {
+    setFirstPacketSlow(false);
+    if (runPhase !== 'connecting') return;
+    const timer = window.setTimeout(() => setFirstPacketSlow(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [runPhase]);
 
   useEffect(() => {
     const targetId = attention?.draftId ?? attention?.memoryProposalId;
@@ -123,6 +138,14 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
     if (!result) notify('记忆已确认，将在新建或重新载入会话时生效', 'success');
   };
 
+  const decideApproval = async (decision: 'approve' | 'deny') => {
+    if (!pendingApproval || approvalBusy) return;
+    setApprovalBusy(true);
+    const result = await resolveApproval(pendingApproval.id, decision);
+    setApprovalBusy(false);
+    if (result) notify(result, 'error');
+  };
+
   return (
     <section className={'agent-conversation' + (compact ? ' compact' : '')} aria-label="Agent 对话" aria-busy={running}>
       <div className="agent-toolbar">
@@ -136,7 +159,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
               </select>
               <ChevronDown aria-hidden="true" size={14} />
             </label>
-          ) : <span>{detail?.session.model ?? 'Pi Agent'} · {running ? '后台规划中' : '本地保存'}</span>}
+          ) : <span>{detail?.session.model ?? 'Pi Agent'} · {runPhase === 'awaiting_approval' ? '等待确认' : running ? '正在工作' : '本地保存'}</span>}
         </div>
         <div>
           <Button icon={MessageSquarePlus} variant="ghost" disabled={running} onClick={newConversation}>新对话</Button>
@@ -146,10 +169,19 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
 
       <div className="agent-messages" aria-live="polite" aria-relevant="additions text">
         {!detail && !running ? (
-          <EmptyState icon={Sparkles} title="说说你现在要完成什么" description="我会结合记忆、历史会话、活跃任务和脱敏归档案例，先给出可确认的方案。" />
+          <EmptyState icon={Sparkles} title="说说你现在要完成什么" description="Agent 可按当前权限操作任务，也能整理你明确授权的目录。" />
         ) : detail?.messages.map((message) => <MessageBubble key={message.id} message={message} />)}
         {streaming && <div className="agent-message assistant streaming"><span>Agent</span><p>{streaming}</p></div>}
-        {running && !streaming && <p className="agent-working" role="status">{activeToolName ? TOOL_LABELS[activeToolName] ?? '正在使用受限工具' : 'Pi Agent 正在规划，可隐藏到后台继续'}</p>}
+        {running && !streaming && <p className="agent-working" role="status">{runPhase === 'awaiting_approval' ? '等待你确认后继续当前操作' : activeToolName ? TOOL_LABELS[activeToolName] ?? '正在使用受限工具' : runPhase === 'connecting' ? firstPacketSlow ? '连接响应较慢，仍在等待 DeepSeek；超时后可重试' : '正在连接 DeepSeek' : runPhase === 'applying' ? '正在应用操作结果' : 'Agent 正在处理，可隐藏到后台继续'}</p>}
+
+        {pendingApproval && (
+          <article className="agent-approval-card" data-approval-id={pendingApproval.id} tabIndex={-1}>
+            <div><strong>{pendingApproval.summary}</strong><span>{pendingApproval.risk === 'high' ? '高风险操作' : '写入操作'}</span></div>
+            <dl>{pendingApproval.changes.map((change) => <div key={change.label}><dt>{change.label}</dt><dd><del>{change.before}</del><span aria-hidden="true">→</span><ins>{change.after}</ins></dd></div>)}</dl>
+            <p>批准后 Agent 会继续当前工具循环；拒绝会把结果反馈给 Agent。</p>
+            <div className="agent-proposal-actions"><Button icon={X} variant="ghost" disabled={approvalBusy} onClick={() => void decideApproval('deny')}>拒绝</Button><Button icon={Check} variant="primary" disabled={approvalBusy} onClick={() => void decideApproval('approve')}>{approvalBusy ? '正在提交' : '批准并继续'}</Button></div>
+          </article>
+        )}
 
         {(proposals.length > 0 || memoryProposals.length > 0) && (
           <section className="agent-proposals" aria-label="待确认方案">

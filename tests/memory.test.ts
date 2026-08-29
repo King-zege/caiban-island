@@ -9,8 +9,8 @@ import { AgentService } from '../src/main/agentService';
 import { AgentSessionService } from '../src/main/agentSessionService';
 import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
 import { MemoryContextProvider, MemoryService } from '../src/main/memoryService';
-import { AGENT_TOOL_NAMES, createAgentTools } from '../src/main/agentTools';
-import type { SafeStorageAdapter } from '../src/main/mcpTokenVault';
+import { createAgentTools } from '../src/main/agentTools';
+import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 import type { PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
 
 const dirs: string[] = [];
@@ -59,7 +59,7 @@ describe('P15 长期记忆提案与安全边界', () => {
     const f = fresh();
     const { session, message } = evidence(f, '我希望答复先给采购结论');
     const tools = createAgentTools(f.app, session.id, f.sessions, f.memories);
-    expect(tools.map((tool) => tool.name)).toEqual(AGENT_TOOL_NAMES);
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['execute_app_command', 'propose_memory', 'search_sessions']));
     expect(tools.filter((tool) => ['propose_memory', 'search_sessions'].includes(tool.name))).toHaveLength(2);
     type TestTool = {
       execute: (toolCallId: string, params: Record<string, unknown>, signal?: AbortSignal) => Promise<{
@@ -88,7 +88,7 @@ describe('P15 长期记忆提案与安全边界', () => {
     expect(record?.sourceMessageId).toBe(message.id);
     expect(f.memories.listProposals()).toEqual([]);
     const version = f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(6);
+    expect(version.version).toBe(7);
     expect(f.db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_messages_fts'").get()).toBeTruthy();
   });
 
@@ -118,7 +118,7 @@ describe('P15 长期记忆提案与安全边界', () => {
     const results = new AgentSessionService(upgraded, dir).search('legacy supplier');
     expect(results[0].sessionId).toBe('legacy-session');
     const version = upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(6);
+    expect(version.version).toBe(7);
     upgraded.close();
   });
 

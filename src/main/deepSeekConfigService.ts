@@ -1,6 +1,6 @@
 import type { DeepSeekModel, DeepSeekStatus } from '../shared/agentContracts';
 import { DEEPSEEK_MODELS } from '../shared/agentContracts';
-import type { SafeStorageAdapter } from './mcpTokenVault';
+import type { SafeStorageAdapter } from './safeStorageAdapter';
 import type { SettingsService } from './settingsService';
 
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com' as const;
@@ -49,10 +49,9 @@ export class DeepSeekConfigService {
   }
 
   async test(signal?: AbortSignal): Promise<string> {
-    const response = await this.fetchFn(DEEPSEEK_BASE_URL + '/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.apiKey() },
-      body: JSON.stringify({ model: this.model(), messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }),
+    const response = await this.fetchFn(DEEPSEEK_BASE_URL + '/models', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + this.apiKey() },
       signal: signal ?? AbortSignal.timeout(15000)
     });
     if (!response.ok) throw new DeepSeekConfigError('连接失败（HTTP ' + response.status + '）');

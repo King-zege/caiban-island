@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type WorkspaceSection = 'tasks' | 'agent' | 'memory' | 'drafts' | 'archive' | 'settings';
+export type WorkspaceSection = 'tasks' | 'agent' | 'memory' | 'archive' | 'settings';
 export type TaskWorkspaceSection = 'overview' | 'nodes' | 'materials' | 'reminders' | 'notes';
 export type L2View = 'agent' | 'overview';
 
@@ -44,7 +44,7 @@ let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   section: 'tasks',
-  l2View: 'agent',
+  l2View: 'overview',
   taskSection: 'overview',
   selectedTaskId: null,
   highlightedNodeId: null,

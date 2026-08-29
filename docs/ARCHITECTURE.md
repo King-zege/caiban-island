@@ -2,7 +2,7 @@
 
 ## 1. 架构目标
 
-架构优先保证四件事：原生窗口与动画体验（透明、置顶、磨砂、60fps）、本地数据可靠性（SQLite + 快照 + 自动备份）、Agent 权限可审计（Pi、Qoder MCP 与旧内置 API 都不能直接写正式数据）、核心业务可在不启动 UI 的情况下测试。
+架构优先保证四件事：原生窗口与动画体验（透明、置顶、磨砂、60fps）、本地数据可靠性（SQLite + 快照 + 自动备份）、Agent 权限可审计（Pi 只能经 AppCommand 与三档权限操作）、核心业务可在不启动 UI 的情况下测试。
 
 ## 2. 技术栈决策
 
@@ -16,8 +16,7 @@
 | 动画 | 单次原生 resize + CSS compositor 视觉壳 | main 协调 preparing/animating/settling；renderer 只动画 transform/opacity/border-radius；软件渲染自动简化或直切 |
 | 数据库 | Node `node:sqlite`（DatabaseSync） | Electron 内置、同步 API、WAL；主进程独占，无原生扩展重编译 |
 | 磨砂 | koffi 调用 SetWindowCompositionAttribute | Win10 1803+/Win11 Acrylic；失败回退纯色 |
-| MCP | @modelcontextprotocol/sdk | SSE server + STDIO shim |
-| 内置 LLM | Node fetch（OpenAI-compatible） | function call 结构化输出 |
+| 本地命令接口 | Node `http` + safeStorage token | 仅回环 JSON API 与受限 `caiban-cli`；不暴露 shell |
 | 原生 Agent | Pi Agent Core 0.81.1 + Pi AI 0.81.1 | main 中运行；DeepSeek 官方 provider；只装最小两个 Pi 包 |
 | 飞书同步 | Node fetch（飞书多维表格 bitable v1 Open API）+ PersonalBaseToken | 个人令牌免管理员审批；无 CLI 依赖 |
 | Markdown | react-markdown（不启用 rehype-raw） | 禁止原始 HTML、脚本与远程嵌入 |
@@ -55,7 +54,7 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 
 ## 3. 进程分层
 
-- **main（主进程）**：窗口、SQLite、归档、提醒、MCP、Pi Agent/DeepSeek、旧 LLM、safeStorage 与系统集成。`AgentService` 编排 run，`PiAgentAdapter` 只处理 Pi 协议，`AgentSessionService` 处理可见会话与 FTS5 召回，`MemoryService` 处理提案/确认/安全扫描；Pi 不依赖 renderer、IPC 或正式任务服务。
+- **main（主进程）**：窗口、SQLite、归档、提醒、Pi Agent/DeepSeek、AppCommand、授权文件、本地回环命令端点、safeStorage 与系统集成。`AgentService` 编排 run，`PiAgentAdapter` 只处理 Pi 协议，`AgentSessionService` 处理可见会话与 FTS5 召回；Agent/CLI 经 AppCommand 调用 AppService，不依赖 renderer。
 - **preload**：contextBridge 暴露白名单 API，不含业务逻辑。
 - **renderer（React UI）**：组件、面板、Zustand 状态；不直接访问 Node/DB/文件/网络，一切经 IPC。
 - **shared**：类型、IPC 通道名、设计 token 常量、schema 校验器（main 与测试复用）。
@@ -73,14 +72,14 @@ P16 Windows x64 最终打包实测：portable EXE 88,814,251 字节、ZIP 144,35
 | reminders:list / set | renderer→main | 提醒提前量管理（仅 deadline 任务） |
 | misc:setReminder / resolveLegacyDeadline | renderer→main | 杂事精确提醒的并发安全设置，以及旧 deadline 转换/清除 |
 | reminder:event | main→renderer | 只读提醒降级消息，或节点/杂事通知点击后的定位指令 |
-| drafts:list / get / confirm / discard | renderer→main | AI 草稿审核（P5） |
+| drafts:list / get / confirm / discard | renderer→main | 仅用于保留和处置 P21 前遗留待处理草稿；在 AgentWorkspace 内呈现 |
 | archive:list / search / get / restore | renderer→main | 归档查询、恢复（快照导出在主进程完成/取消时执行） |
 | settings:getAll / set | renderer→main | 设置（默认提醒、自启、磨砂开关） |
 | feishu:sync / feishu:test / feishu:export | renderer→main | 飞书同步、连接测试、CSV/Markdown 导出（P6） |
-| mcp:getConfig / resetToken | renderer→main | MCP 配置展示与令牌重置（P5） |
-| agent:start / send / cancel / getRunSnapshot / setSurfaceVisible | renderer→main | 新建/继续/显式取消唯一活跃 Pi run；恢复后台 run 快照；同步对应会话是否正在可见（P20） |
+| agent:start / send / cancel / getRunSnapshot / setSurfaceVisible | renderer→main | 新建/继续/显式取消唯一活跃 Pi run；按事件序号恢复后台 run 快照；同步对应会话是否可见 |
 | agent:listSessions / getSession / deleteSession / clearSessions / exportSession | renderer→main | 本机会话读取、删除、清空与导出（P14） |
-| agent:event | main→renderer | 流式可见文本、脱敏工具状态、消息与 run 状态；不含 reasoning |
+| agent:getPermissions / setPermissionMode / chooseAuthorizedDirectory / removeAuthorizedDirectory / resolveApproval | renderer→main | 三档权限、授权目录和待确认调用 |
+| agent:event | main→renderer | 带单调序号的流式可见文本、阶段、脱敏工具状态、待确认项、消息与终态；不含 reasoning |
 | agent:attention | main→renderer | 系统通知点击或岛内回退后的结果定位；只含 sessionId 与可选草稿/记忆提案 ID |
 | deepseek:status / saveConfig / test | renderer→main | 固定官方 Base URL；模型选择与 safeStorage Key（P14） |
 | memory:list / listProposals / confirmProposal / discardProposal | renderer→main | 读取与审核长期记忆提案（P15） |
@@ -212,41 +211,26 @@ P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有�
 
 规则：WAL + foreign_keys=ON；schema 变更只走 `db.ts` 中按版本登记的迁移；时间一律 UTC 存 ISO8601，展示按 tz_id 换算；ID 用 GUID；排序必有稳定 tie-breaker。
 
-## 6. MCP 契约（Qoder 兼容通道）
+## 6. 本地命令端点与 CLI（P21）
 
-- **传输 1（SSE，主）**：GUI 启动后监听 http://127.0.0.1:<随机端口>/sse?token=<随机令牌>（经典 SSE，Qoder 桌面 IDE 的 SSE 模式）；仅绑定回环地址；token 为 24 字节随机 base64url，在内存中使用并以 safeStorage 密文保存，可在设置页复制/重置。旧版 SQLite 明文值在启动时迁移并删除；解密/迁移失败则删除旧值并重新生成。
-- **传输 2（Streamable HTTP）**：http://127.0.0.1:<随机端口>/mcp?token=<随机令牌>（Qoder CLI -t http 使用；原始握手已验证）。
-- **传输 3（STDIO，备）**：`node "<应用目录>/scripts/caiban-stdio.mjs"` 桥接脚本，把 stdio JSON-RPC 转发到 GUI 的 SSE 端点；GUI 未运行时自动拉起。注意：Windows GUI 子系统程序没有可用 stdio 管道，不能用 exe 直接做 stdio MCP（已踩坑记录）。
-- **鉴权**：仅"创建会话"的请求校验 token（错误 token 返回 401）；携带 sessionId 的后续请求以随机会话 ID 本身为凭据（SDK 客户端从 endpoint 事件拿到的地址不含原 URL 的 token）。
-- **会话模型**：每个会话使用独立的 MCP Server 实例（Server 只能连接一个传输，重复 connect 会返回 400 "Server already initialized"）。
-- **工具集**（全部"只读 + 草稿"，禁止直接修改正式数据）：
-
-| 工具 | 参数 | 返回 |
-| --- | --- | --- |
-| list_active_tasks | 无 | 活跃任务列表（id、名称、deadline、紧急度、进度、下一节点） |
-| get_task_detail | task_id | 任务全量只读详情（含节点、链接） |
-| propose_task_draft | draft{name, description?, deadline?, urgency?, nodes[]} | draft_id 与校验结果；草稿进入岛内审核面板 |
-| propose_node_draft | task_id, nodes[] | draft_id；为已有任务建议节点拆解 |
-
-- 日志：只记录工具名、耗时、成功/失败类别；禁止记录请求正文与敏感内容。
-## 7. 内置 LLM 兜底通道
-
-- 配置：Base URL、API Key、模型名（设置页；Key 经 safeStorage 加密落盘）。
-- 调用：OpenAI-compatible /chat/completions，带 function call 工具 schema（与 MCP 工具 propose_task_draft / propose_node_draft 同形），temperature 0.2。
-- 校验：输出经 shared 校验器（字段、枚举、日期、顺序、长度）严格验证；失败自动修复一次，再失败转可编辑失败草稿并保留错误类别。
-- 与 MCP 通道共用 drafts 表与审核 UI。
+- GUI 只在 `127.0.0.1` 的随机端口提供 JSON 命令端点；每次请求校验 safeStorage 保存的随机令牌、内容类型、大小上限和 AppCommand schema。
+- `scripts/caiban-cli.mjs` 是唯一外部入口，只提交一个注册命令和 JSON 参数；不得启动、拼接或转发 PowerShell/CMD，不接受任意 URL。
+- renderer、Agent 与 CLI 共享 AppCommand 注册表。每项记录 schema、风险、预期旧值、结果摘要和撤销能力；AppCommand 只编排 AppService，不复制正式业务事务。
+- Qoder MCP、SSE/Streamable HTTP、`caiban-stdio.mjs` 与旧内置 LLM 在 P21 删除。migration v7 清理旧凭据键，但不删除任务、会话、记忆和遗留 pending 草稿。
+- 日志只记录命令/工具名、阶段、耗时、权限决策与错误类别，不记录正文、Authorization、Key 或敏感绝对路径。
 
 ## 7.1 原生 Pi Agent（P14 默认通道）
 
-固定数据流：`L3 Agent UI → preload 白名单 IPC → AgentService → PiAgentAdapter → allowlist 工具 → 草稿/操作提案 → 用户逐次确认 → AppService 事务写入`。
+固定数据流：`L2/L3 AgentWorkspace → preload 白名单 IPC → AgentService → PiAgentAdapter → beforeToolCall 权限钩子 → AppCommand/授权文件工具 → AppService/文件服务`。
 
 - provider：Pi `deepseekProvider()`；Base URL 固定 `https://api.deepseek.com`，模型只允许 `deepseek-v4-flash` / `deepseek-v4-pro`，Key 单独以 safeStorage 密文保存。
 - 打包：Pi Core / Pi AI 的 npm `exports` 只提供 ESM `import` 条件，因此 main 构建必须将这两个包排除出 dependency externalization；禁止生成 `require("@earendil-works/pi-*")`。DeepSeek API 实现保留为随 asar 收集的 lazy chunk。
-- 生命周期：进程内只允许一个活跃 run；provider 请求超时 60 秒、run 超时 3 分钟、最多 12 轮。取消信号贯穿 provider 与工具；L3 卸载和应用退出释放订阅与队列。
+- 生命周期：进程内只允许一个活跃 run；provider 请求超时 60 秒、run 超时 15 分钟、最多 12 轮。取消信号贯穿 provider、审批等待与工具；组件卸载不取消，应用退出释放订阅与队列。
 - 会话：migration v2 保存可见用户/assistant 文本、脱敏工具状态、模型、摘要和 token 用量。本机长期保留，支持单删、全清与 JSON/Markdown 导出。
 - 可见性：只映射 Pi `text_delta`；`thinking_*` 永不进入 IPC、SQLite 或导出。工具结果只保存“读取完成/已生成草稿/失败”状态，不保存原始正文。
-- 工具：P14 五个任务工具加 P15 `propose_memory`、`search_sessions`，共固定 7 个 allowlist 工具。文件链接目标对模型脱敏为 `[本地文件]`；无 shell、文件读取、URL 请求或任意网络能力。
-- 操作提案：`action` 草稿不可编辑，保存服务端快照的预期旧值；确认事务先做乐观并发检查。操作写入与草稿状态/审计事件同事务，`AppService` 在提交后通知后置逻辑。节点删除由 renderer 增加二次确认和 5 秒撤销。
+- 工具：AppCommand 覆盖任务、节点、提醒、备注、资料/链接和生命周期；授权文件服务覆盖列举、读取、写入、移动、删除。无任意 shell、任意 URL 或未授权网络。
+- 权限：每次写入确认、低风险自动写入、Bypass 由统一权限钩子判定；待确认请求保留工具调用，批准后继续当前循环，拒绝/取消作为工具结果返回。
+- 路径：main 对授权根和目标执行规范化、realpath 与根边界校验，拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权相邻目录。
 
 ## 7.2 长期记忆与会话召回（P15）
 
@@ -283,12 +267,22 @@ P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有�
 - 任务方案修订通过 `replacesDraftId` 显式完成：DraftService 先验证旧稿属于同一会话、同为任务草稿且仍 pending，再在一个事务中插入新稿并将旧稿标为 superseded。
 - Pi allowlist 新增 `search_archived_cases`。该工具只查询 SQLite 中的结构化归档记录，最多返回 5 项有限摘要；不调用 ArchiveService 的快照文件读取，也不返回 note、link target、文件路径或 change event detail。Qoder MCP 的四工具契约不变。
 
+P20 本节是历史实现说明；其中 L2 默认 Agent、Qoder 兼容和固定草稿工具集均由 P21 取代。
+
+## 7.6 统一 Agent 工作区与可靠通信（P21）
+
+- renderer 在注册唯一 `agent:event` 订阅之后才 bootstrap。main 为每个事件分配单调序号；store 发现缺口，或发生发送返回、终态、L2/L3 切换、窗口重载、重新展开时调用 `agent:getRunSnapshot` 补偿。
+- `AgentRunSnapshot` 保存 sequence、phase、lastActivityAt、partialText、activeTool、pendingApproval 和脱敏 error。assistant 最终消息写入 SQLite 后才发送 completed 事件，从而让早到/丢失事件均可恢复。
+- `AgentWorkspace` 是 L2/L3 唯一对话组件；布局规格只控制密度，不删除会话、权限、工具、错误重试或审批功能。L3 移除 AI 草稿入口，遗留草稿由 AgentWorkspace 查询 `session_id IS NULL OR 当前会话` 后内联呈现。
+- migration v7 保存权限模式和授权目录元数据，并删除旧 MCP/LLM 凭据设置。Bypass 首次确认标志单独持久化；权限与授权目录不得进入模型提示或日志。
+- DeepSeek “测试连接”使用 `/models`；生产协议测试以受控流覆盖文本、工具调用、空响应、异常终止、认证、限流、服务错误、断流和超时。
+
 ## 8. 安全
 
 - API Key 仅经 safeStorage 加密保存；禁止写入日志、快照、备份、测试夹具与源代码。
 - PersonalBaseToken 与 API Key 同级待遇（safeStorage、日志脱敏、不进快照/备份/测试夹具）。
-- MCP 仅 127.0.0.1 + token；token 只以 safeStorage 密文落盘，重置后新会话立即拒绝旧 token。
-- 草稿原则：任何 AI 输出不得直接落正式数据；创建、编辑与确认复用 shared 校验，确认前最终校验任务仍有效，确认走单事务。
+- 本地命令端点仅 127.0.0.1 + token；token 只以 safeStorage 密文落盘，重置后立即拒绝旧 token。
+- Agent 正式操作原则：只有 AppCommand/AppService 可写正式数据；三档权限决定自动执行或等待确认，Bypass 也不能越过命令、目录、网络与进程边界。
 - 正式任务、节点、链接、备注、提醒和草稿确认统一由 `AppService` 编排；事务提交后才发送变更通知，供飞书自动同步等后置逻辑消费。
 - Markdown 渲染禁用原始 HTML/脚本；打开外部链接前显示实际目标。
 - 备份与快照不含凭据；日志脱敏（无 Authorization、无请求正文）。
@@ -317,7 +311,7 @@ P19 后 L2 将列表拆为项目 lane 与杂事 lane：项目继续使用现有�
     caiban-island/
       docs/            # 本套文档
       src/
-        main/          # 主进程：窗口/托盘/MCP/DB/通知
+        main/          # 主进程：窗口/托盘/Agent/AppCommand/DB/通知
         preload/       # contextBridge 白名单
         renderer/      # React UI（组件、面板、状态）
         shared/        # 类型、IPC 名、设计 token、schema 校验

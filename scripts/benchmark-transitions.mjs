@@ -144,7 +144,9 @@ async function measure(from, to) {
         samples: frameTimes.slice(1).map((time, index) => time - frameTimes[index]),
         visualSamples: frameTimes.slice(1).flatMap((time, index) => {
           const previous = frameTimes[index];
-          if (animatingAt === null || visualEndedAt === null || time < animatingAt || previous > visualEndedAt) return [];
+          // 只统计两个端点都处于 animating 阶段的完整帧间隔；跨越阶段
+          // 边界的区间可能包含 React 提交，不属于视觉动画本身。
+          if (animatingAt === null || visualEndedAt === null || previous < animatingAt || time > visualEndedAt) return [];
           return [time - previous];
         }),
         longTasks,

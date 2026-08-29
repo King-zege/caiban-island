@@ -17,7 +17,6 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "koffi": "^3.1.5",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",

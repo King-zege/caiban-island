@@ -35,15 +35,3 @@ export interface DraftRecord {
   state: DraftState;
   createdAt: string;
 }
-
-export interface MCPConfig {
-  url: string;
-  token: string;
-  stdioCommand: string;
-}
-
-export interface AiStatus {
-  configured: boolean;
-  baseUrl: string;
-  model: string;
-}

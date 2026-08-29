@@ -3,8 +3,9 @@ import type { IpcRendererEvent } from 'electron';
 import type {
   DraftPayload,
   DraftRecord,
-  MCPConfig,
-  AiStatus,
+  AgentApprovalDecision,
+  AgentPermissionMode,
+  AgentPermissionSettings,
   AgentRunEvent,
   AgentRunRequest,
   AgentRunSnapshot,
@@ -15,6 +16,7 @@ import type {
   DeepSeekStatus,
   MemoryProposal,
   MemoryRecord,
+  LocalCommandConfig,
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
@@ -134,13 +136,6 @@ const api = {
   discardDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:discard', id),
   confirmDraft: (id: string): Promise<IpcResult<{ type: 'task' | 'nodes' | 'action'; taskId: string }>> => ipcRenderer.invoke('drafts:confirm', id),
 
-  getMcpConfig: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:getConfig'),
-  resetMcpToken: (): Promise<IpcResult<MCPConfig>> => ipcRenderer.invoke('mcp:resetToken'),
-
-  getAiStatus: (): Promise<IpcResult<AiStatus>> => ipcRenderer.invoke('ai:status'),
-  saveAiConfig: (baseUrl: string, model: string, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('ai:saveConfig', baseUrl, model, key),
-  testAi: (): Promise<IpcResult<string>> => ipcRenderer.invoke('ai:test'),
-  aiBreakdown: (description: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('ai:breakdown', description),
   agentStart: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:start', request),
   agentSend: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:send', request),
   agentCancel: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:cancel'),
@@ -151,6 +146,12 @@ const api = {
   deleteAgentSession: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:deleteSession', id),
   clearAgentSessions: (): Promise<IpcResult<number>> => ipcRenderer.invoke('agent:clearSessions'),
   exportAgentSession: (id: string, format: 'json' | 'markdown'): Promise<IpcResult<string>> => ipcRenderer.invoke('agent:exportSession', id, format),
+  getAgentPermissions: (): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:getPermissions'),
+  setAgentPermissionMode: (mode: AgentPermissionMode, bypassWarningAccepted = false): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:setPermissionMode', mode, bypassWarningAccepted),
+  chooseAgentAuthorizedDirectory: (): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:chooseAuthorizedDirectory'),
+  removeAgentAuthorizedDirectory: (id: string): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:removeAuthorizedDirectory', id),
+  resolveAgentApproval: (id: string, decision: AgentApprovalDecision): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:resolveApproval', id, decision),
+  getLocalCommandConfig: (): Promise<IpcResult<LocalCommandConfig>> => ipcRenderer.invoke('localCommands:getConfig'),
   onAgentEvent: (cb: (event: AgentRunEvent) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, value: AgentRunEvent) => cb(value);
     ipcRenderer.on('agent:event', listener);

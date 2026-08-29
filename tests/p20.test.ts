@@ -8,9 +8,10 @@ import { AgentNotificationTracker } from '../src/main/agentNotification';
 import { AgentSessionService } from '../src/main/agentSessionService';
 import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
 import { migrate, openDatabase } from '../src/main/db';
-import type { SafeStorageAdapter } from '../src/main/mcpTokenVault';
+import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 import type { PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
 import type { TaskDraftPayload } from '../src/shared/types';
+import type { AgentRunEvent, AgentRunPhase, AgentRunState } from '../src/shared/types';
 
 const dirs: string[] = [];
 
@@ -24,6 +25,11 @@ class BlockingRunner implements PiAgentRunner {
   async run(options: PiRunOptions): Promise<PiRunResult> {
     return await new Promise((resolve) => options.signal.addEventListener('abort', () => resolve('cancelled'), { once: true }));
   }
+}
+
+let eventSequence = 0;
+function stateEvent(sessionId: string, state: AgentRunState, phase: AgentRunPhase): AgentRunEvent {
+  return { type: 'state', sessionId, state, phase, sequence: ++eventSequence, at: new Date().toISOString() };
 }
 
 function fresh() {
@@ -54,7 +60,7 @@ afterEach(() => {
 describe('P20 migration v6 与草稿会话修订', () => {
   it('从 v5 升级保留旧草稿，建立索引并在会话删除时置空', () => {
     const f = fresh();
-    f.db.exec('DROP INDEX drafts_session_state_created; ALTER TABLE drafts DROP COLUMN session_id; DELETE FROM schema_migrations WHERE version = 6;');
+    f.db.exec('DROP INDEX drafts_session_state_created; ALTER TABLE drafts DROP COLUMN session_id; DELETE FROM schema_migrations WHERE version >= 6;');
     f.db.prepare("INSERT INTO drafts(id, source, payload, state, created_at) VALUES('legacy','mcp',?,'pending','2026-08-01T00:00:00.000Z')").run(JSON.stringify(taskDraft('旧草稿')));
     f.db.close();
 
@@ -68,13 +74,13 @@ describe('P20 migration v6 与草稿会话修订', () => {
     sessions.delete(session.id);
     expect(app.drafts.get(draft.id).sessionId).toBeNull();
     migrate(upgraded);
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 6 });
+    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 7 });
     upgraded.close();
   });
 
   it('迁移失败完整回滚且不会伪造 v6 记录', () => {
     const f = fresh();
-    f.db.exec('DELETE FROM schema_migrations WHERE version = 6;');
+    f.db.exec('DELETE FROM schema_migrations WHERE version >= 6;');
     expect(() => migrate(f.db)).toThrow();
     expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 5 });
   });
@@ -131,21 +137,21 @@ describe('P20 归档案例与后台运行', () => {
     expect(service.cancel()).toBe(true);
     expect(service.runSnapshot().state).toBe('cancelling');
     await service.waitForIdle();
-    expect(service.runSnapshot()).toEqual({ sessionId: null, state: 'idle', startedAt: null });
+    expect(service.runSnapshot()).toMatchObject({ sessionId: started.session.id, state: 'cancelled', phase: 'cancelled' });
   });
 
   it('仅后台完成生成通用通知，同一 run 不重复且新一轮可重新通知', () => {
     const tracker = new AgentNotificationTracker();
-    tracker.handle({ type: 'state', sessionId: 's1', state: 'running' }, false);
-    expect(tracker.handle({ type: 'state', sessionId: 's1', state: 'completed' }, true)).toBeNull();
-    expect(tracker.handle({ type: 'state', sessionId: 's1', state: 'completed' }, false)).toBeNull();
-    tracker.handle({ type: 'state', sessionId: 's2', state: 'running' }, false);
-    tracker.handle({ type: 'tool_end', sessionId: 's2', toolCallId: 't1', toolName: 'propose_task_draft', isError: false, draftId: 'draft-1' }, false);
-    const notice = tracker.handle({ type: 'state', sessionId: 's2', state: 'completed' }, false);
-    expect(notice).toEqual({ attention: { sessionId: 's2', draftId: 'draft-1', memoryProposalId: undefined }, body: 'AI 方案已生成，点击查看并确认' });
+    tracker.handle(stateEvent('s1', 'running', 'connecting'), false);
+    expect(tracker.handle(stateEvent('s1', 'completed', 'completed'), true)).toBeNull();
+    expect(tracker.handle(stateEvent('s1', 'completed', 'completed'), false)).toBeNull();
+    tracker.handle(stateEvent('s2', 'running', 'connecting'), false);
+    tracker.handle({ type: 'tool_end', sessionId: 's2', toolCallId: 't1', toolName: 'execute_app_command', isError: false, draftId: 'draft-1', sequence: ++eventSequence, at: new Date().toISOString() }, false);
+    const notice = tracker.handle(stateEvent('s2', 'completed', 'completed'), false);
+    expect(notice).toEqual({ attention: { sessionId: 's2', draftId: 'draft-1', memoryProposalId: undefined }, body: 'Agent 待确认操作已生成，点击查看' });
     expect(JSON.stringify(notice)).not.toContain('加油站');
-    expect(tracker.handle({ type: 'state', sessionId: 's2', state: 'completed' }, false)).toBeNull();
-    tracker.handle({ type: 'state', sessionId: 's2', state: 'running' }, false);
-    expect(tracker.handle({ type: 'state', sessionId: 's2', state: 'completed' }, false)?.body).toBe('AI 已完成回复，点击查看');
+    expect(tracker.handle(stateEvent('s2', 'completed', 'completed'), false)).toBeNull();
+    tracker.handle(stateEvent('s2', 'running', 'connecting'), false);
+    expect(tracker.handle(stateEvent('s2', 'completed', 'completed'), false)?.body).toBe('Agent 已完成回复，点击查看');
   });
 });

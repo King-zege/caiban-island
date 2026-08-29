@@ -2,7 +2,7 @@ import type { AgentAttentionEvent, AgentRunEvent } from '../shared/agentContract
 
 export interface AgentCompletionNotice {
   attention: AgentAttentionEvent;
-  body: 'AI 方案已生成，点击查看并确认' | 'AI 已完成回复，点击查看' | 'AI 处理需要查看，点击返回会话';
+  body: 'Agent 待确认操作已生成，点击查看' | 'Agent 已完成回复，点击查看' | 'Agent 处理需要查看，点击返回会话';
 }
 
 export class AgentNotificationTracker {
@@ -32,9 +32,9 @@ export class AgentNotificationTracker {
       attention,
       body: event.state === 'completed'
         ? attention.draftId || attention.memoryProposalId
-          ? 'AI 方案已生成，点击查看并确认'
-          : 'AI 已完成回复，点击查看'
-        : 'AI 处理需要查看，点击返回会话'
+          ? 'Agent 待确认操作已生成，点击查看'
+          : 'Agent 已完成回复，点击查看'
+        : 'Agent 处理需要查看，点击返回会话'
     };
   }
 }

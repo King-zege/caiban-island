@@ -18,7 +18,7 @@ import { ExternalTargetDialog } from '../components/ui/ExternalTargetDialog';
 import type { ExternalTarget } from '../components/ui/ExternalTargetDialog';
 import { compareTasks } from '../../../shared/sorting';
 import type { TaskCardNode, TaskUrgencyUpdateRequest } from '../../../shared/types';
-import AgentConversation from '../components/AgentConversation';
+import AgentPanel from '../components/AgentPanel';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 
@@ -187,7 +187,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const moveL2ViewFocus = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const nextView = event.key === 'ArrowLeft' || event.key === 'Home' ? 'agent' : 'overview';
+    const nextView = event.key === 'ArrowLeft' || event.key === 'Home' ? 'overview' : 'agent';
     setL2View(nextView);
     event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-l2-view="${nextView}"]`)?.focus();
   };
@@ -270,8 +270,8 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           <span><strong>采办岛</strong><small>采购工作台</small></span>
         </div>
         <div className="l2-view-switch" role="tablist" aria-label="L2 内容">
-          <button type="button" role="tab" data-l2-view="agent" aria-selected={l2View === 'agent'} tabIndex={l2View === 'agent' ? 0 : -1} className={l2View === 'agent' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('agent')}><Bot aria-hidden="true" size={16} />AI 对话</button>
-          <button type="button" role="tab" data-l2-view="overview" aria-selected={l2View === 'overview'} tabIndex={l2View === 'overview' ? 0 : -1} className={l2View === 'overview' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('overview')}><LayoutGrid aria-hidden="true" size={16} />任务速览</button>
+          <button type="button" role="tab" data-l2-view="overview" aria-selected={l2View === 'overview'} tabIndex={l2View === 'overview' ? 0 : -1} className={l2View === 'overview' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('overview')}><LayoutGrid aria-hidden="true" size={16} />任务卡片</button>
+          <button type="button" role="tab" data-l2-view="agent" aria-selected={l2View === 'agent'} tabIndex={l2View === 'agent' ? 0 : -1} className={l2View === 'agent' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('agent')}><Bot aria-hidden="true" size={16} />Agent</button>
         </div>
         <div className="l2-actions">
           {l2View === 'overview' && <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>}
@@ -298,7 +298,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
       </header>
       <main className={'l2-body l2-body-' + contentMode}>
         {l2View === 'agent' ? (
-          <AgentConversation
+          <AgentPanel
             compact
             onHide={() => void window.api.setLevel('l1')}
             onTaskConfirmed={(taskId) => {

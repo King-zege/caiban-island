@@ -5,27 +5,30 @@ import { createAgentTools } from './agentTools';
 import { PiAgentAdapter, type PiAdapterEvent, type PiAgentRunner } from './piAgentAdapter';
 import type { AgentContextProvider } from './agentContext';
 import type { MemoryService } from './memoryService';
+import type { AgentPermissionService } from './agentPermissionService';
+import type { AuthorizedFileService } from './authorizedFileService';
 import type {
   AgentRunEvent,
   AgentRunRequest,
   AgentRunSnapshot,
   AgentRunState,
+  AgentRunPhase,
   AgentSessionDetail,
   AgentSessionSummary
 } from '../shared/agentContracts';
 
-const RUN_TIMEOUT_MS = 3 * 60 * 1000;
+const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
-const SYSTEM_PROMPT = `你是采办岛的原生采购任务 Agent。你可以读取本地任务并提出规划草稿或轻量操作提案。
+const SYSTEM_PROMPT = `你是采办岛的原生采购任务 Agent。你可以读取并通过工具原生操作采办岛。
 严格规则：
-1. 任何正式数据修改都只能调用 propose_* 工具生成待确认草稿；不能声称已经修改。
+1. 正式数据只能调用 execute_app_command；权限钩子会自动决定执行或等待用户确认，不能绕过或声称未执行的操作已经完成。
 1a. 新建规划必须分类：需要多阶段推进、节点、截止或紧急程度的是采购项目 kind=task；单步骤、主要用于记录或到时提醒的是杂事 kind=misc。杂事不得包含节点。
-2. propose_task_action 一次只能提出一个操作。允许节点四态、提醒，以及节点新增、修改、删除、重排。
-3. 禁止修改任务名称、说明、deadline、紧急度；禁止完成、取消、归档、恢复或永久删除任务。
-4. 禁止文件、shell、URL 请求和额外网络访问；不要索取或复述 API Key、Authorization 或本地绝对路径。
+2. 每次 execute_app_command 只执行一个注册命令；修改前先读取任务详情，并严格携带 expected 旧值。
+3. 允许创建、修改、查询、归档、恢复和删除任务，以及操作节点、提醒、备注、资料与链接。
+4. 文件只能用授权目录工具和目录 ID/相对路径；禁止 shell、任意 URL、额外网络、未授权路径；不要索取或复述 API Key、Authorization 或本地绝对路径。
 5. 只输出用户可见结论，不输出内部推理。信息不足时先使用只读工具核对。
 6. 规划前可用 search_archived_cases 检索有限归档案例；它不是正式数据写入能力。
-7. 用户要求修订某份待确认任务方案时，propose_task_draft 必须携带该方案的 replacesDraftId；新建独立任务时不要携带。`;
+7. 工具结果被拒绝或取消时，向用户说明并停止声称该变更已应用。`;
 
 export class AgentRunError extends Error {}
 
@@ -39,12 +42,25 @@ interface ActiveRun {
   startedAt: string;
   latestDraftId?: string;
   latestMemoryProposalId?: string;
+  phase: AgentRunPhase;
+  lastActivityAt: string;
+  partialText: string;
+  activeTool: AgentRunSnapshot['activeTool'];
+  error: AgentRunSnapshot['error'];
 }
+
+type UnsequencedAgentEvent<T = AgentRunEvent> = T extends AgentRunEvent ? Omit<T, 'sequence' | 'at'> : never;
 
 export class AgentService {
   private active: ActiveRun | null = null;
   private surfaceVisible = false;
   private readonly contextCache = new Map<string, string>();
+  private sequence = 0;
+  private snapshot: AgentRunSnapshot = {
+    sessionId: null, state: 'idle', startedAt: null, sequence: 0, phase: 'idle', lastActivityAt: null,
+    partialText: '', activeTool: null, pendingApproval: null, error: null
+  };
+  private readonly releaseApprovalListener: (() => void) | null;
 
   constructor(
     private readonly appSvc: AppService,
@@ -53,8 +69,22 @@ export class AgentService {
     private readonly emit: (event: AgentRunEvent) => void,
     private readonly runner: PiAgentRunner = new PiAgentAdapter(),
     private readonly memories?: MemoryService,
-    private readonly contextProviders: AgentContextProvider[] = []
-  ) {}
+    private readonly contextProviders: AgentContextProvider[] = [],
+    private readonly permissions?: AgentPermissionService,
+    private readonly files?: AuthorizedFileService
+  ) {
+    this.releaseApprovalListener = this.permissions?.onApproval((event) => {
+      if (event.type === 'required') {
+        this.updatePhase('awaiting_approval');
+        this.snapshot.pendingApproval = event.request;
+        this.emitEvent({ type: 'approval_required', sessionId: event.request.sessionId, request: event.request });
+      } else {
+        this.snapshot.pendingApproval = null;
+        this.updatePhase(event.decision === 'approve' ? 'applying' : 'tool');
+        this.emitEvent({ type: 'approval_resolved', sessionId: event.request.sessionId, approvalId: event.request.id, decision: event.decision });
+      }
+    }) ?? null;
+  }
 
   start(request: AgentRunRequest): AgentSessionDetail {
     this.assertCanRun(request.input);
@@ -75,7 +105,10 @@ export class AgentService {
   cancel(): boolean {
     if (!this.active) return false;
     this.active.state = 'cancelling';
-    this.emit({ type: 'state', sessionId: this.active.sessionId, state: 'cancelling' });
+    this.snapshot.state = 'cancelling';
+    this.updatePhase('cancelled');
+    this.emitEvent({ type: 'state', sessionId: this.active.sessionId, state: 'cancelling', phase: 'cancelled' });
+    this.permissions?.cancelPending();
     this.active.controller.abort();
     return true;
   }
@@ -103,14 +136,7 @@ export class AgentService {
   exportSession(id: string, format: 'json' | 'markdown'): string { return this.sessions.export(id, format); }
 
   runSnapshot(): AgentRunSnapshot {
-    if (!this.active) return { sessionId: null, state: 'idle', startedAt: null };
-    return {
-      sessionId: this.active.sessionId,
-      state: this.active.state,
-      startedAt: this.active.startedAt,
-      latestDraftId: this.active.latestDraftId,
-      latestMemoryProposalId: this.active.latestMemoryProposalId
-    };
+    return { ...this.snapshot, activeTool: this.snapshot.activeTool ? { ...this.snapshot.activeTool } : null, pendingApproval: this.snapshot.pendingApproval ? { ...this.snapshot.pendingApproval, changes: [...this.snapshot.pendingApproval.changes] } : null };
   }
 
   setSurfaceVisible(visible: boolean): void { this.surfaceVisible = visible; }
@@ -123,6 +149,7 @@ export class AgentService {
   async dispose(): Promise<void> {
     this.cancel();
     await this.waitForIdle();
+    this.releaseApprovalListener?.();
   }
 
   private assertCanRun(input: string): void {
@@ -137,7 +164,7 @@ export class AgentService {
     const key = this.deepSeek.apiKey();
     const existing = this.sessions.get(session.id).messages;
     const userMessage = this.sessions.append(session.id, 'user', input);
-    this.emit({ type: 'message', sessionId: session.id, message: userMessage });
+    this.emitEvent({ type: 'message', sessionId: session.id, message: userMessage });
     const controller = new AbortController();
     const active: ActiveRun = {
       sessionId: session.id,
@@ -145,6 +172,11 @@ export class AgentService {
       timedOut: false,
       state: 'running',
       startedAt: new Date().toISOString(),
+      phase: 'connecting',
+      lastActivityAt: new Date().toISOString(),
+      partialText: '',
+      activeTool: null,
+      error: null,
       timer: setTimeout(() => {
         active.timedOut = true;
         controller.abort();
@@ -152,7 +184,12 @@ export class AgentService {
       promise: Promise.resolve()
     };
     this.active = active;
-    this.emit({ type: 'state', sessionId: session.id, state: 'running' });
+    this.snapshot = {
+      sessionId: session.id, state: 'running', startedAt: active.startedAt, sequence: this.sequence,
+      phase: 'connecting', lastActivityAt: active.lastActivityAt, partialText: '', activeTool: null,
+      pendingApproval: null, error: null
+    };
+    this.emitEvent({ type: 'state', sessionId: session.id, state: 'running', phase: 'connecting' });
     active.promise = this.execute(active, session, input, key, existing, userMessage).finally(() => {
       clearTimeout(active.timer);
       if (this.active === active) this.active = null;
@@ -168,6 +205,7 @@ export class AgentService {
     currentMessage: AgentSessionDetail['messages'][number]
   ): Promise<void> {
     try {
+      const permissions = this.permissions;
       const result = await this.runner.run({
         sessionId: session.id,
         input,
@@ -175,53 +213,65 @@ export class AgentService {
         model: session.model,
         apiKey: key,
         systemPrompt: this.systemPrompt(session.id, [...history, currentMessage]),
-        tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories),
+        tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories, this.files),
         signal: active.controller.signal,
-        onEvent: (event) => this.handleRunnerEvent(session.id, event)
+        onEvent: (event) => this.handleRunnerEvent(session.id, event),
+        beforeToolCall: permissions
+          ? (toolCallId, toolName, args, signal) => permissions.beforeToolCall(session.id, toolCallId, toolName, args, signal)
+          : undefined
       });
       if (active.timedOut) {
         active.state = 'limit_reached';
-        this.emit({ type: 'error', sessionId: session.id, message: '本次运行超过 3 分钟，输入和会话已保留，可重试', retryable: true });
-        this.emit({ type: 'state', sessionId: session.id, state: 'limit_reached' });
+        this.emitError(session.id, '本次运行超过 15 分钟，输入和会话已保留，可重试', 'timeout');
+        this.finishState(session.id, 'limit_reached', 'error');
       } else if (result === 'limit_reached') {
         active.state = 'limit_reached';
-        this.emit({ type: 'error', sessionId: session.id, message: '已达到 12 个模型轮次上限，输入和会话已保留', retryable: true });
-        this.emit({ type: 'state', sessionId: session.id, state: 'limit_reached' });
+        this.emitError(session.id, '已达到 12 个模型轮次上限，输入和会话已保留', 'turn_limit');
+        this.finishState(session.id, 'limit_reached', 'error');
       } else {
         active.state = result === 'cancelled' ? 'cancelled' : 'completed';
-        this.emit({ type: 'state', sessionId: session.id, state: active.state });
+        this.finishState(session.id, active.state, result === 'cancelled' ? 'cancelled' : 'completed');
       }
     } catch (error) {
       active.state = 'error';
       const message = error instanceof Error ? error.message : String(error);
-      this.emit({ type: 'error', sessionId: session.id, message, retryable: true });
-      this.emit({ type: 'state', sessionId: session.id, state: 'error' });
+      this.emitError(session.id, this.safeError(message), this.errorCategory(message));
+      this.finishState(session.id, 'error', 'error');
     }
   }
 
   private handleRunnerEvent(sessionId: string, event: PiAdapterEvent): void {
     if (event.type === 'text_delta') {
-      this.emit({ type: 'text_delta', sessionId, delta: event.delta });
+      this.updatePhase('streaming');
+      if (this.active?.sessionId === sessionId) this.active.partialText += event.delta;
+      this.snapshot.partialText += event.delta;
+      this.emitEvent({ type: 'text_delta', sessionId, delta: event.delta });
       return;
     }
     if (event.type === 'assistant_message') {
       const message = this.sessions.append(sessionId, 'assistant', event.text);
       this.sessions.addUsage(sessionId, event.inputTokens, event.outputTokens);
-      this.emit({ type: 'message', sessionId, message });
+      if (this.active?.sessionId === sessionId) this.active.partialText = '';
+      this.snapshot.partialText = '';
+      this.emitEvent({ type: 'message', sessionId, message });
       return;
     }
     if (event.type === 'tool_start') {
-      this.emit({ type: 'tool_start', sessionId, toolCallId: event.toolCallId, toolName: event.toolName });
+      this.updatePhase('tool');
+      this.snapshot.activeTool = { toolCallId: event.toolCallId, toolName: event.toolName };
+      this.emitEvent({ type: 'tool_start', sessionId, toolCallId: event.toolCallId, toolName: event.toolName });
       return;
     }
-    const label = event.isError ? '执行失败' : event.draftId ? '已生成待确认草稿' : event.memoryProposalId ? '已生成待审核记忆' : '读取完成';
+    const label = event.isError ? '执行失败' : event.draftId ? '已生成遗留待确认草稿' : event.memoryProposalId ? '已生成待审核记忆' : '操作完成';
     if (!event.isError && this.active?.sessionId === sessionId) {
       if (event.draftId) this.active.latestDraftId = event.draftId;
       if (event.memoryProposalId) this.active.latestMemoryProposalId = event.memoryProposalId;
     }
     const message = this.sessions.append(sessionId, 'tool', `${event.toolName}：${label}`, event.toolName);
-    this.emit({ type: 'message', sessionId, message });
-    this.emit({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId, memoryProposalId: event.memoryProposalId });
+    this.snapshot.activeTool = null;
+    this.updatePhase(event.isError ? 'tool' : 'applying');
+    this.emitEvent({ type: 'message', sessionId, message });
+    this.emitEvent({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId, memoryProposalId: event.memoryProposalId });
   }
 
   private systemPrompt(sessionId: string, messages: AgentSessionDetail['messages']): string {
@@ -242,6 +292,48 @@ export class AgentService {
       .filter((draft) => draft.payload.type === 'task')
       .map((draft) => `- draftId=${draft.id}：${JSON.stringify(draft.payload)}`)
       .join('\n');
-    return `${SYSTEM_PROMPT}\n8. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n9. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[当前会话待确认任务方案]\n${pendingPlans || '无'}\n\n[当前会话可引用证据]\n${evidence}`;
+    const directories = this.permissions?.snapshot().authorizedDirectories.map((entry) => `- ${entry.id}：${entry.label}`).join('\n') ?? '';
+    return `${SYSTEM_PROMPT}\n8. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n9. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[遗留待确认任务方案]\n${pendingPlans || '无'}\n\n[已授权目录，仅使用 ID 与相对路径]\n${directories || '无'}\n\n[当前会话可引用证据]\n${evidence}`;
+  }
+
+  private updatePhase(phase: AgentRunPhase): void {
+    const at = new Date().toISOString();
+    if (this.active) { this.active.phase = phase; this.active.lastActivityAt = at; }
+    this.snapshot.phase = phase;
+    this.snapshot.lastActivityAt = at;
+  }
+
+  private emitEvent(event: UnsequencedAgentEvent): void {
+    this.sequence += 1;
+    const at = new Date().toISOString();
+    this.snapshot.sequence = this.sequence;
+    this.snapshot.lastActivityAt = at;
+    this.emit({ ...event, sequence: this.sequence, at } as AgentRunEvent);
+  }
+
+  private emitError(sessionId: string, message: string, category: string): void {
+    this.snapshot.error = { message, retryable: true, category };
+    this.emitEvent({ type: 'error', sessionId, message, retryable: true, category });
+  }
+
+  private finishState(sessionId: string, state: AgentRunState, phase: AgentRunPhase): void {
+    this.snapshot.state = state;
+    this.snapshot.phase = phase;
+    this.snapshot.activeTool = null;
+    this.snapshot.pendingApproval = null;
+    this.emitEvent({ type: 'state', sessionId, state, phase });
+  }
+
+  private errorCategory(message: string): string {
+    if (/401|认证|api key/i.test(message)) return 'authentication';
+    if (/429|限流/i.test(message)) return 'rate_limit';
+    if (/5\d\d|服务/i.test(message)) return 'provider';
+    if (/timeout|超时|断流/i.test(message)) return 'network';
+    if (/空响应/.test(message)) return 'empty_response';
+    return 'unknown';
+  }
+
+  private safeError(message: string): string {
+    return message.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').replace(/[A-Za-z]:\\[^\s]+/g, '[本地路径]');
   }
 }

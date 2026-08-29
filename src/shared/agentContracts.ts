@@ -10,10 +10,58 @@ export interface AgentRunRequest {
 
 export type AgentRunState = 'idle' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'error' | 'limit_reached';
 
+export type AgentPermissionMode = 'confirm_all' | 'auto_reversible' | 'bypass';
+export type AgentRunPhase = 'idle' | 'connecting' | 'streaming' | 'tool' | 'awaiting_approval' | 'applying' | 'completed' | 'cancelled' | 'error';
+export type AgentToolRisk = 'read' | 'reversible' | 'high';
+export type AgentApprovalDecision = 'approve' | 'deny' | 'cancel';
+
+export interface AgentApprovalChange {
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface AgentApprovalRequest {
+  id: string;
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  summary: string;
+  risk: AgentToolRisk;
+  changes: AgentApprovalChange[];
+  createdAt: string;
+}
+
+export interface AuthorizedDirectory {
+  id: string;
+  label: string;
+  path: string;
+  createdAt: string;
+}
+
+export interface AgentPermissionSettings {
+  mode: AgentPermissionMode;
+  bypassWarningAccepted: boolean;
+  authorizedDirectories: AuthorizedDirectory[];
+}
+
+export interface LocalCommandConfig {
+  url: string;
+  token: string;
+  cliCommand: string;
+}
+
 export interface AgentRunSnapshot {
   sessionId: string | null;
   state: AgentRunState;
   startedAt: string | null;
+  sequence: number;
+  phase: AgentRunPhase;
+  lastActivityAt: string | null;
+  partialText: string;
+  activeTool: { toolCallId: string; toolName: string } | null;
+  pendingApproval: AgentApprovalRequest | null;
+  error: { message: string; retryable: boolean; category: string } | null;
   latestDraftId?: string;
   latestMemoryProposalId?: string;
 }
@@ -24,13 +72,18 @@ export interface AgentAttentionEvent {
   memoryProposalId?: string;
 }
 
-export type AgentRunEvent =
-  | { type: 'state'; sessionId: string; state: AgentRunState }
+type SequencedAgentEvent = { sequence: number; at: string };
+
+export type AgentRunEvent = SequencedAgentEvent & (
+  | { type: 'state'; sessionId: string; state: AgentRunState; phase: AgentRunPhase }
   | { type: 'text_delta'; sessionId: string; delta: string }
   | { type: 'tool_start'; sessionId: string; toolCallId: string; toolName: string }
   | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; draftId?: string; memoryProposalId?: string }
+  | { type: 'approval_required'; sessionId: string; request: AgentApprovalRequest }
+  | { type: 'approval_resolved'; sessionId: string; approvalId: string; decision: AgentApprovalDecision }
   | { type: 'message'; sessionId: string; message: AgentMessageDto }
-  | { type: 'error'; sessionId: string; message: string; retryable: boolean };
+  | { type: 'error'; sessionId: string; message: string; retryable: boolean; category: string }
+);
 
 export interface AgentSessionSummary {
   id: string;

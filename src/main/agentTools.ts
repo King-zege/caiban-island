@@ -1,76 +1,66 @@
 import { Type } from '@earendil-works/pi-ai';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { AppService } from './appService';
-import { AgentActionService } from './agentActionService';
-import type { AgentActionRequest } from '../shared/agentContracts';
+import { AppCommandService } from './appCommandService';
+import type { AppCommand } from '../shared/appCommandContracts';
 import type { MemoryProposalRequest } from '../shared/agentContracts';
-import type { DraftNodeProposal } from '../shared/draftContracts';
 import type { MemoryService } from './memoryService';
 import type { AgentSessionService } from './agentSessionService';
+import type { AuthorizedFileService } from './authorizedFileService';
 
 interface ToolDetails {
-  draftId?: string;
   memoryProposalId?: string;
+  commandName?: string;
+  entityId?: string;
+  fileOperation?: string;
 }
 
 const EmptySchema = Type.Object({}, { additionalProperties: false });
 const TaskIdSchema = Type.Object({ taskId: Type.String() }, { additionalProperties: false });
-const NodeSchema = Type.Object({
-  title: Type.String(),
-  description: Type.Optional(Type.String()),
-  startUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点开始时间 ISO8601 UTC；用户确认后会在此刻提醒' })),
-  endUtc: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: '节点截止时间 ISO8601 UTC；仅用于计划，不额外提醒' }))
+const NullableUtc = Type.Union([Type.String(), Type.Null()]);
+const UrgencySchema = Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')]);
+const NodeStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')]);
+const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc }, { additionalProperties: false });
+const TaskInputSchema = Type.Object({
+  name: Type.String(), description: Type.String(), kind: Type.Literal('task'), urgency: UrgencySchema,
+  deadlineUtc: NullableUtc, tzId: Type.String()
 }, { additionalProperties: false });
-const ProjectTaskDraftSchema = Type.Object({
-  kind: Type.Literal('task'),
-  name: Type.String(),
-  description: Type.Optional(Type.String()),
-  deadlineUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  urgency: Type.Optional(Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')])),
-  nodes: Type.Array(NodeSchema),
-  replacesDraftId: Type.Optional(Type.String())
-}, { additionalProperties: false });
-const MiscTaskDraftSchema = Type.Object({
-  kind: Type.Literal('misc'),
-  name: Type.String(),
-  note: Type.Optional(Type.String()),
-  remindAtUtc: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  nodes: Type.Array(NodeSchema, { maxItems: 0 }),
-  replacesDraftId: Type.Optional(Type.String())
-}, { additionalProperties: false });
-const TaskDraftSchema = Type.Union([ProjectTaskDraftSchema, MiscTaskDraftSchema]);
-const NodeDraftSchema = Type.Object({ taskId: Type.String(), nodes: Type.Array(NodeSchema) }, { additionalProperties: false });
-const ActionSchema = Type.Object({
-  taskId: Type.String(),
-  kind: Type.Union([
-    Type.Literal('set_node_status'),
-    Type.Literal('set_reminders'),
-    Type.Literal('add_node'),
-    Type.Literal('update_node'),
-    Type.Literal('delete_node'),
-    Type.Literal('reorder_nodes')
-  ]),
-  nodeId: Type.Optional(Type.String()),
-  status: Type.Optional(Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')])),
-  offsets: Type.Optional(Type.Array(Type.Integer({ minimum: 1 }))),
-  node: Type.Optional(NodeSchema),
-  orderedNodeIds: Type.Optional(Type.Array(Type.String()))
-}, { additionalProperties: false });
+const MiscCreateSchema = Type.Object({ kind: Type.Literal('misc'), name: Type.String(), note: Type.String(), remindAtUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
+const ProjectCreateSchema = Type.Object({ kind: Type.Literal('task'), name: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
+
+const AppCommandSchema = Type.Union([
+  Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_task_urgency'), input: Type.Object({ taskId: Type.String(), urgency: UrgencySchema, expectedUrgency: UrgencySchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+  ...(['complete_task', 'cancel_task', 'restore_task', 'delete_task'] as const).map((command) => Type.Object({ command: Type.Literal(command), input: TaskIdSchema }, { additionalProperties: false })),
+  Type.Object({ command: Type.Literal('set_reminders'), input: Type.Object({ taskId: Type.String(), offsets: Type.Array(Type.Integer({ minimum: 1, maximum: 525600 })) }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_misc_reminder'), input: Type.Object({ taskId: Type.String(), remindAtUtc: NullableUtc, expectedRemindAtUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('add_node'), input: Type.Object({ taskId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('update_node'), input: Type.Object({ nodeId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_node_title'), input: Type.Object({ nodeId: Type.String(), title: Type.String(), expectedTitle: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_node_start_time'), input: Type.Object({ nodeId: Type.String(), startUtc: NullableUtc, expectedStartUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('set_node_status'), input: Type.Object({ nodeId: Type.String(), status: NodeStatusSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('reorder_nodes'), input: Type.Object({ taskId: Type.String(), orderedNodeIds: Type.Array(Type.String()) }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('remove_node'), input: Type.Object({ nodeId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('add_link'), input: Type.Object({ taskId: Type.String(), link: Type.Object({ kind: Type.Union([Type.Literal('url'), Type.Literal('file')]), title: Type.String(), target: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('remove_link'), input: Type.Object({ linkId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('save_note'), input: Type.Object({ taskId: Type.String(), body: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('resolve_legacy_misc_deadline'), input: Type.Object({ taskId: Type.String(), action: Type.Union([Type.Literal('convert'), Type.Literal('clear')]), expectedDeadlineUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+  Type.Object({ command: Type.Literal('confirm_legacy_draft'), input: Type.Object({ draftId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false })
+]);
+
 const MemorySchema = Type.Object({
   operation: Type.Union([Type.Literal('add'), Type.Literal('replace'), Type.Literal('remove')]),
-  category: Type.Union([Type.Literal('profile'), Type.Literal('work')]),
-  fact: Type.String(),
-  evidenceMessageId: Type.String(),
-  targetMemoryId: Type.Optional(Type.String())
+  category: Type.Union([Type.Literal('profile'), Type.Literal('work')]), fact: Type.String(),
+  evidenceMessageId: Type.String(), targetMemoryId: Type.Optional(Type.String())
 }, { additionalProperties: false });
-const SearchSessionsSchema = Type.Object({
-  query: Type.String({ minLength: 1, maxLength: 200 }),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 }))
-}, { additionalProperties: false });
-const SearchArchivedCasesSchema = Type.Object({
-  query: Type.String({ minLength: 1, maxLength: 200 }),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 }))
-}, { additionalProperties: false });
+const SearchSessionsSchema = Type.Object({ query: Type.String({ minLength: 1, maxLength: 200 }), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })) }, { additionalProperties: false });
+const SearchArchivedCasesSchema = Type.Object({ query: Type.String({ minLength: 1, maxLength: 200 }), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })) }, { additionalProperties: false });
+const FileLocationSchema = Type.Object({ directoryId: Type.String(), path: Type.String() }, { additionalProperties: false });
+const FileListSchema = Type.Object({ directoryId: Type.String(), path: Type.Optional(Type.String()) }, { additionalProperties: false });
+const FileWriteSchema = Type.Object({ directoryId: Type.String(), path: Type.String(), content: Type.String() }, { additionalProperties: false });
+const FileMoveSchema = Type.Object({ directoryId: Type.String(), from: Type.String(), to: Type.String() }, { additionalProperties: false });
 
 function text(value: unknown, details: ToolDetails = {}): { content: [{ type: 'text'; text: string }]; details: ToolDetails } {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], details };
@@ -80,148 +70,67 @@ function checkCancelled(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error('操作已取消');
 }
 
-function normalizeNode(node: { title: string; description?: string; startUtc?: string | null; endUtc?: string | null }): DraftNodeProposal {
-  return {
-    title: node.title,
-    description: node.description ?? '',
-    startUtc: node.startUtc ?? null,
-    endUtc: node.endUtc ?? null
-  };
-}
-
 export function createAgentTools(
   appSvc: AppService,
   sessionId: string,
   sessions?: AgentSessionService,
-  memories?: MemoryService
+  memories?: MemoryService,
+  files?: AuthorizedFileService,
+  commands = new AppCommandService(appSvc)
 ): AgentTool[] {
-  const actions = new AgentActionService(appSvc);
   const list: AgentTool<typeof EmptySchema, ToolDetails> = {
-    name: 'list_active_tasks', label: '读取活跃任务', description: '列出活跃任务及进度，不修改数据', parameters: EmptySchema,
+    name: 'list_active_tasks', label: '读取活跃任务', description: '列出活跃项目和杂事及进度，不修改数据', parameters: EmptySchema,
     execute: async (_id, _params, signal) => {
       checkCancelled(signal);
-      return text(appSvc.tasks.listActive().map((card) => ({
-        id: card.task.id, name: card.task.name, kind: card.task.kind, urgency: card.task.urgency,
-        deadlineUtc: card.task.deadlineUtc, remindAtUtc: card.task.remindAtUtc,
-        miscReminder: card.miscReminder, progress: card.progress, overdue: card.overdue
-      })));
+      return text(appSvc.tasks.listActive().map((card) => ({ id: card.task.id, name: card.task.name, kind: card.task.kind, urgency: card.task.urgency, deadlineUtc: card.task.deadlineUtc, remindAtUtc: card.task.remindAtUtc, progress: card.progress, overdue: card.overdue })));
     }
   };
   const detail: AgentTool<typeof TaskIdSchema, ToolDetails> = {
-    name: 'get_task_detail', label: '读取任务详情', description: '读取指定任务、节点、提醒、资料标题和备注，不访问链接或文件', parameters: TaskIdSchema,
+    name: 'get_task_detail', label: '读取任务详情', description: '读取任务、节点、提醒、资料标题和备注；不打开资料目标', parameters: TaskIdSchema,
     execute: async (_id, params, signal) => {
       checkCancelled(signal);
       const value = appSvc.tasks.getTaskDetail(params.taskId);
-      return text({
-        task: value.task,
-        nodes: value.nodes,
-        reminders: value.task.kind === 'misc' ? value.miscReminder : appSvc.reminders.offsetsForTask(params.taskId),
-        links: value.links.map((link) => ({ kind: link.kind, title: link.title, target: link.kind === 'url' ? link.target : '[本地文件]' })),
-        note: value.note
-      });
+      return text({ task: value.task, nodes: value.nodes, reminders: value.task.kind === 'misc' ? value.miscReminder : appSvc.reminders.offsetsForTask(params.taskId), links: value.links.map((link) => ({ id: link.id, kind: link.kind, title: link.title, target: link.kind === 'url' ? link.target : '[本地文件]' })), note: value.note });
     }
   };
-  const taskDraft: AgentTool<typeof TaskDraftSchema, ToolDetails> = {
-    name: 'propose_task_draft', label: '提出任务草稿', description: '创建待用户审核的新任务规划草稿，不写入正式任务', parameters: TaskDraftSchema,
-    executionMode: 'sequential',
+  const commandTool: AgentTool<typeof AppCommandSchema, ToolDetails> = {
+    name: 'execute_app_command', label: '操作采办岛', description: '通过统一注册命令创建、修改、归档、恢复或删除任务，并操作节点、提醒、备注和资料；严格填写 expected 旧值',
+    parameters: AppCommandSchema, executionMode: 'sequential',
     execute: async (_id, params, signal) => {
       checkCancelled(signal);
-      const taskInput = params.kind === 'misc'
-        ? {
-            kind: 'misc' as const,
-            name: params.name,
-            note: params.note ?? '',
-            remindAtUtc: params.remindAtUtc ?? null,
-            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }
-        : {
-            kind: 'task' as const,
-            name: params.name,
-            description: params.description ?? '',
-            urgency: params.urgency ?? 'normal',
-            deadlineUtc: params.deadlineUtc ?? null,
-            tzId: Intl.DateTimeFormat().resolvedOptions().timeZone
-          };
-      const draft = appSvc.drafts.create('pi', {
-        type: 'task',
-        taskInput,
-        nodes: params.kind === 'task' ? params.nodes.map(normalizeNode) : [], warnings: []
-      }, { sessionId, replacesDraftId: params.replacesDraftId });
-      return text({ draftId: draft.id, status: 'pending', message: '任务草稿已进入审核区' }, { draftId: draft.id });
-    }
-  };
-  const nodeDraft: AgentTool<typeof NodeDraftSchema, ToolDetails> = {
-    name: 'propose_node_draft', label: '提出节点草稿', description: '为已有任务创建待用户审核的节点规划草稿', parameters: NodeDraftSchema,
-    executionMode: 'sequential',
-    execute: async (_id, params, signal) => {
-      checkCancelled(signal);
-      const draft = appSvc.drafts.create('pi', { type: 'nodes', taskId: params.taskId, nodes: params.nodes.map(normalizeNode), warnings: [] }, { sessionId });
-      return text({ draftId: draft.id, status: 'pending', message: '节点草稿已进入审核区' }, { draftId: draft.id });
-    }
-  };
-  const action: AgentTool<typeof ActionSchema, ToolDetails> = {
-    name: 'propose_task_action', label: '提出轻量操作', description: '一次提出一个待用户逐次确认的轻量操作；仅支持节点状态、提醒和节点增改删排', parameters: ActionSchema,
-    executionMode: 'sequential',
-    execute: async (_id, params, signal) => {
-      checkCancelled(signal);
-      const request: AgentActionRequest = {
-        taskId: params.taskId,
-        sessionId,
-        kind: params.kind,
-        nodeId: params.nodeId,
-        status: params.status,
-        offsets: params.offsets,
-        node: params.node ? normalizeNode(params.node) : undefined,
-        orderedNodeIds: params.orderedNodeIds
-      };
-      const draft = actions.propose(request);
-      return text({ draftId: draft.id, status: 'pending', summary: draft.payload.type === 'action' ? draft.payload.summary : '' }, { draftId: draft.id });
+      const result = commands.execute({ name: params.command, input: params.input } as AppCommand);
+      return text(result, { commandName: result.command, entityId: result.entityId });
     }
   };
   const archivedCases: AgentTool<typeof SearchArchivedCasesSchema, ToolDetails> = {
-    name: 'search_archived_cases',
-    label: '搜索归档案例',
-    description: '只读检索已归档项目与杂事的有限结构化摘要；不返回备注、链接目标、文件路径、快照或变更详情',
-    parameters: SearchArchivedCasesSchema,
-    execute: async (_id, params, signal) => {
-      checkCancelled(signal);
-      return text(appSvc.archive.searchCases(params.query, params.limit ?? 5));
-    }
+    name: 'search_archived_cases', label: '搜索归档案例', description: '只读检索归档任务的有限结构化摘要', parameters: SearchArchivedCasesSchema,
+    execute: async (_id, params, signal) => { checkCancelled(signal); return text(appSvc.archive.searchCases(params.query, params.limit ?? 5)); }
   };
-  const tools: AgentTool[] = [list, detail, taskDraft, nodeDraft, action, archivedCases];
+  const tools: AgentTool[] = [list, detail, commandTool, archivedCases];
+  if (files) {
+    tools.push({ name: 'list_authorized_files', label: '列举授权目录', description: '列出用户已授权目录中的文件名、类型和大小', parameters: FileListSchema, execute: async (_id, params, signal) => text(await files.list(params.directoryId, params.path ?? '.', signal)) } as AgentTool<typeof FileListSchema, ToolDetails>);
+    tools.push({ name: 'read_authorized_file', label: '读取授权文件', description: '读取授权目录内最多 256KB 的 UTF-8 文本文件', parameters: FileLocationSchema, execute: async (_id, params, signal) => text({ content: await files.read(params.directoryId, params.path, signal) }) } as AgentTool<typeof FileLocationSchema, ToolDetails>);
+    tools.push({ name: 'write_authorized_file', label: '写入授权文件', description: '在授权目录内创建或改写 UTF-8 文本文件，可创建分类子目录', parameters: FileWriteSchema, executionMode: 'sequential', execute: async (_id, params, signal) => { await files.write(params.directoryId, params.path, params.content, signal); return text({ status: 'written', path: params.path }, { fileOperation: 'write' }); } } as AgentTool<typeof FileWriteSchema, ToolDetails>);
+    tools.push({ name: 'move_authorized_file', label: '移动授权文件', description: '在同一授权目录内重命名或移动文件', parameters: FileMoveSchema, executionMode: 'sequential', execute: async (_id, params) => { await files.move(params.directoryId, params.from, params.to); return text({ status: 'moved', from: params.from, to: params.to }, { fileOperation: 'move' }); } } as AgentTool<typeof FileMoveSchema, ToolDetails>);
+    tools.push({ name: 'delete_authorized_file', label: '删除授权文件', description: '删除授权目录内的单个文件，不递归删除目录', parameters: FileLocationSchema, executionMode: 'sequential', execute: async (_id, params) => { await files.delete(params.directoryId, params.path); return text({ status: 'deleted', path: params.path }, { fileOperation: 'delete' }); } } as AgentTool<typeof FileLocationSchema, ToolDetails>);
+  }
   if (memories) {
-    const memory: AgentTool<typeof MemorySchema, ToolDetails> = {
-      name: 'propose_memory', label: '提出长期记忆',
-      description: '提议新增、替换或移除一条用户画像/工作记忆；必须引用当前会话中的可见证据消息，用户确认前不会生效',
-      parameters: MemorySchema, executionMode: 'sequential',
+    tools.push({
+      name: 'propose_memory', label: '提出长期记忆', description: '提议新增、替换或移除一条长期记忆，需引用当前会话证据', parameters: MemorySchema, executionMode: 'sequential',
       execute: async (_id, params, signal) => {
         checkCancelled(signal);
-        const request: MemoryProposalRequest = {
-          operation: params.operation, category: params.category, fact: params.fact,
-          evidenceMessageId: params.evidenceMessageId, targetMemoryId: params.targetMemoryId
-        };
+        const request: MemoryProposalRequest = { operation: params.operation, category: params.category, fact: params.fact, evidenceMessageId: params.evidenceMessageId, targetMemoryId: params.targetMemoryId };
         const proposal = memories.propose(sessionId, request);
         return text({ proposalId: proposal.id, status: 'pending', warning: proposal.capacityWarning }, { memoryProposalId: proposal.id });
       }
-    };
-    tools.push(memory);
+    } as AgentTool<typeof MemorySchema, ToolDetails>);
   }
-  if (sessions) {
-    const search: AgentTool<typeof SearchSessionsSchema, ToolDetails> = {
-      name: 'search_sessions', label: '搜索历史会话',
-      description: '只读搜索本机历史会话的用户/Agent 可见消息，返回有限片段与摘要，不返回内部推理或原始工具输出',
-      parameters: SearchSessionsSchema,
-      execute: async (_id, params, signal) => {
-        checkCancelled(signal);
-        return text(sessions.search(params.query, params.limit ?? 5));
-      }
-    };
-    tools.push(search);
-  }
+  if (sessions) tools.push({ name: 'search_sessions', label: '搜索历史会话', description: '只读搜索本机会话的用户/Agent 可见消息', parameters: SearchSessionsSchema, execute: async (_id, params, signal) => { checkCancelled(signal); return text(sessions.search(params.query, params.limit ?? 5)); } } as AgentTool<typeof SearchSessionsSchema, ToolDetails>);
   return tools;
 }
 
 export const AGENT_TOOL_NAMES = [
-  'list_active_tasks', 'get_task_detail', 'propose_task_draft', 'propose_node_draft', 'propose_task_action',
-  'search_archived_cases', 'propose_memory', 'search_sessions'
+  'list_active_tasks', 'get_task_detail', 'execute_app_command', 'search_archived_cases',
+  'list_authorized_files', 'read_authorized_file', 'write_authorized_file', 'move_authorized_file', 'delete_authorized_file',
+  'propose_memory', 'search_sessions'
 ] as const;
