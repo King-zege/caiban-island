@@ -301,6 +301,10 @@ export class IslandWindowController {
 
   private startPolling(): void {
     this.pollTimer = setInterval(() => {
+      if (this.win.isDestroyed()) {
+        this.dispose();
+        return;
+      }
       if (this.paused) return;
       const cursor = screen.getCursorScreenPoint();
       const display = this.primaryDisplay();
@@ -354,6 +358,12 @@ export class IslandWindowController {
     }
     this.broadcastState();
     return this.paused;
+  }
+
+  handleClose(event: { preventDefault(): void }, quitting: boolean): void {
+    if (quitting) return;
+    event.preventDefault();
+    if (!this.win.isDestroyed()) this.setLevel('l1');
   }
 
   dispose(): void {

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AgentEvent } from '@earendil-works/pi-agent-core';
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai';
+import { deepseekProvider } from '@earendil-works/pi-ai/providers/deepseek';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../src/main/db';
 import { AppService } from '../src/main/appService';
@@ -79,6 +80,7 @@ describe('Agent 会话、事件与 DeepSeek 配置', () => {
     expect(f.sessions.get(started.session.id).messages.map((message) => message.role)).toEqual(['user', 'tool', 'assistant']);
     expect(service.runSnapshot()).toMatchObject({ sessionId: started.session.id, state: 'completed', phase: 'completed', partialText: '', activeTool: null });
     expect(runner.lastOptions?.tools.map((tool) => tool.name)).toContain('execute_app_command');
+    expect(runner.lastOptions?.systemPrompt).toContain('每轮只执行最新一条用户消息');
   });
 
   it('全局只允许一个 run，显式取消保留输入与取消终态', async () => {
@@ -116,7 +118,7 @@ describe('Pi 生产事件协议', () => {
     const f = fresh(); const session = f.sessions.create('deepseek-v4-flash', '提醒我联系物业');
     const faux = fauxProvider({ provider: 'faux', models: [{ id: 'deepseek-v4-flash' }] });
     faux.setResponses([
-      fauxAssistantMessage(fauxToolCall('execute_app_command', { command: 'create_task', input: { kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc: '2099-09-01T08:30:00.000Z', tzId: 'Asia/Shanghai' } }, { id: 'tool-create' }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage(fauxToolCall('execute_app_command', { command: 'create_task', input: { kind: 'misc', name: '联系物业', note: '续门禁卡', remindAtUtc: null, tzId: 'Asia/Shanghai' } }, { id: 'tool-create' }), { stopReason: 'toolUse' }),
       fauxAssistantMessage('已创建杂事')
     ]);
     const models = createModels(); models.setProvider(faux.provider); const model = models.getModel('faux', 'deepseek-v4-flash');
@@ -126,7 +128,41 @@ describe('Pi 生产事件协议', () => {
     await adapter.run({ sessionId: session.id, input: '提醒我联系物业', history: [], model: 'deepseek-v4-flash', apiKey: 'test-only', systemPrompt: '只使用工具。', tools: createAgentTools(f.app, session.id, f.sessions, f.memories), signal: new AbortController().signal, onEvent: (event) => { events.push(event); } });
     const toolEnd = events.find((event) => event.type === 'tool_end');
     if (toolEnd?.type === 'tool_end' && toolEnd.isError) throw new Error(toolEnd.errorMessage ?? 'tool failed');
-    expect(f.app.tasks.listActive()[0].task).toMatchObject({ kind: 'misc', name: '联系物业' });
+    expect(f.app.tasks.listActive()[0].task).toMatchObject({ kind: 'misc', name: '联系物业', remindAtUtc: null });
+  });
+
+  it('发给 DeepSeek 的每个工具参数 schema 顶层都是 object', () => {
+    const f = fresh(); const session = f.sessions.create('deepseek-v4-flash', '检查工具 schema');
+    const tools = createAgentTools(f.app, session.id, f.sessions, f.memories);
+    for (const tool of tools) {
+      expect(tool.parameters).toMatchObject({ type: 'object' });
+    }
+    const command = tools.find((tool) => tool.name === 'execute_app_command');
+    expect(command?.parameters).toMatchObject({ type: 'object', anyOf: expect.any(Array) });
+  });
+
+  it('DeepSeek provider 最终 HTTP payload 保留 execute_app_command 的 object schema', async () => {
+    const f = fresh(); const session = f.sessions.create('deepseek-v4-flash', '检查 DeepSeek payload');
+    const models = createModels(); models.setProvider(deepseekProvider());
+    const model = models.getModel('deepseek', 'deepseek-v4-flash');
+    if (!model) throw new Error('deepseek model missing');
+    let capturedPayload: unknown;
+    const stream = models.streamSimple(model, {
+      systemPrompt: '只检查工具 schema。',
+      messages: [{ role: 'user', content: '创建一张测试卡片', timestamp: Date.now() }],
+      tools: createAgentTools(f.app, session.id, f.sessions, f.memories)
+    }, {
+      apiKey: 'test-only',
+      onPayload: (payload) => {
+        capturedPayload = JSON.parse(JSON.stringify(payload)) as unknown;
+        throw new Error('payload-captured-before-network');
+      }
+    });
+    for await (const _event of stream) { /* drain the provider error event */ }
+    expect(capturedPayload).toBeDefined();
+    const payload = capturedPayload as { tools?: Array<{ function?: { name?: string; parameters?: unknown } }> };
+    const command = payload.tools?.find((tool) => tool.function?.name === 'execute_app_command');
+    expect(command?.function?.parameters).toMatchObject({ type: 'object', anyOf: expect.any(Array) });
   });
 
   it('空响应明确失败并可由上层归类重试', async () => {

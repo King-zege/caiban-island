@@ -202,4 +202,20 @@ describe('P12 单次原生 resize 协调器', () => {
     expect(setBounds.mock.calls[0]?.[0]).toMatchObject({ x: 3152, y: -31, width: 96, height: 35 });
     controller.dispose();
   });
+
+  it('Alt+F4 只收起窗口，真正退出时允许销毁', async () => {
+    const { win } = createWindow();
+    const controller = new IslandWindowController(win);
+    controller.setRenderMode('direct');
+    await controller.init();
+    controller.setLevel('l2');
+    const collapseEvent = { preventDefault: vi.fn() };
+    controller.handleClose(collapseEvent, false);
+    expect(collapseEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(controller.state().level).toBe('l1');
+    const quitEvent = { preventDefault: vi.fn() };
+    controller.handleClose(quitEvent, true);
+    expect(quitEvent.preventDefault).not.toHaveBeenCalled();
+    controller.dispose();
+  });
 });

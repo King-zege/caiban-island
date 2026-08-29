@@ -47,6 +47,7 @@ let reminderTimer: NodeJS.Timeout | null = null;
 let reminderResumeHandler: (() => void) | null = null;
 let feishuTimer: NodeJS.Timeout | null = null;
 let localCommandRuntime: LocalCommandRuntime | null = null;
+let isQuitting = false;
 let fullscreenDetector: FullscreenDetector | null = null;
 let agentService: AgentService | null = null;
 let detectedRenderMode: RenderMode = 'software';
@@ -280,6 +281,7 @@ app.on('child-process-gone', (_event, details) => {
       );
 
       controller = new IslandWindowController(win, () => appSvc.settings.get('acrylic_disabled') === '1');
+      win.on('close', (event) => controller?.handleClose(event, isQuitting));
       controller.setRenderMode(detectedRenderMode);
       const agentNotifications = new AgentNotificationTracker();
       const sendAgentAttention = (attention: AgentAttentionEvent): void => {
@@ -341,6 +343,7 @@ app.on('child-process-gone', (_event, details) => {
 
     app.on('window-all-closed', () => {});
     app.on('before-quit', () => {
+      isQuitting = true;
       if (controller) controller.dispose();
       if (fullscreenDetector) fullscreenDetector.stop();
       if (reminderTimer) clearTimeout(reminderTimer);

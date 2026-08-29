@@ -17,7 +17,9 @@ interface ToolDetails {
 
 const EmptySchema = Type.Object({}, { additionalProperties: false });
 const TaskIdSchema = Type.Object({ taskId: Type.String() }, { additionalProperties: false });
-const NullableUtc = Type.Union([Type.String(), Type.Null()]);
+// pi-ai applies TypeBox Value.Convert before validation. Keep null first so a
+// legitimate null is not coerced to an empty string by the string branch.
+const NullableUtc = Type.Union([Type.Null(), Type.String()]);
 const UrgencySchema = Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')]);
 const NodeStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')]);
 const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc }, { additionalProperties: false });
@@ -28,27 +30,33 @@ const TaskInputSchema = Type.Object({
 const MiscCreateSchema = Type.Object({ kind: Type.Literal('misc'), name: Type.String(), note: Type.String(), remindAtUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
 const ProjectCreateSchema = Type.Object({ kind: Type.Literal('task'), name: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
 
-const AppCommandSchema = Type.Union([
-  Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_task_urgency'), input: Type.Object({ taskId: Type.String(), urgency: UrgencySchema, expectedUrgency: UrgencySchema }, { additionalProperties: false }) }, { additionalProperties: false }),
-  ...(['complete_task', 'cancel_task', 'restore_task', 'delete_task'] as const).map((command) => Type.Object({ command: Type.Literal(command), input: TaskIdSchema }, { additionalProperties: false })),
-  Type.Object({ command: Type.Literal('set_reminders'), input: Type.Object({ taskId: Type.String(), offsets: Type.Array(Type.Integer({ minimum: 1, maximum: 525600 })) }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_misc_reminder'), input: Type.Object({ taskId: Type.String(), remindAtUtc: NullableUtc, expectedRemindAtUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('add_node'), input: Type.Object({ taskId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('update_node'), input: Type.Object({ nodeId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_node_title'), input: Type.Object({ nodeId: Type.String(), title: Type.String(), expectedTitle: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_node_start_time'), input: Type.Object({ nodeId: Type.String(), startUtc: NullableUtc, expectedStartUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('set_node_status'), input: Type.Object({ nodeId: Type.String(), status: NodeStatusSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('reorder_nodes'), input: Type.Object({ taskId: Type.String(), orderedNodeIds: Type.Array(Type.String()) }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('remove_node'), input: Type.Object({ nodeId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('add_link'), input: Type.Object({ taskId: Type.String(), link: Type.Object({ kind: Type.Union([Type.Literal('url'), Type.Literal('file')]), title: Type.String(), target: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('remove_link'), input: Type.Object({ linkId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('save_note'), input: Type.Object({ taskId: Type.String(), body: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('resolve_legacy_misc_deadline'), input: Type.Object({ taskId: Type.String(), action: Type.Union([Type.Literal('convert'), Type.Literal('clear')]), expectedDeadlineUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
-  Type.Object({ command: Type.Literal('confirm_legacy_draft'), input: Type.Object({ draftId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false })
-]);
+const AppCommandSchema = {
+  ...Type.Union([
+    Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_task_urgency'), input: Type.Object({ taskId: Type.String(), urgency: UrgencySchema, expectedUrgency: UrgencySchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    ...(['complete_task', 'cancel_task', 'restore_task', 'delete_task'] as const).map((command) => Type.Object({ command: Type.Literal(command), input: TaskIdSchema }, { additionalProperties: false })),
+    Type.Object({ command: Type.Literal('set_reminders'), input: Type.Object({ taskId: Type.String(), offsets: Type.Array(Type.Integer({ minimum: 1, maximum: 525600 })) }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_misc_reminder'), input: Type.Object({ taskId: Type.String(), remindAtUtc: NullableUtc, expectedRemindAtUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('add_node'), input: Type.Object({ taskId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('update_node'), input: Type.Object({ nodeId: Type.String(), node: NodeSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_node_title'), input: Type.Object({ nodeId: Type.String(), title: Type.String(), expectedTitle: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_node_start_time'), input: Type.Object({ nodeId: Type.String(), startUtc: NullableUtc, expectedStartUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_node_status'), input: Type.Object({ nodeId: Type.String(), status: NodeStatusSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('reorder_nodes'), input: Type.Object({ taskId: Type.String(), orderedNodeIds: Type.Array(Type.String()) }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('remove_node'), input: Type.Object({ nodeId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('add_link'), input: Type.Object({ taskId: Type.String(), link: Type.Object({ kind: Type.Union([Type.Literal('url'), Type.Literal('file')]), title: Type.String(), target: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('remove_link'), input: Type.Object({ linkId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('save_note'), input: Type.Object({ taskId: Type.String(), body: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('resolve_legacy_misc_deadline'), input: Type.Object({ taskId: Type.String(), action: Type.Union([Type.Literal('convert'), Type.Literal('clear')]), expectedDeadlineUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('confirm_legacy_draft'), input: Type.Object({ draftId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false })
+  ]),
+  // DeepSeek requires every function parameters schema to declare an object at
+  // the top level. Type.Union emits only `anyOf`, which the API reports as
+  // `type: null`, while `type` + `anyOf` preserves the discriminated union.
+  type: 'object' as const
+};
 
 const MemorySchema = Type.Object({
   operation: Type.Union([Type.Literal('add'), Type.Literal('replace'), Type.Literal('remove')]),

@@ -1,87 +1,52 @@
 # 采办岛（Caiban Island）
 
-屏幕顶部的"灵动岛"式采购任务管理工具：Windows 10/11 通用、免证书免安装、本地存储。
+Windows 10/11 顶部常驻的本地采购任务工作台。应用通过同一个透明窗口在 L1 隐藏条、L2 快速工作区和 L3 深度工作台之间展开，正式数据保存在本机 SQLite。
 
 ## 当前状态
 
-**v0.2.0，已完成至 P15**：应用已内置 Pi Agent，可用 DeepSeek 官方 API Key 原生规划任务、多轮对话，并对节点状态、提醒及节点增改删排提出逐次确认的轻量操作。经用户确认的画像/业务记忆会在后续会话中生效，本机会话可通过 FTS5 安全召回；Qoder MCP 与旧内置 AI 继续作为兼容回退。
+`v0.2.1`，P0–P21 已完成。当前版本包括：
 
-- GitHub Release 只提供一个推荐下载：`Caiban-Island-0.2.0-Windows-x64.exe`（Windows x64 免安装独立运行版）；本地 `release/` 仍会生成同名 ZIP 用于打包验收，不上传 Release；
-- 开发运行：`npm run dev`；构建：`npm run build` + `npm start`；
-- 数据与快照：`%APPDATA%\caiban-island\`。
-## 功能
+- L2 默认显示采购项目凭条与杂事工作单，可切换至 Agent；L3 继续同一 Agent 会话。
+- 采购项目支持节点、紧急度、deadline、提醒、资料和备注；杂事只有名称、精确提醒、资料和备注。
+- Pi Agent + DeepSeek 通过统一 AppCommand 原生查询和操作应用；支持三档权限、内联审批、后台运行与事件快照恢复。
+- DeepSeek 工具参数保持顶层 object schema；无提醒时间保留为 `null`，避免对话创建卡片时被接口拒绝或产生空字符串时间。
+- Agent 只可整理用户明确授权的目录，不提供任意 shell、任意网络或未授权路径访问。
+- Windows Toast、归档与恢复、Markdown/JSON/CSV 导出、飞书多维表格单向同步。
+- Qoder MCP、STDIO 桥和旧内置 LLM 已移除；遗留待处理草稿仍可在 Agent 工作区确认或丢弃。
 
-- 顶部隐藏态提示条只露 4–6px且圆角朝向屏幕中心，鼠标停留后展开为 L2 横向采购凭条；鼠标离开 L2 自动收起；
-- L2 以任务名为主标题、下一节点为副标题，并提供上一/当前/下一节点轴、四态显式选择和卡片任务菜单；
-- L3 使用 240px 任务栏和单任务工作台，概览、采购节点、资料、提醒、备注一次只显示一个主分区；
-- 节点状态支持待完成、进行中、已完成、已取消四态显式选择；节点、资料与任务永久删除延迟 5 秒提交并支持撤销；
-- 原生 Agent：设置 DeepSeek API Key 后，在 L3「Agent」中多轮规划；任务草稿和每个轻量操作都必须确认后才写入正式数据；
-- 长期记忆：Agent 只能提出带证据的记忆提案；在 L3「记忆」中编辑、确认或拒绝，未确认内容不会注入模型；
-- 兼容通道：Qoder MCP 与旧内置 AI 继续生成待审核草稿；
-- 到期 Windows 通知（无需证书）+ 岛内轻弹降级；任务完成/取消后全量归档（SQLite + Markdown/JSON 快照），可搜索查看与恢复；
-- 系统明暗、高对比度与减少动画实时跟随；外链打开前确认完整目标；连接地址和会话凭据默认遮罩；
-- 飞书多维表格同步：个人令牌直连（免管理员审批），一键把任务（含节点/链接/备注）沉淀为多维表格记录，再次同步幂等更新；企业禁用令牌时用 CSV/Markdown 导出导入。
+## 运行与构建
+
+```text
+npm install
+npm run dev
+npm run typecheck
+npm test
+npm run build
+npm run package
+```
+
+数据目录：`%APPDATA%\caiban-island\`。本地打包产物位于 `release/`；portable EXE 无代码签名，首次运行可能出现 SmartScreen 提示。
+
+## Agent 配置
+
+在 L3 → 设置 → Agent 中选择 DeepSeek Flash/Pro，保存官方 API Key 并测试连接。Key 只经 Electron safeStorage 加密保存。未配置 Key 或离线时，手动任务功能仍完整可用。
+
+权限模式：
+
+- 每次写入确认：所有正式写入均需批准。
+- 低风险自动写入：字段、节点、提醒、备注等可自动修改；创建、归档、删除、记忆和文件写入仍需批准。
+- Bypass：在 AppCommand 与授权目录边界内自动执行；首次启用确认风险并持续显示警示。
 
 ## 文档导航
 
-| 文档 | 用途 |
+| 文档 | 内容 |
 | --- | --- |
-| docs/SPEC.md | 产品行为与验收标准 |
-| docs/ARCHITECTURE.md | 技术栈、模块边界、数据模型、MCP 契约 |
-| docs/DESIGN_SYSTEM.md | 尺寸、材质、圆角、颜色、动效与无障碍 |
-| docs/TEST_PLAN.md | 各节点测试机制与验收矩阵 |
-| docs/PLAN.md | 决策记录、里程碑、风险 |
-| AGENTS.md | Agent 与贡献者工程规则 |
+| `AGENTS.md` | 工程、安全与按任务读取规则 |
+| `docs/SPEC.md` | 当前产品行为 |
+| `docs/ARCHITECTURE.md` | 当前模块、数据与接口边界 |
+| `docs/DESIGN_SYSTEM.md` | 当前视觉、布局、输入与无障碍规则 |
+| `docs/TEST_PLAN.md` | 当前测试与完成门禁 |
+| `docs/PLAN.md` | 已完成基线与后续方向 |
+| `docs/HANDOFF_PI_AGENT.md` | Agent 维护交接 |
 
-冲突优先级：SPEC（行为）> ARCHITECTURE（技术）> DESIGN_SYSTEM（视觉）> TEST_PLAN（验收）；工程底线见 AGENTS.md。
-
-## 原生 Pi Agent（P14 起可用）
-
-1. 打开 L3 → 设置 → AI 与 Qoder → Pi Agent · DeepSeek；
-2. 选择 Flash（默认）或 Pro，输入 DeepSeek 官方 API Key 并保存、测试；
-3. 打开 L3 左侧「Agent」，直接描述任务规划或轻量修改意图；
-4. Agent 生成的任务/节点草稿与每个轻量操作都进入待确认区，确认前不会修改正式任务。
-
-会话只保存在本机，可逐个删除、全部清空或导出 JSON/Markdown。取消、超时或达到轮次上限时输入仍会保留。应用不保存或展示模型内部 reasoning。
-
-稳定的沟通偏好、采购流程与供应商/品类事实可由 Agent 提议为“用户画像”或“工作 / 业务记忆”。记忆容量有明确上限，达到 80% 会提示整理，不会静默淘汰；凭据、私人路径、提示注入和大段原始对话会被拒绝。确认后的变更从新建或重新载入会话开始生效。
-
-## Qoder MCP 配置（兼容通道）
-
-**方式一（推荐）：SSE**
-
-1. 启动采办岛，打开 L3 → 设置 → AI 与 Qoder；
-2. 在“Qoder 连接”中明确选择“复制地址”；连接地址与会话凭据默认遮罩；
-3. 打开 Qoder 独立桌面 IDE → 个人设置 → MCP 服务 → 添加 → 类型选 SSE → 粘贴地址；
-4. 在 Qoder 智能体模式下对话，例如："帮我把《XX设备采购》拆成时间节点"；
-5. 草稿出现在采办岛 L3 的 AI 草稿审核中，逐节点保留/删除/修改/排序后确认，即可生成任务卡片。
-
-**方式二（备用）：STDIO**
-
-在“高级：手动连接 Qoder”中明确复制备用命令，再在 Qoder 的 MCP 服务中选择 STDIO 类型并粘贴。桥接脚本会自动拉起采办岛并把 stdio 转发到 SSE 端点。
-
-内置 AI 兜底通道：设置 → AI 与 Qoder → 内置 AI，配置兼容服务地址、模型和访问密钥，即可在 AI 草稿页生成待审核节点。
-
-## Windows 独立运行版与 SmartScreen
-
-从 GitHub Release 下载 `Caiban-Island-0.2.0-Windows-x64.exe` 后可直接运行，无需安装。当前版本未购买代码签名证书，首次运行 Windows SmartScreen 可能提示"Windows 已保护你的电脑"；核对发布页与文件名后，可点击"更多信息 → 仍要运行"。数据保存在 %APPDATA%\caiban-island\，删除该目录即清除全部数据。
-
-## 飞书多维表格同步（P6 已完成）
-
-1. 在飞书多维表格中打开"开发者"入口，生成个人令牌（PersonalBaseToken，无需企业管理员审批），粘贴到采办岛 L3 → 设置 → 飞书同步；
-2. 点"测试连接"，成功后点"同步到飞书"：应用会自动创建多维表格"采办岛任务"（含 13 个字段的数据表）并写入全部活跃任务；
-3. 再次同步按"采办岛任务ID"幂等更新对应行，不重复插入；
-4. 可打开"任务变更后自动同步"（防抖 3 秒）；
-5. 令牌失效等错误会给出明确提示；
-6. 兜底导出：设置页可一键导出 CSV（UTF-8 BOM）或 Markdown 到数据目录 export\，飞书多维表格中"导入"即可（无令牌也能用）。
-
-## 开发命令（P1 起生效）
-
-    npm install
-    npm run dev
-    npm run typecheck
-    npm test
-    npm run build
-    npm run package   # P7 起
-
-开发流程：按 docs/PLAN.md 里程碑推进，每个节点完成后执行该节点的测试机制（见 docs/TEST_PLAN.md），全部通过后做一次 git commit。
+根目录 `PRODUCT.md` 与 `DESIGN.md` 是供产品/设计工具快速载入的短摘要，不替代 `docs/` 中的正式规范。
