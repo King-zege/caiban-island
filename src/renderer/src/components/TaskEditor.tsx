@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CalendarClock, CheckCircle2, ExternalLink, File, Link2, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { URGENCIES } from '../../../shared/types';
 import type { LinkInput, NodeInput, TaskDetail, TaskNode, Urgency } from '../../../shared/types';
+import { getProcurementTemplate, instantiateProcurementTemplate, PROCUREMENT_METHOD_LABELS, PROCUREMENT_WORKFLOW_TEMPLATES } from '../../../shared/procurementContracts';
+import type { ProcurementMethod } from '../../../shared/procurementContracts';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import type { TaskWorkspaceSection } from '../state/useWorkspaceStore';
@@ -56,6 +58,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const completeTask = useTaskStore((state) => state.complete);
   const cancelTask = useTaskStore((state) => state.cancel);
   const setTaskUrgency = useTaskStore((state) => state.setTaskUrgency);
+  const applyProcurementPlan = useTaskStore((state) => state.applyProcurementPlan);
   const pendingUndo = useWorkspaceStore((state) => state.pendingUndo);
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
@@ -77,6 +80,10 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
   const [editingNodeTime, setEditingNodeTime] = useState<TaskNode | null>(null);
   const [editingNodeName, setEditingNodeName] = useState<TaskNode | null>(null);
   const [urgencyBusy, setUrgencyBusy] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('standard-procurement');
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   useEffect(() => {
     setNoteBody(detail.note);
@@ -184,6 +191,27 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
     notify(error ?? '任务紧急程度已更新', error ? 'error' : 'success');
   };
 
+  const replaceWithTemplate = async () => {
+    const template = getProcurementTemplate(selectedTemplateId);
+    setTemplateBusy(true);
+    setTemplateError(null);
+    const error = await applyProcurementPlan({
+      taskId: task.id,
+      templateId: template.id,
+      templateVersion: template.version,
+      procurementMethod: (task.procurementMethod ?? 'custom') as ProcurementMethod,
+      nodes: instantiateProcurementTemplate(template.id, task.deadlineUtc),
+      expectedUpdatedAtUtc: task.updatedAtUtc
+    });
+    setTemplateBusy(false);
+    if (error) {
+      setTemplateError(error);
+      return;
+    }
+    setTemplateDialogOpen(false);
+    notify('采购流程模板已应用', 'success');
+  };
+
   if (section === 'overview') {
     return (
       <div className="task-workspace-section overview-section">
@@ -256,7 +284,7 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
       <div className="task-workspace-section">
         <div className="section-heading">
           <div><span className="eyebrow">采购节点</span><h2>管理执行顺序与状态</h2></div>
-          <span>{completedCount} / {effectiveNodeCount} 已完成</span>
+          <span className="row-actions"><span>{completedCount} / {effectiveNodeCount} 已完成</span><Button variant="ghost" onClick={() => setTemplateDialogOpen(true)}>套用流程模板</Button></span>
         </div>
         <Timeline
           nodes={nodes}
@@ -333,6 +361,20 @@ export default function TaskEditor({ detail, section }: { detail: TaskDetail; se
             }}
           />
         )}
+        <Dialog
+          open={templateDialogOpen}
+          title="套用采购流程模板"
+          description="模板会复制为当前项目的独立节点计划，不会随模板升级自动变化。"
+          onClose={() => setTemplateDialogOpen(false)}
+          actions={<><Button variant="ghost" disabled={templateBusy} onClick={() => setTemplateDialogOpen(false)}>取消</Button><Button variant="danger" disabled={templateBusy} onClick={() => void replaceWithTemplate()}>{templateBusy ? '正在应用' : '替换当前节点'}</Button></>}
+        >
+          <label className="ui-field">
+            <span className="ui-field-label">流程模板</span>
+            <span className="ui-field-control"><select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{PROCUREMENT_WORKFLOW_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}</select></span>
+          </label>
+          <p>当前采购方式：{PROCUREMENT_METHOD_LABELS[(task.procurementMethod ?? 'custom') as ProcurementMethod]}。此操作会替换现有 {nodes.length} 个节点，节点资料与项目资料不会删除。</p>
+          {templateError && <AsyncFeedback tone="error" message={templateError} onRetry={() => void replaceWithTemplate()} />}
+        </Dialog>
       </div>
     );
   }

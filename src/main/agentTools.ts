@@ -22,7 +22,9 @@ const TaskIdSchema = Type.Object({ taskId: Type.String() }, { additionalProperti
 const NullableUtc = Type.Union([Type.Null(), Type.String()]);
 const UrgencySchema = Type.Union([Type.Literal('critical'), Type.Literal('high'), Type.Literal('normal'), Type.Literal('low')]);
 const NodeStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')]);
-const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc }, { additionalProperties: false });
+const ProcurementMethodSchema = Type.Union([Type.Literal('open_tender'), Type.Literal('invited_tender'), Type.Literal('competitive_negotiation'), Type.Literal('single_source'), Type.Literal('inquiry'), Type.Literal('framework'), Type.Literal('custom')]);
+const NodeSourceSchema = Type.Union([Type.Literal('template'), Type.Literal('agent'), Type.Literal('custom')]);
+const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc, stageKey: Type.Optional(NullableUtc), source: Type.Optional(NodeSourceSchema) }, { additionalProperties: false });
 const TaskInputSchema = Type.Object({
   name: Type.String(), fullName: Type.Optional(Type.String()), shortName: Type.Optional(Type.String()), description: Type.String(), kind: Type.Union([Type.Literal('procurement'), Type.Literal('task')]), urgency: UrgencySchema,
   deadlineUtc: NullableUtc, tzId: Type.String()
@@ -32,6 +34,8 @@ const ProjectCreateSchema = Type.Object({ kind: Type.Union([Type.Literal('procur
 
 const AppCommandSchema = {
   ...Type.Union([
+    Type.Object({ command: Type.Literal('create_procurement_project'), input: Type.Object({ fullName: Type.String(), shortName: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String(), procurementMethod: ProcurementMethodSchema, templateId: NullableUtc, nodes: Type.Optional(Type.Array(NodeSchema)) }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('apply_procurement_plan'), input: Type.Object({ taskId: Type.String(), templateId: NullableUtc, templateVersion: Type.Union([Type.Null(), Type.Integer({ minimum: 1 })]), procurementMethod: ProcurementMethodSchema, nodes: Type.Array(NodeSchema), expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
@@ -91,7 +95,7 @@ export function createAgentTools(
     name: 'list_active_tasks', label: '读取活跃任务', description: '列出活跃项目和杂事及进度，不修改数据', parameters: EmptySchema,
     execute: async (_id, _params, signal) => {
       checkCancelled(signal);
-      return text(appSvc.tasks.listActive().map((card) => ({ id: card.task.id, name: card.task.name, kind: card.task.kind, urgency: card.task.urgency, deadlineUtc: card.task.deadlineUtc, remindAtUtc: card.task.remindAtUtc, progress: card.progress, overdue: card.overdue })));
+      return text(appSvc.tasks.listActive().map((card) => ({ id: card.task.id, fullName: card.task.fullName, shortName: card.task.shortName, kind: card.task.kind, urgency: card.task.urgency, deadlineUtc: card.task.deadlineUtc, remindAtUtc: card.task.remindAtUtc, workflowTemplateId: card.task.workflowTemplateId, procurementMethod: card.task.procurementMethod, progress: card.progress, overdue: card.overdue })));
     }
   };
   const detail: AgentTool<typeof TaskIdSchema, ToolDetails> = {
@@ -103,7 +107,7 @@ export function createAgentTools(
     }
   };
   const commandTool: AgentTool<typeof AppCommandSchema, ToolDetails> = {
-    name: 'execute_app_command', label: '操作采办岛', description: '通过统一注册命令创建、修改、归档、恢复或删除任务，并操作节点、提醒、备注和资料；严格填写 expected 旧值',
+    name: 'execute_app_command', label: '操作采办岛', description: '通过统一注册命令创建采购项目及完整计划，或修改、归档、恢复任务，并操作节点、提醒、备注和资料；严格填写 expected 旧值',
     parameters: AppCommandSchema, executionMode: 'sequential',
     execute: async (_id, params, signal) => {
       checkCancelled(signal);

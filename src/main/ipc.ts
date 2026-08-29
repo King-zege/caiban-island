@@ -15,6 +15,8 @@ import type { DraftPayload } from '../shared/draftContracts';
 import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 import type { AgentProposalCreateRequest } from '../shared/agentProposalContracts';
+import { PROCUREMENT_WORKFLOW_TEMPLATES } from '../shared/procurementContracts';
+import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from '../shared/procurementContracts';
 
 export function registerIpc(
   c: IslandWindowController,
@@ -76,6 +78,12 @@ export function registerIpc(
   ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'complete_task', input: { taskId: id } }).data));
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'cancel_task', input: { taskId: id } }).data));
   ipcMain.handle('tasks:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'delete_task', input: { taskId: id } }).data));
+
+  ipcMain.handle('procurements:templates', () => wrap(() => PROCUREMENT_WORKFLOW_TEMPLATES));
+  ipcMain.handle('procurements:create', (_e: IpcMainInvokeEvent, input: ProcurementProjectCreateRequest) =>
+    wrap(() => commands.execute({ name: 'create_procurement_project', input }).data));
+  ipcMain.handle('procurements:applyPlan', (_e: IpcMainInvokeEvent, input: ProcurementPlanApplyRequest) =>
+    wrap(() => commands.execute({ name: 'apply_procurement_plan', input }).data));
 
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'add_node', input: { taskId, node: input } }).data));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'update_node', input: { nodeId, node: input } }).data));

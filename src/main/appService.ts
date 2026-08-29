@@ -14,6 +14,7 @@ import type {
   NodeTimeUpdateRequest,
   NodeTitleUpdateRequest,
   Task,
+  TaskDetail,
   TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
@@ -22,6 +23,8 @@ import type {
   TaskLink,
   TaskNode
 } from '../shared/taskContracts';
+import { getProcurementTemplate, instantiateProcurementTemplate } from '../shared/procurementContracts';
+import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult } from '../shared/procurementContracts';
 
 // 组合根：任务/归档/提醒/设置的跨服务事务编排
 export class AppService {
@@ -72,6 +75,37 @@ export class AppService {
     });
     this.emitChanged();
     return t;
+  }
+
+  createProcurementProject(input: ProcurementProjectCreateRequest): ProcurementProjectCreateResult {
+    const result = this.withTransaction(() => {
+      const project = this.tasks.createTask({
+        kind: 'procurement', name: input.shortName, fullName: input.fullName, shortName: input.shortName,
+        description: input.description, urgency: input.urgency, deadlineUtc: input.deadlineUtc, tzId: input.tzId
+      });
+      const template = input.templateId ? getProcurementTemplate(input.templateId) : null;
+      const nodes = input.nodes ?? (template ? instantiateProcurementTemplate(template.id, input.deadlineUtc) : []);
+      this.tasks.setProcurementWorkflow(project.id, template?.id ?? null, template?.version ?? null, input.procurementMethod);
+      for (const node of nodes) this.tasks.addNode(project.id, node);
+      if (project.deadlineUtc) {
+        const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
+        if (defaults.length > 0) this.reminders.setOffsets(project.id, defaults);
+      }
+      this.reminders.syncTaskNodeReminders(project.id);
+      return { project: this.tasks.getTask(project.id) as ProcurementProjectCreateResult['project'], nodeCount: nodes.length };
+    });
+    this.emitChanged();
+    return result;
+  }
+
+  applyProcurementPlan(request: ProcurementPlanApplyRequest): TaskDetail {
+    const detail = this.withTransaction(() => {
+      const updated = this.tasks.applyProcurementPlan(request);
+      this.reminders.syncTaskNodeReminders(request.taskId);
+      return updated;
+    });
+    this.emitChanged();
+    return detail;
   }
 
   updateTask(id: string, input: TaskInput): Task {

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskCreateRequest, TaskDetail, TaskLink, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
+import type { ProcurementProjectCreateRequest } from '../../../shared/procurementContracts';
+import type { ProcurementPlanApplyRequest } from '../../../shared/procurementContracts';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -16,6 +18,8 @@ interface TaskState {
   setOnboarded: (value: boolean) => void;
   load: () => Promise<void>;
   create: (input: TaskCreateRequest) => Promise<string | null>;
+  createProcurement: (input: ProcurementProjectCreateRequest) => Promise<string | null>;
+  applyProcurementPlan: (input: ProcurementPlanApplyRequest) => Promise<string | null>;
   complete: (id: string) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   deleteTask: (id: string) => Promise<string | null>;
@@ -84,6 +88,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return null;
     }
     return r.error;
+  },
+
+  createProcurement: async (input) => {
+    const r = await window.api.createProcurementProject(input);
+    if (r.ok) {
+      await get().load();
+      return null;
+    }
+    return r.error;
+  },
+
+  applyProcurementPlan: async (input) => {
+    const r = await window.api.applyProcurementPlan(input);
+    if (!r.ok) return r.error;
+    set((state) => ({
+      detail: state.detail?.task.id === input.taskId ? r.data : state.detail,
+      detailCache: { ...state.detailCache, [input.taskId]: r.data }
+    }));
+    await get().load();
+    return null;
   },
 
   complete: async (id) => {

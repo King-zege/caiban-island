@@ -193,6 +193,11 @@ const SCHEMA_V8 = [
    FROM drafts WHERE state = 'pending'`
 ];
 
+const SCHEMA_V9 = [
+  "UPDATE nodes SET source = 'custom' WHERE source IS NULL OR trim(source) = ''",
+  'CREATE INDEX IF NOT EXISTS nodes_task_stage ON nodes(task_id, stage_key, position)'
+];
+
 function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
   const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as unknown as Array<{ name: string }>;
   return columns.some((entry) => entry.name === column);
@@ -258,6 +263,13 @@ export function migrate(db: DatabaseSync): void {
       addColumnIfMissing(db, 'tasks', 'workflow_template_version', 'workflow_template_version INTEGER');
       for (const stmt of SCHEMA_V8) db.exec(stmt);
       record(8);
+    }
+    if (!applied.has(9)) {
+      addColumnIfMissing(db, 'tasks', 'procurement_method', 'procurement_method TEXT');
+      addColumnIfMissing(db, 'nodes', 'stage_key', 'stage_key TEXT');
+      addColumnIfMissing(db, 'nodes', 'source', "source TEXT NOT NULL DEFAULT 'custom'");
+      for (const stmt of SCHEMA_V9) db.exec(stmt);
+      record(9);
     }
     db.exec('COMMIT');
   } catch (e) {

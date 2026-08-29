@@ -1,6 +1,8 @@
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { TaskCreateRequest, TaskKind, Urgency } from '../../../shared/types';
+import { PROCUREMENT_METHOD_LABELS, PROCUREMENT_WORKFLOW_TEMPLATES } from '../../../shared/procurementContracts';
+import type { ProcurementMethod } from '../../../shared/procurementContracts';
 import { KINDS, URGENCIES } from '../../../shared/taskContracts';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -14,12 +16,15 @@ const KIND_LABEL: Record<TaskKind, string> = { procurement: '采购项目', misc
 
 export default function NewTaskForm({ onClose }: { onClose: () => void }): React.JSX.Element {
   const create = useTaskStore((state) => state.create);
+  const createProcurement = useTaskStore((state) => state.createProcurement);
   const notify = useWorkspaceStore((state) => state.notify);
   const [fullName, setFullName] = useState('');
   const [shortName, setShortName] = useState('');
   const [description, setDescription] = useState('');
   const [kind, setKind] = useState<TaskKind>('procurement');
   const [urgency, setUrgency] = useState<Urgency>('normal');
+  const [procurementMethod, setProcurementMethod] = useState<ProcurementMethod>('open_tender');
+  const [templateId, setTemplateId] = useState<string | null>('standard-procurement');
   const [deadlineText, setDeadlineText] = useState('');
   const [reminderText, setReminderText] = useState('');
   const [note, setNote] = useState('');
@@ -41,10 +46,9 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
       return;
     }
     const tzId = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const input: TaskCreateRequest = kind === 'misc'
-      ? { kind: 'misc', name: fullName, note, remindAtUtc: timeUtc, tzId }
-      : { kind: 'procurement', name: shortName, fullName, shortName, description, urgency, deadlineUtc: timeUtc, tzId };
-    const result = await create(input);
+    const result = kind === 'misc'
+      ? await create({ kind: 'misc', name: fullName, note, remindAtUtc: timeUtc, tzId } satisfies TaskCreateRequest)
+      : await createProcurement({ fullName, shortName, description, urgency, deadlineUtc: timeUtc, tzId, procurementMethod, templateId });
     setSaving(false);
     if (result) {
       setError(result);
@@ -107,6 +111,24 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
           </Button>
           {expanded && (
           <div className="new-task-extra">
+            <label className="ui-field">
+              <span className="ui-field-label">采购方式</span>
+              <span className="ui-field-control">
+                <select value={procurementMethod} onChange={(event) => setProcurementMethod(event.target.value as ProcurementMethod)}>
+                  {Object.entries(PROCUREMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </span>
+            </label>
+            <label className="ui-field">
+              <span className="ui-field-label">流程模板</span>
+              <span className="ui-field-control">
+                <select value={templateId ?? ''} onChange={(event) => setTemplateId(event.target.value || null)}>
+                  {PROCUREMENT_WORKFLOW_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}
+                  <option value="">空白流程（自行添加节点）</option>
+                </select>
+              </span>
+              <span className="ui-field-hint">模板只在创建时复制，后续升级不会静默修改既有项目</span>
+            </label>
             <div className="ui-field">
               <span className="ui-field-label">紧急程度</span>
               <span className="segmented-control" role="group" aria-label="紧急程度">

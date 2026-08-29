@@ -58,8 +58,8 @@ afterEach(() => {
 
 describe('P10 完整界面与安全交互', () => {
   it('新建任务默认只显示必要字段，失败后保留输入并可重试', async () => {
-    const createTask = vi.fn(async () => ({ ok: false as const, error: '暂时无法保存' }));
-    setApi({ createTask, listTasks: vi.fn(async () => ({ ok: true as const, data: [] })) });
+    const createProcurementProject = vi.fn(async () => ({ ok: false as const, error: '暂时无法保存' }));
+    setApi({ createProcurementProject, listTasks: vi.fn(async () => ({ ok: true as const, data: [] })) });
     render(<NewTaskForm onClose={() => undefined} />);
 
     expect(screen.getByRole('group', { name: '工作类型' })).not.toBeNull();
@@ -72,7 +72,7 @@ describe('P10 完整界面与安全交互', () => {
     expect(await screen.findByText('暂时无法保存')).not.toBeNull();
     expect((screen.getByRole('textbox', { name: '项目正式名称' }) as HTMLInputElement).value).toBe('办公电脑采购项目');
     await userEvent.click(screen.getByRole('button', { name: '重试' }));
-    expect(createTask).toHaveBeenCalledTimes(2);
+    expect(createProcurementProject).toHaveBeenCalledTimes(2);
   });
 
   it('外部链接先展示完整目标，确认后才打开', async () => {

@@ -57,7 +57,7 @@ describe('Agent 会话、事件与 DeepSeek 配置', () => {
     f.sessions.append(session.id, 'user', '规划电脑采购'); f.sessions.append(session.id, 'assistant', '先核对需求');
     const exported = f.sessions.export(session.id, 'json');
     expect(existsSync(exported)).toBe(true); expect(readFileSync(exported, 'utf8')).toContain('先核对需求');
-    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 8 });
+    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 9 });
     f.sessions.delete(session.id); expect(f.sessions.list()).toEqual([]);
   });
 

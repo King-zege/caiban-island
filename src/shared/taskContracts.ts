@@ -30,6 +30,7 @@ export interface Task {
   archiveOutcome: 'completed' | 'cancelled' | null;
   workflowTemplateId: string | null;
   workflowTemplateVersion: number | null;
+  procurementMethod?: import('./procurementContracts').ProcurementMethod | null;
 }
 
 export interface ProcurementProject extends Task {
@@ -49,6 +50,8 @@ export interface TaskNode {
   endUtc: string | null;
   status: NodeStatus;
   position: number;
+  stageKey?: string | null;
+  source?: import('./procurementContracts').ProcurementNodeSource;
 }
 
 export interface NodeInput {
@@ -56,6 +59,8 @@ export interface NodeInput {
   description: string;
   startUtc: string | null;
   endUtc: string | null;
+  stageKey?: string | null;
+  source?: import('./procurementContracts').ProcurementNodeSource;
 }
 
 export interface NodeTimeUpdateRequest {

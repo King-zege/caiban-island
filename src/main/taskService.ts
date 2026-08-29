@@ -25,6 +25,7 @@ import type {
   TaskLink,
   TaskNode
 } from '../shared/taskContracts';
+import type { ProcurementMethod, ProcurementPlanApplyRequest } from '../shared/procurementContracts';
 
 function toTask(row: Record<string, unknown>): Task {
   const kind = String(row.kind) === 'task' ? 'procurement' : String(row.kind) as Task['kind'];
@@ -48,7 +49,8 @@ function toTask(row: Record<string, unknown>): Task {
     archivedAt: row.archived_at === null ? null : String(row.archived_at),
     archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as Task['archiveOutcome']),
     workflowTemplateId: row.workflow_template_id === null || row.workflow_template_id === undefined ? null : String(row.workflow_template_id),
-    workflowTemplateVersion: row.workflow_template_version === null || row.workflow_template_version === undefined ? null : Number(row.workflow_template_version)
+    workflowTemplateVersion: row.workflow_template_version === null || row.workflow_template_version === undefined ? null : Number(row.workflow_template_version),
+    procurementMethod: row.procurement_method === null || row.procurement_method === undefined ? null : String(row.procurement_method) as ProcurementMethod
   };
 }
 
@@ -61,7 +63,9 @@ function toNode(row: Record<string, unknown>): TaskNode {
     startUtc: row.start_utc === null ? null : String(row.start_utc),
     endUtc: row.end_utc === null ? null : String(row.end_utc),
     status: String(row.status) as NodeStatus,
-    position: Number(row.position)
+    position: Number(row.position),
+    stageKey: row.stage_key === null || row.stage_key === undefined ? null : String(row.stage_key),
+    source: row.source === null || row.source === undefined ? 'custom' : String(row.source) as TaskNode['source']
   };
 }
 
@@ -259,6 +263,41 @@ export class TaskService {
     return this.getTask(request.taskId) as Task;
   }
 
+  setProcurementWorkflow(taskId: string, templateId: string | null, templateVersion: number | null, procurementMethod: ProcurementMethod): Task {
+    const existing = this.getTask(taskId);
+    if (!existing || existing.kind !== 'procurement' || existing.status !== 'active') throw new TaskError('采购项目不存在或不可编辑');
+    const updatedAt = new Date().toISOString();
+    this.db.prepare(
+      "UPDATE tasks SET workflow_template_id=?, workflow_template_version=?, procurement_method=?, updated_at=? WHERE id=? AND kind='procurement' AND status='active'"
+    ).run(templateId, templateVersion, procurementMethod, updatedAt, taskId);
+    this.logEvent(taskId, 'procurement_workflow_selected', JSON.stringify({ templateId, templateVersion, procurementMethod }));
+    return this.getTask(taskId) as Task;
+  }
+
+  applyProcurementPlan(request: ProcurementPlanApplyRequest): TaskDetail {
+    const existing = this.getTask(request.taskId);
+    if (!existing || existing.kind !== 'procurement' || existing.status !== 'active') throw new TaskError('采购项目不存在或不可编辑');
+    if (existing.updatedAtUtc !== request.expectedUpdatedAtUtc) throw new TaskError('采购项目已变化，请刷新后重新应用计划');
+    for (const node of request.nodes) {
+      const validation = validateNodeInput(node);
+      if (!validation.ok) throw new TaskError(validation.errors.join('；'));
+    }
+    this.db.prepare('DELETE FROM nodes WHERE task_id=?').run(request.taskId);
+    const insert = this.db.prepare(
+      'INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position, stage_key, source) VALUES(?,?,?,?,?,?,?,?,?,?)'
+    );
+    request.nodes.forEach((node, position) => insert.run(
+      randomUUID(), request.taskId, node.title.trim(), node.description.trim(), node.startUtc, node.endUtc,
+      'pending', position, node.stageKey ?? null, node.source ?? 'custom'
+    ));
+    const updatedAt = new Date().toISOString();
+    this.db.prepare(
+      "UPDATE tasks SET workflow_template_id=?, workflow_template_version=?, procurement_method=?, updated_at=? WHERE id=? AND kind='procurement' AND status='active' AND updated_at=?"
+    ).run(request.templateId, request.templateVersion, request.procurementMethod, updatedAt, request.taskId, request.expectedUpdatedAtUtc);
+    this.logEvent(request.taskId, 'procurement_plan_applied', JSON.stringify({ count: request.nodes.length, templateId: request.templateId }));
+    return this.getTaskDetail(request.taskId);
+  }
+
   setUrgency(request: TaskUrgencyUpdateRequest): Task {
     if (!URGENCIES.includes(request.urgency)) throw new TaskError('无效的紧急程度');
     if (!URGENCIES.includes(request.expectedUrgency)) throw new TaskError('无效的预期紧急程度');
@@ -373,11 +412,14 @@ export class TaskService {
       startUtc: input.startUtc,
       endUtc: input.endUtc,
       status: 'pending',
-      position: (maxRow.m ?? -1) + 1
+      position: (maxRow.m ?? -1) + 1,
+      stageKey: input.stageKey ?? null,
+      source: input.source ?? 'custom'
     };
     this.db
-      .prepare('INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position) VALUES(?,?,?,?,?,?,?,?)')
-      .run(node.id, node.taskId, node.title, node.description, node.startUtc, node.endUtc, node.status, node.position);
+      .prepare('INSERT INTO nodes(id, task_id, title, description, start_utc, end_utc, status, position, stage_key, source) VALUES(?,?,?,?,?,?,?,?,?,?)')
+      .run(node.id, node.taskId, node.title, node.description, node.startUtc, node.endUtc, node.status, node.position, node.stageKey ?? null, node.source ?? 'custom');
+    this.touchTask(taskId);
     this.logEvent(taskId, 'node_added', JSON.stringify({ nodeId: node.id, title: node.title }));
     return node;
   }
@@ -394,8 +436,14 @@ export class TaskService {
     );
     if (!schedule.ok) throw new TaskError(schedule.errors.join('；'));
     this.db
-      .prepare('UPDATE nodes SET title=?, description=?, start_utc=?, end_utc=? WHERE id=?')
-      .run(input.title.trim(), input.description.trim(), input.startUtc, input.endUtc, nodeId);
+      .prepare('UPDATE nodes SET title=?, description=?, start_utc=?, end_utc=?, stage_key=?, source=? WHERE id=?')
+      .run(
+        input.title.trim(), input.description.trim(), input.startUtc, input.endUtc,
+        input.stageKey ?? (row.stage_key === null || row.stage_key === undefined ? null : String(row.stage_key)),
+        input.source ?? (row.source === null || row.source === undefined ? 'custom' : String(row.source)),
+        nodeId
+      );
+    this.touchTask(String(row.task_id));
     this.logEvent(String(row.task_id), 'node_updated', JSON.stringify({ nodeId }));
     return toNode(this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown>);
   }
@@ -541,6 +589,13 @@ export class TaskService {
     this.db
       .prepare('INSERT INTO change_events(task_id, at_utc, kind, detail) VALUES(?,?,?,?)')
       .run(taskId, new Date().toISOString(), kind, detail);
+  }
+
+  private touchTask(taskId: string): void {
+    const row = this.db.prepare('SELECT updated_at FROM tasks WHERE id=?').get(taskId) as { updated_at: string } | undefined;
+    const currentMs = row ? Date.parse(row.updated_at) : 0;
+    const nextMs = Math.max(Date.now(), Number.isFinite(currentMs) ? currentMs + 1 : 0);
+    this.db.prepare('UPDATE tasks SET updated_at=? WHERE id=?').run(new Date(nextMs).toISOString(), taskId);
   }
 
   private miscReminderSummary(

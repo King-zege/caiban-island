@@ -45,3 +45,4 @@ export * from './taskContracts';
 export * from './draftContracts';
 export * from './agentContracts';
 export * from './agentProposalContracts';
+export * from './procurementContracts';

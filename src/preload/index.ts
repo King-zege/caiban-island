@@ -47,6 +47,7 @@ import type {
   TransitionRequestResult,
   UiPreferences
 } from '../shared/types';
+import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult, ProcurementWorkflowTemplate } from '../shared/procurementContracts';
 
 const api = {
   getState: (): Promise<IslandState> => ipcRenderer.invoke('app:getState'),
@@ -88,6 +89,9 @@ const api = {
   completeTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:complete', id),
   cancelTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:cancel', id),
   deleteTask: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('tasks:delete', id),
+  listProcurementTemplates: (): Promise<IpcResult<readonly ProcurementWorkflowTemplate[]>> => ipcRenderer.invoke('procurements:templates'),
+  createProcurementProject: (input: ProcurementProjectCreateRequest): Promise<IpcResult<ProcurementProjectCreateResult>> => ipcRenderer.invoke('procurements:create', input),
+  applyProcurementPlan: (input: ProcurementPlanApplyRequest): Promise<IpcResult<TaskDetail>> => ipcRenderer.invoke('procurements:applyPlan', input),
 
   addNode: (taskId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:add', taskId, input),
   updateNode: (nodeId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:update', nodeId, input),

@@ -12,6 +12,8 @@ export interface AppCommandDefinition {
 }
 
 const DEFINITIONS: readonly AppCommandDefinition[] = [
+  { name: 'create_procurement_project', risk: 'high', summary: '创建采购项目与完整流程', undoable: true, inputFields: ['fullName', 'shortName', 'procurementMethod', 'templateId'], expectedOldValueFields: [] },
+  { name: 'apply_procurement_plan', risk: 'high', summary: '批量应用采购流程计划', undoable: true, inputFields: ['taskId', 'nodes', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
   { name: 'create_task', risk: 'high', summary: '创建任务卡片', undoable: true, inputFields: ['kind'], expectedOldValueFields: [] },
   { name: 'update_task', risk: 'reversible', summary: '修改任务说明和计划', undoable: true, inputFields: ['taskId', 'task'], expectedOldValueFields: [] },
   { name: 'set_task_name', risk: 'reversible', summary: '修改任务名称', undoable: true, inputFields: ['taskId', 'name', 'expectedName'], expectedOldValueFields: ['expectedName'] },
@@ -57,6 +59,8 @@ export class AppCommandService {
     let entityId: string | undefined;
     let data: unknown;
     switch (command.name) {
+      case 'create_procurement_project': { const value = this.appSvc.createProcurementProject(command.input); data = value; entityId = value.project.id; break; }
+      case 'apply_procurement_plan': { const value = this.appSvc.applyProcurementPlan(command.input); data = value; entityId = value.task.id; break; }
       case 'create_task': { const value = this.appSvc.createTask(command.input); data = value; entityId = value.id; break; }
       case 'update_task': { const value = this.appSvc.updateTask(command.input.taskId, command.input.task); data = value; entityId = value.id; break; }
       case 'set_task_name': { const value = this.appSvc.setTaskName(command.input); data = value; entityId = value.id; break; }

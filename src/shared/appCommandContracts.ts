@@ -12,6 +12,7 @@ import type {
   TaskNamesUpdateRequest,
   TaskUrgencyUpdateRequest
 } from './taskContracts';
+import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from './procurementContracts';
 
 export const APP_COMMAND_NAMES = [
   'create_task', 'update_task', 'set_task_name', 'set_task_names', 'set_task_urgency',
@@ -19,7 +20,8 @@ export const APP_COMMAND_NAMES = [
   'set_reminders', 'set_misc_reminder', 'add_node', 'update_node',
   'set_node_title', 'set_node_start_time', 'set_node_status', 'reorder_nodes',
   'remove_node', 'add_link', 'remove_link', 'save_note',
-  'resolve_legacy_misc_deadline', 'confirm_legacy_draft'
+  'resolve_legacy_misc_deadline', 'confirm_legacy_draft',
+  'create_procurement_project', 'apply_procurement_plan'
 ] as const;
 
 export type AppCommandName = (typeof APP_COMMAND_NAMES)[number];
@@ -44,7 +46,9 @@ export type AppCommand =
   | { name: 'remove_link'; input: { linkId: string } }
   | { name: 'save_note'; input: { taskId: string; body: string } }
   | { name: 'resolve_legacy_misc_deadline'; input: LegacyMiscDeadlineActionRequest }
-  | { name: 'confirm_legacy_draft'; input: { draftId: string } };
+  | { name: 'confirm_legacy_draft'; input: { draftId: string } }
+  | { name: 'create_procurement_project'; input: ProcurementProjectCreateRequest }
+  | { name: 'apply_procurement_plan'; input: ProcurementPlanApplyRequest };
 
 export interface AppCommandResult {
   command: AppCommandName;
@@ -56,6 +60,8 @@ export interface AppCommandResult {
 
 const URGENCY_VALUES = new Set(['critical', 'high', 'normal', 'low']);
 const NODE_STATUS_VALUES = new Set(['pending', 'in_progress', 'completed', 'cancelled']);
+const PROCUREMENT_METHOD_VALUES = new Set(['open_tender', 'invited_tender', 'competitive_negotiation', 'single_source', 'inquiry', 'framework', 'custom']);
+const NODE_SOURCE_VALUES = new Set(['template', 'agent', 'custom']);
 
 function object(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(label + '必须是对象');
@@ -65,6 +71,13 @@ function object(value: unknown, label: string): Record<string, unknown> {
 function exact(record: Record<string, unknown>, keys: readonly string[]): void {
   const allowed = new Set(keys);
   if (Object.keys(record).some((key) => !allowed.has(key)) || keys.some((key) => !(key in record))) {
+    throw new Error('命令参数字段不符合 schema');
+  }
+}
+
+function exactOptional(record: Record<string, unknown>, required: readonly string[], optional: readonly string[]): void {
+  const allowed = new Set([...required, ...optional]);
+  if (Object.keys(record).some((key) => !allowed.has(key)) || required.some((key) => !(key in record))) {
     throw new Error('命令参数字段不符合 schema');
   }
 }
@@ -90,8 +103,20 @@ function taskIdOnly(input: Record<string, unknown>, key = 'taskId'): void {
 
 function nodeInput(value: unknown): void {
   const node = object(value, '节点');
-  exact(node, ['title', 'description', 'startUtc', 'endUtc']);
+  exactOptional(node, ['title', 'description', 'startUtc', 'endUtc'], ['stageKey', 'source']);
   string(node, 'title'); string(node, 'description'); nullableString(node, 'startUtc'); nullableString(node, 'endUtc');
+  if ('stageKey' in node) nullableString(node, 'stageKey');
+  if ('source' in node && !NODE_SOURCE_VALUES.has(String(node.source))) throw new Error('节点来源无效');
+}
+
+function procurementCreateInput(value: unknown): void {
+  const input = object(value, '采购项目');
+  exactOptional(input, ['fullName', 'shortName', 'description', 'urgency', 'deadlineUtc', 'tzId', 'procurementMethod', 'templateId'], ['nodes']);
+  string(input, 'fullName'); string(input, 'shortName'); string(input, 'description'); string(input, 'tzId');
+  nullableString(input, 'deadlineUtc'); nullableString(input, 'templateId');
+  if (!URGENCY_VALUES.has(String(input.urgency))) throw new Error('紧急度无效');
+  if (!PROCUREMENT_METHOD_VALUES.has(String(input.procurementMethod))) throw new Error('采购方式无效');
+  if ('nodes' in input && (!Array.isArray(input.nodes) || !input.nodes.every((node) => { try { nodeInput(node); return true; } catch { return false; } }))) throw new Error('采购节点计划无效');
 }
 
 function taskInput(value: unknown): void {
@@ -161,6 +186,15 @@ function validateInput(name: AppCommandName, value: unknown): void {
       if (input.action !== 'convert' && input.action !== 'clear') throw new Error('旧截止时间操作无效');
       break;
     case 'confirm_legacy_draft': taskIdOnly(input, 'draftId'); break;
+    case 'create_procurement_project': procurementCreateInput(input); break;
+    case 'apply_procurement_plan':
+      exact(input, ['taskId', 'templateId', 'templateVersion', 'procurementMethod', 'nodes', 'expectedUpdatedAtUtc']);
+      string(input, 'taskId'); nullableString(input, 'templateId'); string(input, 'expectedUpdatedAtUtc');
+      if (input.templateVersion !== null && (!Number.isInteger(input.templateVersion) || Number(input.templateVersion) < 1)) throw new Error('模板版本无效');
+      if (!PROCUREMENT_METHOD_VALUES.has(String(input.procurementMethod))) throw new Error('采购方式无效');
+      if (!Array.isArray(input.nodes)) throw new Error('采购节点计划无效');
+      input.nodes.forEach(nodeInput);
+      break;
   }
 }
 
