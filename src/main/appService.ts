@@ -4,6 +4,7 @@ import { DraftService } from './draftService';
 import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
+import { AgentProposalService } from './agentProposalService';
 import type {
   LinkInput,
   LegacyMiscDeadlineActionRequest,
@@ -16,6 +17,7 @@ import type {
   TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
+  TaskNamesUpdateRequest,
   TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
@@ -28,6 +30,7 @@ export class AppService {
   readonly reminders: ReminderService;
   readonly settings: SettingsService;
   readonly drafts: DraftService;
+  readonly proposals: AgentProposalService;
 
   private listeners: Array<() => void> = [];
 
@@ -49,6 +52,7 @@ export class AppService {
     this.reminders = new ReminderService(db);
     this.settings = new SettingsService(db);
     this.drafts = new DraftService(db, this.reminders);
+    this.proposals = new AgentProposalService(db);
     this.reminders.reconcileFutureNodeReminders();
     this.reminders.reconcileFutureMiscReminders();
   }
@@ -80,6 +84,12 @@ export class AppService {
   setTaskName(request: TaskNameUpdateRequest): Task {
     const task = this.withTransaction(() => this.tasks.setName(request));
     if (task.name !== request.expectedName) this.emitChanged();
+    return task;
+  }
+
+  setTaskNames(request: TaskNamesUpdateRequest): Task {
+    const task = this.withTransaction(() => this.tasks.setNames(request));
+    this.emitChanged();
     return task;
   }
 

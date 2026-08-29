@@ -16,7 +16,7 @@ const SESSION: AgentSessionDetail = {
   messages: [{ id: 'message-p21', sessionId: 'session-p21', role: 'assistant', content: '可以开始操作。', toolName: null, createdAt: '2026-08-28T00:00:00.000Z' }]
 };
 const CARD: TaskCard = {
-  task: { id: 'task-p21', name: '合成采购卡片', description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, remindAtUtc: null, tzId: 'Asia/Shanghai', status: 'active', createdAtUtc: '2026-08-28T00:00:00.000Z', updatedAtUtc: '2026-08-28T00:00:00.000Z', archivedAt: null, archiveOutcome: null },
+  task: { id: 'task-p21', name: '合成采购卡片', fullName: '合成采购卡片', shortName: '合成采购卡片', shortNameNeedsReview: false, description: '', kind: 'task', urgency: 'normal', deadlineUtc: null, remindAtUtc: null, tzId: 'Asia/Shanghai', status: 'active', createdAtUtc: '2026-08-28T00:00:00.000Z', updatedAtUtc: '2026-08-28T00:00:00.000Z', archivedAt: null, archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null },
   progress: { done: 0, total: 0, nextTitle: null }, nodes: [], overdue: false, miscReminder: null
 };
 const IDLE_SNAPSHOT: AgentRunSnapshot = { sessionId: null, state: 'idle', startedAt: null, sequence: 0, phase: 'idle', lastActivityAt: null, partialText: '', activeTool: null, pendingApproval: null, error: null };

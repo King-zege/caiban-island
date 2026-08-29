@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { validateMiscReminderUpdate, validateNodeInput, validateNodeStartSchedule, validateNodeTitle, validateTaskCreateRequest, validateTaskInput, validateTaskName } from '../shared/validation';
+import { deriveShortName, procurementNames, validateFormalName, validateMiscReminderUpdate, validateNodeInput, validateNodeStartSchedule, validateNodeTitle, validateShortName, validateTaskCreateRequest, validateTaskInput, validateTaskName } from '../shared/validation';
 import { compareTasks, computeProgress, isOverdue } from '../shared/sorting';
 import { URGENCIES } from '../shared/taskContracts';
 import type {
@@ -20,17 +20,24 @@ import type {
   TaskDetail,
   TaskInput,
   TaskNameUpdateRequest,
+  TaskNamesUpdateRequest,
   TaskUrgencyUpdateRequest,
   TaskLink,
   TaskNode
 } from '../shared/taskContracts';
 
 function toTask(row: Record<string, unknown>): Task {
+  const kind = String(row.kind) === 'task' ? 'procurement' : String(row.kind) as Task['kind'];
+  const fullName = row.full_name === null || row.full_name === undefined ? String(row.name) : String(row.full_name);
+  const shortName = row.short_name === null || row.short_name === undefined ? String(row.name) : String(row.short_name);
   return {
     id: String(row.id),
-    name: String(row.name),
+    name: kind === 'procurement' ? shortName : String(row.name),
+    fullName,
+    shortName,
+    shortNameNeedsReview: Number(row.short_name_needs_review ?? 0) === 1,
     description: String(row.description),
-    kind: String(row.kind) as Task['kind'],
+    kind,
     urgency: String(row.urgency) as Task['urgency'],
     deadlineUtc: row.deadline_utc === null ? null : String(row.deadline_utc),
     remindAtUtc: row.remind_at_utc === null || row.remind_at_utc === undefined ? null : String(row.remind_at_utc),
@@ -39,7 +46,9 @@ function toTask(row: Record<string, unknown>): Task {
     createdAtUtc: String(row.created_at),
     updatedAtUtc: String(row.updated_at),
     archivedAt: row.archived_at === null ? null : String(row.archived_at),
-    archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as Task['archiveOutcome'])
+    archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as Task['archiveOutcome']),
+    workflowTemplateId: row.workflow_template_id === null || row.workflow_template_id === undefined ? null : String(row.workflow_template_id),
+    workflowTemplateVersion: row.workflow_template_version === null || row.workflow_template_version === undefined ? null : Number(row.workflow_template_version)
   };
 }
 
@@ -105,7 +114,7 @@ export class TaskService {
         task,
         progress: computeProgress(nodes),
         nodes,
-        overdue: task.kind === 'task' && isOverdue(task, nowMs),
+        overdue: task.kind === 'procurement' && isOverdue(task, nowMs),
         miscReminder: this.miscReminderSummary(task, miscByTask.get(task.id))
       };
     });
@@ -142,8 +151,10 @@ export class TaskService {
           tzId: input.tzId
         }
       : {
-          kind: 'task',
+          kind: input.kind,
           name: input.name,
+          fullName: input.fullName,
+          shortName: input.shortName,
           description: input.description,
           urgency: input.urgency,
           deadlineUtc: input.deadlineUtc,
@@ -153,11 +164,20 @@ export class TaskService {
     if (!v.ok) throw new TaskError(v.errors.join('；'));
     const now = new Date().toISOString();
     const isMisc = normalized.kind === 'misc';
+    const names = isMisc
+      ? { fullName: normalized.name.trim(), shortName: normalized.name.trim() }
+      : procurementNames(normalized);
+    const generatedShortName = !isMisc && normalized.shortName === undefined
+      ? deriveShortName(names.fullName)
+      : { shortName: names.shortName, needsReview: false };
     const task: Task = {
       id: randomUUID(),
-      name: normalized.name.trim(),
+      name: isMisc ? normalized.name.trim() : generatedShortName.shortName,
+      fullName: names.fullName,
+      shortName: isMisc ? names.shortName : generatedShortName.shortName,
+      shortNameNeedsReview: !isMisc && generatedShortName.needsReview,
       description: isMisc ? '' : normalized.description.trim(),
-      kind: normalized.kind,
+      kind: isMisc ? 'misc' : 'procurement',
       urgency: isMisc ? 'normal' : normalized.urgency,
       deadlineUtc: isMisc ? null : normalized.deadlineUtc,
       remindAtUtc: isMisc ? normalized.remindAtUtc : null,
@@ -166,17 +186,19 @@ export class TaskService {
       createdAtUtc: now,
       updatedAtUtc: now,
       archivedAt: null,
-      archiveOutcome: null
+      archiveOutcome: null,
+      workflowTemplateId: null,
+      workflowTemplateVersion: null
     };
     const ownsTransaction = !this.db.isTransaction;
     if (ownsTransaction) this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+          'INSERT INTO tasks(id, name, full_name, short_name, short_name_needs_review, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )
-        .run(task.id, task.name, task.description, task.kind, task.urgency, task.deadlineUtc, task.remindAtUtc, task.tzId, task.status, task.createdAtUtc, task.updatedAtUtc);
-      this.logEvent(task.id, 'task_created', JSON.stringify({ name: task.name }));
+        .run(task.id, task.name, task.fullName, task.shortName, task.shortNameNeedsReview ? 1 : 0, task.description, task.kind, task.urgency, task.deadlineUtc, task.remindAtUtc, task.tzId, task.status, task.createdAtUtc, task.updatedAtUtc);
+      this.logEvent(task.id, 'task_created', JSON.stringify({ fullName: task.fullName, shortName: task.shortName }));
       if (ownsTransaction) this.db.exec('COMMIT');
     } catch (e) {
       if (ownsTransaction) this.db.exec('ROLLBACK');
@@ -188,35 +210,52 @@ export class TaskService {
   updateTask(id: string, input: TaskInput): Task {
     const existing = this.getTask(id);
     if (!existing) throw new TaskError('任务不存在');
-    if (existing.kind !== input.kind) throw new TaskError('任务类型创建后不可修改');
-    if (existing.kind === 'misc') throw new TaskError('杂事请使用名称、提醒与备注的独立编辑入口');
+    if (existing.kind === 'misc' || input.kind === 'misc') throw new TaskError('任务类型创建后不可修改');
     const v = validateTaskInput(input);
     if (!v.ok) throw new TaskError(v.errors.join('；'));
-    const name = input.name.trim();
+    const names = procurementNames(input);
     const description = input.description.trim();
     const updated = new Date().toISOString();
     this.db
-      .prepare('UPDATE tasks SET name=?, description=?, urgency=?, deadline_utc=?, tz_id=?, updated_at=? WHERE id=?')
-      .run(name, description, input.urgency, input.deadlineUtc, input.tzId, updated, id);
-    this.logEvent(id, 'task_updated', JSON.stringify({ name }));
+      .prepare('UPDATE tasks SET name=?, full_name=?, short_name=?, short_name_needs_review=0, description=?, urgency=?, deadline_utc=?, tz_id=?, updated_at=? WHERE id=?')
+      .run(names.shortName, names.fullName, names.shortName, description, input.urgency, input.deadlineUtc, input.tzId, updated, id);
+    this.logEvent(id, 'task_updated', JSON.stringify(names));
     return this.getTask(id) as Task;
   }
 
   setName(request: TaskNameUpdateRequest): Task {
-    const validation = validateTaskName(request.name);
-    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
     const existing = this.getTask(request.taskId);
     if (!existing) throw new TaskError('任务不存在');
+    const validation = existing.kind === 'procurement' ? validateShortName(request.name) : validateTaskName(request.name);
+    if (!validation.ok) throw new TaskError(validation.errors.join('；'));
     if (existing.status !== 'active') throw new TaskError('只能编辑活跃任务的名称');
     if (existing.name !== request.expectedName) throw new TaskError('任务名称已变化，请刷新后重试');
     const name = request.name.trim();
     if (existing.name === name) return existing;
     const updatedAt = new Date().toISOString();
     const result = this.db
-      .prepare("UPDATE tasks SET name = ?, updated_at = ? WHERE id = ? AND status = 'active' AND name = ?")
-      .run(name, updatedAt, request.taskId, request.expectedName);
+      .prepare("UPDATE tasks SET name = ?, short_name = CASE WHEN kind = 'procurement' THEN ? ELSE short_name END, short_name_needs_review = CASE WHEN kind = 'procurement' THEN 0 ELSE short_name_needs_review END, updated_at = ? WHERE id = ? AND status = 'active' AND name = ?")
+      .run(name, name, updatedAt, request.taskId, request.expectedName);
     if (result.changes !== 1) throw new TaskError('任务名称已变化，请刷新后重试');
     this.logEvent(request.taskId, 'task_name_updated', JSON.stringify({ from: request.expectedName, to: name }));
+    return this.getTask(request.taskId) as Task;
+  }
+
+  setNames(request: TaskNamesUpdateRequest): Task {
+    const full = validateFormalName(request.fullName);
+    const short = validateShortName(request.shortName);
+    if (!full.ok || !short.ok) throw new TaskError([...(!full.ok ? full.errors : []), ...(!short.ok ? short.errors : [])].join('；'));
+    const existing = this.getTask(request.taskId);
+    if (!existing || existing.kind !== 'procurement' || existing.status !== 'active') throw new TaskError('采购项目不存在或不可编辑');
+    if (existing.fullName !== request.expectedFullName || existing.shortName !== request.expectedShortName) throw new TaskError('项目名称已变化，请刷新后重试');
+    const fullName = request.fullName.trim();
+    const shortName = request.shortName.trim();
+    const updatedAt = new Date().toISOString();
+    const result = this.db.prepare(
+      "UPDATE tasks SET name=?, full_name=?, short_name=?, short_name_needs_review=0, updated_at=? WHERE id=? AND kind='procurement' AND status='active' AND full_name=? AND short_name=?"
+    ).run(shortName, fullName, shortName, updatedAt, request.taskId, request.expectedFullName, request.expectedShortName);
+    if (result.changes !== 1) throw new TaskError('项目名称已变化，请刷新后重试');
+    this.logEvent(request.taskId, 'task_names_updated', JSON.stringify({ from: { fullName: request.expectedFullName, shortName: request.expectedShortName }, to: { fullName, shortName } }));
     return this.getTask(request.taskId) as Task;
   }
 

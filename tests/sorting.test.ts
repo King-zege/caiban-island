@@ -5,6 +5,9 @@ import type { Task } from '../src/shared/taskContracts';
 function task(partial: Partial<Task> & { id: string }): Task {
   return {
     name: '任务',
+    fullName: '任务',
+    shortName: '任务',
+    shortNameNeedsReview: false,
     description: '',
     kind: 'task',
     urgency: 'normal',
@@ -16,6 +19,8 @@ function task(partial: Partial<Task> & { id: string }): Task {
     updatedAtUtc: '2026-01-01T00:00:00.000Z',
     archivedAt: null,
     archiveOutcome: null,
+    workflowTemplateId: null,
+    workflowTemplateVersion: null,
     ...partial
   };
 }

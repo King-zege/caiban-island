@@ -11,6 +11,7 @@ function card(index: number): TaskCard {
     task: {
       id: `task-${index}`,
       name: `采购任务 ${index}`,
+      fullName: `采购任务 ${index}`, shortName: `采购任务 ${index}`, shortNameNeedsReview: false,
       description: '',
       kind: 'task',
       urgency: 'normal',
@@ -21,7 +22,7 @@ function card(index: number): TaskCard {
       createdAtUtc: '2026-08-18T00:00:00.000Z',
       updatedAtUtc: '2026-08-18T00:00:00.000Z',
       archivedAt: null,
-      archiveOutcome: null
+      archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
     },
     progress: { done: 0, total: 0, nextTitle: null },
     nodes: [],

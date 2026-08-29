@@ -19,7 +19,7 @@ export default function VirtualTaskSwitcher({ tasks, selectedTaskId, active, onS
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const groupedRows = useMemo(() => {
-    const projects = tasks.filter((card) => card.task.kind === 'task');
+    const projects = tasks.filter((card) => card.task.kind !== 'misc');
     const misc = tasks.filter((card) => card.task.kind === 'misc');
     const rows: Array<{ type: 'header'; key: string; label: string; count: number } | { type: 'task'; key: string; card: TaskCard }> = [];
     if (projects.length > 0) {

@@ -13,6 +13,7 @@ const CARD: TaskCard = {
   task: {
     id: 'task-1',
     name: '办公电脑采购',
+    fullName: '办公电脑采购', shortName: '办公电脑采购', shortNameNeedsReview: false,
     description: '用于测试紧急程度快捷调整',
     kind: 'task',
     urgency: 'normal',
@@ -23,7 +24,7 @@ const CARD: TaskCard = {
     createdAtUtc: '2026-08-24T00:00:00.000Z',
     updatedAtUtc: '2026-08-24T00:00:00.000Z',
     archivedAt: null,
-    archiveOutcome: null
+    archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
   },
   progress: { done: 0, total: 1, nextTitle: '确认参数' },
   nodes: [{ id: 'node-1', title: '确认参数', startUtc: null, status: 'pending', position: 0 }],

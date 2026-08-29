@@ -98,7 +98,7 @@ export class ReminderService {
       | { kind: string; deadline_utc: string | null; status: string }
       | undefined;
     if (!task) throw new Error('任务不存在');
-    if (task.kind !== 'task') throw new Error('杂事不使用截止时间提前提醒');
+    if (task.kind !== 'procurement') throw new Error('杂事不使用截止时间提前提醒');
     this.withTransaction(() => {
       this.db.prepare('DELETE FROM reminders WHERE task_id = ?').run(taskId);
       if (task.status !== 'active' || !task.deadline_utc || offsets.length === 0) return;
@@ -232,7 +232,7 @@ export class ReminderService {
     const cutoff = new Date(now.getTime() - graceMinutes * 60000).toISOString();
     const task = this.db.prepare(
       `SELECT COUNT(*) AS count FROM reminders r JOIN tasks t ON t.id = r.task_id
-       WHERE r.fired = 0 AND r.fire_at_utc < ? AND t.kind = 'task' AND t.status = 'active'`
+       WHERE r.fired = 0 AND r.fire_at_utc < ? AND t.kind = 'procurement' AND t.status = 'active'`
     ).get(cutoff) as { count: number };
     const node = this.db.prepare(
       `SELECT COUNT(*) AS count FROM node_reminders nr
@@ -251,7 +251,7 @@ export class ReminderService {
     const row = this.db.prepare(
       `SELECT MIN(fire_at_utc) AS fire_at FROM (
          SELECT r.fire_at_utc FROM reminders r JOIN tasks t ON t.id = r.task_id
-         WHERE r.fired = 0 AND t.kind = 'task' AND t.status = 'active'
+         WHERE r.fired = 0 AND t.kind = 'procurement' AND t.status = 'active'
          UNION ALL
          SELECT nr.fire_at_utc FROM node_reminders nr
          JOIN nodes n ON n.id = nr.node_id JOIN tasks t ON t.id = n.task_id
@@ -269,7 +269,7 @@ export class ReminderService {
     const taskRows = this.db.prepare(
       `SELECT r.id, r.task_id, r.fire_at_utc, t.name AS task_name, t.deadline_utc
        FROM reminders r JOIN tasks t ON t.id = r.task_id
-       WHERE r.fired = 0 AND r.fire_at_utc ${comparison} ? AND t.kind = 'task' AND t.status = 'active'`
+       WHERE r.fired = 0 AND r.fire_at_utc ${comparison} ? AND t.kind = 'procurement' AND t.status = 'active'`
     ).all(cutoff) as unknown as TaskDueRow[];
     const nodeRows = this.db.prepare(
       `SELECT nr.node_id, nr.fire_at_utc, n.task_id, n.title AS node_title, t.name AS task_name

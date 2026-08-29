@@ -9,11 +9,12 @@ import type {
   TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
+  TaskNamesUpdateRequest,
   TaskUrgencyUpdateRequest
 } from './taskContracts';
 
 export const APP_COMMAND_NAMES = [
-  'create_task', 'update_task', 'set_task_name', 'set_task_urgency',
+  'create_task', 'update_task', 'set_task_name', 'set_task_names', 'set_task_urgency',
   'complete_task', 'cancel_task', 'restore_task', 'delete_task',
   'set_reminders', 'set_misc_reminder', 'add_node', 'update_node',
   'set_node_title', 'set_node_start_time', 'set_node_status', 'reorder_nodes',
@@ -27,6 +28,7 @@ export type AppCommand =
   | { name: 'create_task'; input: TaskCreateRequest }
   | { name: 'update_task'; input: { taskId: string; task: TaskInput } }
   | { name: 'set_task_name'; input: TaskNameUpdateRequest }
+  | { name: 'set_task_names'; input: TaskNamesUpdateRequest }
   | { name: 'set_task_urgency'; input: TaskUrgencyUpdateRequest }
   | { name: 'complete_task' | 'cancel_task' | 'restore_task' | 'delete_task'; input: { taskId: string } }
   | { name: 'set_reminders'; input: { taskId: string; offsets: number[] } }
@@ -94,16 +96,18 @@ function nodeInput(value: unknown): void {
 
 function taskInput(value: unknown): void {
   const task = object(value, '任务');
-  exact(task, ['name', 'description', 'kind', 'urgency', 'deadlineUtc', 'tzId']);
+  const modern = 'fullName' in task || 'shortName' in task;
+  exact(task, modern ? ['name', 'fullName', 'shortName', 'description', 'kind', 'urgency', 'deadlineUtc', 'tzId'] : ['name', 'description', 'kind', 'urgency', 'deadlineUtc', 'tzId']);
   string(task, 'name'); string(task, 'description'); string(task, 'tzId'); nullableString(task, 'deadlineUtc');
-  if (task.kind !== 'task' || !URGENCY_VALUES.has(String(task.urgency))) throw new Error('任务类型或紧急度无效');
+  if (modern) { string(task, 'fullName'); string(task, 'shortName'); }
+  if ((task.kind !== 'task' && task.kind !== 'procurement') || !URGENCY_VALUES.has(String(task.urgency))) throw new Error('任务类型或紧急度无效');
 }
 
 function validateInput(name: AppCommandName, value: unknown): void {
   const input = object(value, '命令参数');
   switch (name) {
     case 'create_task':
-      if (input.kind === 'task') taskInput(input);
+      if (input.kind === 'task' || input.kind === 'procurement') taskInput(input);
       else if (input.kind === 'misc') {
         exact(input, ['kind', 'name', 'note', 'remindAtUtc', 'tzId']);
         string(input, 'name'); string(input, 'note'); nullableString(input, 'remindAtUtc'); string(input, 'tzId');
@@ -112,6 +116,9 @@ function validateInput(name: AppCommandName, value: unknown): void {
     case 'update_task': exact(input, ['taskId', 'task']); string(input, 'taskId'); taskInput(input.task); break;
     case 'set_task_name':
       exact(input, ['taskId', 'name', 'expectedName']); string(input, 'taskId'); string(input, 'name'); string(input, 'expectedName'); break;
+    case 'set_task_names':
+      exact(input, ['taskId', 'fullName', 'shortName', 'expectedFullName', 'expectedShortName']);
+      string(input, 'taskId'); string(input, 'fullName'); string(input, 'shortName'); string(input, 'expectedFullName'); string(input, 'expectedShortName'); break;
     case 'set_task_urgency':
       exact(input, ['taskId', 'urgency', 'expectedUrgency']); string(input, 'taskId');
       if (!URGENCY_VALUES.has(String(input.urgency)) || !URGENCY_VALUES.has(String(input.expectedUrgency))) throw new Error('紧急度无效');

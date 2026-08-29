@@ -56,7 +56,7 @@ export class ArchiveService {
 
   private snapshotDir(detail: TaskDetail): string {
     const month = (detail.task.archivedAt ?? detail.task.updatedAtUtc).slice(0, 7);
-    const base = path.join(this.archiveRoot(), month, safeName(detail.task.name));
+    const base = path.join(this.archiveRoot(), month, safeName(detail.task.fullName));
     let dir = base;
     let n = 2;
     while (existsSync(dir)) {
@@ -88,7 +88,7 @@ export class ArchiveService {
     const statusLabel: Record<string, string> = { pending: '待完成', in_progress: '进行中', completed: '已完成', cancelled: '已取消' };
     const urgencyLabel: Record<string, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
     const lines: string[] = [
-      '# ' + task.name,
+      '# ' + task.fullName,
       '',
       '- 类型：' + (task.kind === 'misc' ? '杂事' : '任务'),
       task.kind === 'misc' ? '- 提醒时间：' + (task.remindAtUtc ?? '未设置') : '- 紧急程度：' + (urgencyLabel[task.urgency] ?? task.urgency),
@@ -118,7 +118,7 @@ export class ArchiveService {
 
   listArchived(): ArchivedItem[] {
     const rows = this.db
-      .prepare("SELECT id, name, kind, urgency, archive_outcome AS outcome, archived_at AS archivedAt FROM tasks WHERE status = 'archived' ORDER BY archived_at DESC")
+      .prepare("SELECT id, COALESCE(full_name, name) AS name, kind, urgency, archive_outcome AS outcome, archived_at AS archivedAt FROM tasks WHERE status = 'archived' ORDER BY archived_at DESC")
       .all() as unknown as ArchivedItem[];
     return rows;
   }
@@ -127,8 +127,8 @@ export class ArchiveService {
     const q = '%' + query.trim() + '%';
     const params: string[] = [];
     let sql =
-      "SELECT id, name, kind, urgency, archive_outcome AS outcome, archived_at AS archivedAt FROM tasks WHERE status = 'archived' AND (name LIKE ? OR description LIKE ?)";
-    params.push(q, q);
+      "SELECT id, COALESCE(full_name, name) AS name, kind, urgency, archive_outcome AS outcome, archived_at AS archivedAt FROM tasks WHERE status = 'archived' AND (name LIKE ? OR full_name LIKE ? OR short_name LIKE ? OR description LIKE ?)";
+    params.push(q, q, q, q);
     if (outcome) {
       sql += ' AND archive_outcome = ?';
       params.push(outcome);
@@ -143,15 +143,15 @@ export class ArchiveService {
     const limit = Math.max(1, Math.min(5, Math.trunc(rawLimit)));
     const like = '%' + query + '%';
     const rows = this.db.prepare(
-      `SELECT id, name, kind, description, archive_outcome AS outcome, archived_at AS archivedAt
+      `SELECT id, COALESCE(full_name, name) AS name, kind, description, archive_outcome AS outcome, archived_at AS archivedAt
        FROM tasks
        WHERE status = 'archived'
-         AND (name LIKE ? OR description LIKE ? OR EXISTS(
+         AND (name LIKE ? OR full_name LIKE ? OR short_name LIKE ? OR description LIKE ? OR EXISTS(
            SELECT 1 FROM nodes WHERE nodes.task_id = tasks.id AND (nodes.title LIKE ? OR nodes.description LIKE ?)
          ))
        ORDER BY archived_at DESC, id ASC
        LIMIT ?`
-    ).all(like, like, like, like, limit) as unknown as Array<{
+    ).all(like, like, like, like, like, like, limit) as unknown as Array<{
       id: string;
       name: string;
       kind: string;
@@ -188,11 +188,18 @@ export class ArchiveService {
       .all(id) as unknown as Array<{ at: string; kind: string; detail: string }>;
     const taskRow = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     if (!taskRow) throw new Error('任务不存在');
-    const toTask = (row: Record<string, unknown>): TaskDetail['task'] => ({
+    const toTask = (row: Record<string, unknown>): TaskDetail['task'] => {
+      const kind = String(row.kind) === 'task' ? 'procurement' : String(row.kind) as TaskDetail['task']['kind'];
+      const fullName = row.full_name === null || row.full_name === undefined ? String(row.name) : String(row.full_name);
+      const shortName = row.short_name === null || row.short_name === undefined ? String(row.name) : String(row.short_name);
+      return {
       id: String(row.id),
-      name: String(row.name),
+      name: kind === 'procurement' ? shortName : String(row.name),
+      fullName,
+      shortName,
+      shortNameNeedsReview: Number(row.short_name_needs_review ?? 0) === 1,
       description: String(row.description),
-      kind: String(row.kind) as TaskDetail['task']['kind'],
+      kind,
       urgency: String(row.urgency) as TaskDetail['task']['urgency'],
       deadlineUtc: row.deadline_utc === null ? null : String(row.deadline_utc),
       remindAtUtc: row.remind_at_utc === null || row.remind_at_utc === undefined ? null : String(row.remind_at_utc),
@@ -201,8 +208,10 @@ export class ArchiveService {
       createdAtUtc: String(row.created_at),
       updatedAtUtc: String(row.updated_at),
       archivedAt: row.archived_at === null ? null : String(row.archived_at),
-      archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as TaskDetail['task']['archiveOutcome'])
-    });
+      archiveOutcome: row.archive_outcome === null ? null : (String(row.archive_outcome) as TaskDetail['task']['archiveOutcome']),
+      workflowTemplateId: row.workflow_template_id === null || row.workflow_template_id === undefined ? null : String(row.workflow_template_id),
+      workflowTemplateVersion: row.workflow_template_version === null || row.workflow_template_version === undefined ? null : Number(row.workflow_template_version)
+    }; };
     const nodes = this.db.prepare('SELECT * FROM nodes WHERE task_id = ? ORDER BY position').all(id) as unknown as Record<string, unknown>[];
     const links = this.db.prepare('SELECT * FROM links WHERE task_id = ? ORDER BY rowid').all(id) as unknown as Record<string, unknown>[];
     const note = this.db.prepare('SELECT body FROM notes WHERE task_id = ?').get(id) as { body: string } | undefined;

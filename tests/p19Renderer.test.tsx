@@ -12,10 +12,10 @@ import { useWorkspaceStore } from '../src/renderer/src/state/useWorkspaceStore';
 
 const MISC_CARD: TaskCard = {
   task: {
-    id: 'misc-1', name: '联系物业续门禁卡', description: '', kind: 'misc', urgency: 'normal',
+    id: 'misc-1', name: '联系物业续门禁卡', fullName: '联系物业续门禁卡', shortName: '联系物业续门禁卡', shortNameNeedsReview: false, description: '', kind: 'misc', urgency: 'normal',
     deadlineUtc: null, remindAtUtc: '2099-09-01T08:30:00.000Z', tzId: 'Asia/Shanghai', status: 'active',
     createdAtUtc: '2026-08-20T00:00:00.000Z', updatedAtUtc: '2026-08-25T00:00:00.000Z',
-    archivedAt: null, archiveOutcome: null
+    archivedAt: null, archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
   },
   progress: { done: 0, total: 0, nextTitle: null },
   nodes: [],
@@ -25,7 +25,7 @@ const MISC_CARD: TaskCard = {
 
 const PROJECT_CARD: TaskCard = {
   task: {
-    ...MISC_CARD.task, id: 'project-1', name: '办公电脑采购', kind: 'task', urgency: 'high',
+    ...MISC_CARD.task, id: 'project-1', name: '办公电脑采购', fullName: '办公电脑采购', shortName: '办公电脑采购', kind: 'task', urgency: 'high',
     deadlineUtc: '2099-09-02T08:30:00.000Z', remindAtUtc: null
   },
   progress: { done: 0, total: 1, nextTitle: '询价' },

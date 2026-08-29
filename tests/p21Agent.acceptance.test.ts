@@ -88,7 +88,7 @@ describe('P21 隔离 Agent 端到端验收', () => {
     await runTool('move_authorized_file', { directoryId, from: '报价_乙.txt', to: '服务/乙供应商报价.txt' });
 
     const cards = app.tasks.listActive(); const modified = app.tasks.getTaskDetail(modifyTarget.id);
-    expect(cards.some((card) => card.task.name === 'P21 Agent 采购项目' && card.task.kind === 'task')).toBe(true);
+    expect(cards.some((card) => card.task.name === 'P21 Agent 采购项目' && card.task.kind === 'procurement')).toBe(true);
     expect(cards.some((card) => card.task.name === 'P21 Agent 杂事' && card.task.kind === 'misc')).toBe(true);
     expect(modified).toMatchObject({ task: { name: 'P21 已修改', urgency: 'high' }, note: 'P21 验收备注' });
     expect(modified.nodes.some((node) => node.title === 'P21 验收节点' && node.status === 'in_progress')).toBe(true);

@@ -168,6 +168,40 @@ const SCHEMA_V7 = [
   "DELETE FROM settings WHERE key IN ('mcp_token', 'mcp_token_encrypted', 'mcp_port', 'api_base_url', 'api_model', 'api_key_enc')"
 ];
 
+const SCHEMA_V8 = [
+  "UPDATE tasks SET full_name = name WHERE full_name IS NULL OR trim(full_name) = ''",
+  `UPDATE tasks SET short_name = CASE
+     WHEN length(name) <= 24 THEN name
+     ELSE substr(name, 1, 23) || '…'
+   END WHERE short_name IS NULL OR trim(short_name) = ''`,
+  'UPDATE tasks SET short_name_needs_review = CASE WHEN length(name) > 24 THEN 1 ELSE short_name_needs_review END',
+  "UPDATE tasks SET kind = 'procurement' WHERE kind = 'task'",
+  `CREATE TABLE IF NOT EXISTS agent_proposals(
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','approved','discarded')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS agent_proposals_state_created ON agent_proposals(state, created_at)',
+  `INSERT OR IGNORE INTO agent_proposals(id, session_id, kind, title, summary, payload, state, created_at, updated_at)
+   SELECT id, session_id, 'legacy_draft', '遗留 Agent 方案', '由 v0.2 草稿迁移，确认前不会写入正式数据', payload, state, created_at, created_at
+   FROM drafts WHERE state = 'pending'`
+];
+
+function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as unknown as Array<{ name: string }>;
+  return columns.some((entry) => entry.name === column);
+}
+
+function addColumnIfMissing(db: DatabaseSync, table: string, column: string, definition: string): void {
+  if (!hasColumn(db, table, column)) db.exec(`ALTER TABLE "${table}" ADD COLUMN ${definition}`);
+}
+
 export function openDatabase(dbPath: string): DatabaseSync {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -181,37 +215,49 @@ export function migrate(db: DatabaseSync): void {
   db.exec('BEGIN');
   try {
     db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
-    const row = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as { v: number | null };
-    const current = row.v ?? 0;
+    const applied = new Set(
+      (db.prepare('SELECT version FROM schema_migrations').all() as unknown as Array<{ version: number }>).map((row) => row.version)
+    );
+    const record = (version: number): void => {
+      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)').run(version, new Date().toISOString());
+      applied.add(version);
+    };
     // 早期测试版数据库可能只记录了迁移号，却缺失部分 v1 基础表。
     // v1 DDL 全部可幂等执行，先自愈基础结构再应用后续迁移。
     for (const stmt of SCHEMA_V1) db.exec(stmt);
-    if (current < 1) {
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)').run(new Date().toISOString());
-    }
-    if (current < 2) {
+    if (!applied.has(1)) record(1);
+    if (!applied.has(2)) {
       for (const stmt of SCHEMA_V2) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)').run(new Date().toISOString());
+      record(2);
     }
-    if (current < 3) {
+    if (!applied.has(3)) {
       for (const stmt of SCHEMA_V3) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)').run(new Date().toISOString());
+      record(3);
     }
-    if (current < 4) {
+    if (!applied.has(4)) {
       for (const stmt of SCHEMA_V4) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(4, ?)').run(new Date().toISOString());
+      record(4);
     }
-    if (current < 5) {
+    if (!applied.has(5)) {
       for (const stmt of SCHEMA_V5) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(5, ?)').run(new Date().toISOString());
+      record(5);
     }
-    if (current < 6) {
+    if (!applied.has(6)) {
       for (const stmt of SCHEMA_V6) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(6, ?)').run(new Date().toISOString());
+      record(6);
     }
-    if (current < 7) {
+    if (!applied.has(7)) {
       for (const stmt of SCHEMA_V7) db.exec(stmt);
-      db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(7, ?)').run(new Date().toISOString());
+      record(7);
+    }
+    if (!applied.has(8)) {
+      addColumnIfMissing(db, 'tasks', 'full_name', 'full_name TEXT');
+      addColumnIfMissing(db, 'tasks', 'short_name', 'short_name TEXT');
+      addColumnIfMissing(db, 'tasks', 'short_name_needs_review', 'short_name_needs_review INTEGER NOT NULL DEFAULT 0');
+      addColumnIfMissing(db, 'tasks', 'workflow_template_id', 'workflow_template_id TEXT');
+      addColumnIfMissing(db, 'tasks', 'workflow_template_version', 'workflow_template_version INTEGER');
+      for (const stmt of SCHEMA_V8) db.exec(stmt);
+      record(8);
     }
     db.exec('COMMIT');
   } catch (e) {

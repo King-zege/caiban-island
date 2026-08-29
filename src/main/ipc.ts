@@ -12,8 +12,9 @@ import type { AgentPermissionService } from './agentPermissionService';
 import type { LocalCommandRuntime } from './localCommandServer';
 import type { AppCommandService } from './appCommandService';
 import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
+import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
+import type { AgentProposalCreateRequest } from '../shared/agentProposalContracts';
 
 export function registerIpc(
   c: IslandWindowController,
@@ -70,6 +71,7 @@ export function registerIpc(
   ipcMain.handle('tasks:create', (_e: IpcMainInvokeEvent, input: TaskCreateRequest) => wrap(() => commands.execute({ name: 'create_task', input }).data));
   ipcMain.handle('tasks:update', (_e: IpcMainInvokeEvent, id: string, input: TaskInput) => wrap(() => commands.execute({ name: 'update_task', input: { taskId: id, task: input } }).data));
   ipcMain.handle('tasks:setName', (_e: IpcMainInvokeEvent, request: TaskNameUpdateRequest) => wrap(() => commands.execute({ name: 'set_task_name', input: request }).data));
+  ipcMain.handle('tasks:setNames', (_e: IpcMainInvokeEvent, request: TaskNamesUpdateRequest) => wrap(() => commands.execute({ name: 'set_task_names', input: request }).data));
   ipcMain.handle('tasks:setUrgency', (_e: IpcMainInvokeEvent, request: TaskUrgencyUpdateRequest) => wrap(() => commands.execute({ name: 'set_task_urgency', input: request }).data));
   ipcMain.handle('tasks:complete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'complete_task', input: { taskId: id } }).data));
   ipcMain.handle('tasks:cancel', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'cancel_task', input: { taskId: id } }).data));
@@ -135,6 +137,12 @@ export function registerIpc(
   ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
   ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
   ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'confirm_legacy_draft', input: { draftId: id } }).data));
+
+  // —— 通用 Agent 提案：命令批次在同一事务内批准或完整回滚 ——
+  ipcMain.handle('proposals:list', (_e: IpcMainInvokeEvent, sessionId?: string) => wrap(() => appSvc.proposals.listPending(sessionId)));
+  ipcMain.handle('proposals:create', (_e: IpcMainInvokeEvent, request: AgentProposalCreateRequest) => wrap(() => appSvc.proposals.create(request)));
+  ipcMain.handle('proposals:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.proposals.discard(id)));
+  ipcMain.handle('proposals:approve', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.proposals.approve(id, (command) => commands.execute(command))));
 
   // —— 原生 Pi Agent / DeepSeek ——
   ipcMain.handle('agent:start', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.start(request)));

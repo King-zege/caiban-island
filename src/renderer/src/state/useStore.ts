@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskCreateRequest, TaskDetail, TaskLink, TaskNameUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
+import type { LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCard, TaskCreateRequest, TaskDetail, TaskLink, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../../../shared/types';
 
 interface TaskState {
   tasks: TaskCard[];
@@ -20,6 +20,7 @@ interface TaskState {
   cancel: (id: string) => Promise<string | null>;
   deleteTask: (id: string) => Promise<string | null>;
   setTaskName: (request: TaskNameUpdateRequest) => Promise<string | null>;
+  setTaskNames: (request: TaskNamesUpdateRequest) => Promise<string | null>;
   setTaskUrgency: (request: TaskUrgencyUpdateRequest) => Promise<string | null>;
   setMiscReminder: (request: MiscReminderUpdateRequest) => Promise<string | null>;
   resolveLegacyMiscDeadline: (request: LegacyMiscDeadlineActionRequest) => Promise<string | null>;
@@ -137,6 +138,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const detail = state.detail?.task.id === request.taskId
         ? { ...state.detail, task: r.data }
         : state.detail;
+      const detailCache = { ...state.detailCache };
+      if (detailCache[request.taskId]) detailCache[request.taskId] = { ...detailCache[request.taskId], task: r.data };
+      return { tasks, detail, detailCache };
+    });
+    await get().load();
+    return null;
+  },
+
+  setTaskNames: async (request) => {
+    const r = await window.api.setTaskNames(request);
+    if (!r.ok) return r.error;
+    set((state) => {
+      const tasks = state.tasks.map((card) => card.task.id === request.taskId ? { ...card, task: r.data } : card);
+      const detail = state.detail?.task.id === request.taskId ? { ...state.detail, task: r.data } : state.detail;
       const detailCache = { ...state.detailCache };
       if (detailCache[request.taskId]) detailCache[request.taskId] = { ...detailCache[request.taskId], task: r.data };
       return { tasks, detail, detailCache };

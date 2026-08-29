@@ -62,11 +62,11 @@ function assertPayloadShape(value: unknown): asserts value is DraftPayload {
     if (!isRecord(value.taskInput)) throw new DraftError('草稿数据损坏');
     const input = value.taskInput;
     const commonInvalid = typeof input.name !== 'string' || typeof input.kind !== 'string' || typeof input.tzId !== 'string';
-    const projectInvalid = input.kind === 'task' && (
+    const projectInvalid = (input.kind === 'task' || input.kind === 'procurement') && (
       typeof input.description !== 'string' || typeof input.urgency !== 'string' || !isNullableString(input.deadlineUtc)
     );
     const miscInvalid = input.kind === 'misc' && (typeof input.note !== 'string' || !isNullableString(input.remindAtUtc));
-    if (commonInvalid || projectInvalid || miscInvalid || (input.kind !== 'task' && input.kind !== 'misc')) {
+    if (commonInvalid || projectInvalid || miscInvalid || (input.kind !== 'task' && input.kind !== 'procurement' && input.kind !== 'misc')) {
       throw new DraftError('草稿数据损坏');
     }
     return;
@@ -239,17 +239,23 @@ export class DraftService {
     const now = new Date().toISOString();
     const taskId = randomUUID();
     const input = p.taskInput;
+    const isProcurement = input.kind === 'task' || input.kind === 'procurement';
+    const fullName = isProcurement ? (input.fullName ?? input.name).trim() : input.name.trim();
+    const shortName = isProcurement ? (input.shortName ?? input.name).trim() : input.name.trim();
     this.db
       .prepare(
-        'INSERT INTO tasks(id, name, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+        'INSERT INTO tasks(id, name, full_name, short_name, short_name_needs_review, description, kind, urgency, deadline_utc, remind_at_utc, tz_id, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
       )
       .run(
         taskId,
-        input.name.trim(),
-        input.kind === 'task' ? input.description.trim() : '',
-        input.kind,
-        input.kind === 'task' ? input.urgency : 'normal',
-        input.kind === 'task' ? input.deadlineUtc : null,
+        shortName,
+        fullName,
+        shortName,
+        0,
+        isProcurement ? input.description.trim() : '',
+        isProcurement ? 'procurement' : 'misc',
+        isProcurement ? input.urgency : 'normal',
+        isProcurement ? input.deadlineUtc : null,
         input.kind === 'misc' ? input.remindAtUtc : null,
         input.tzId,
         'active',

@@ -1,8 +1,9 @@
 export const URGENCIES = ['critical', 'high', 'normal', 'low'] as const;
 export type Urgency = (typeof URGENCIES)[number];
 
-export const KINDS = ['task', 'misc'] as const;
+export const KINDS = ['procurement', 'misc'] as const;
 export type TaskKind = (typeof KINDS)[number];
+export type LegacyTaskKind = 'task';
 
 export type TaskStatus = 'active' | 'archived';
 
@@ -11,9 +12,13 @@ export type NodeStatus = (typeof NODE_STATUSES)[number];
 
 export interface Task {
   id: string;
+  /** Compatibility display name. Procurement cards use shortName; misc items use name. */
   name: string;
+  fullName: string;
+  shortName: string;
+  shortNameNeedsReview: boolean;
   description: string;
-  kind: TaskKind;
+  kind: TaskKind | LegacyTaskKind;
   urgency: Urgency;
   deadlineUtc: string | null;
   remindAtUtc: string | null;
@@ -23,6 +28,16 @@ export interface Task {
   updatedAtUtc: string;
   archivedAt: string | null;
   archiveOutcome: 'completed' | 'cancelled' | null;
+  workflowTemplateId: string | null;
+  workflowTemplateVersion: number | null;
+}
+
+export interface ProcurementProject extends Task {
+  kind: 'procurement';
+}
+
+export interface MiscItem extends Task {
+  kind: 'misc';
 }
 
 export interface TaskNode {
@@ -79,16 +94,20 @@ export interface LinkInput {
 
 export interface TaskInput {
   name: string;
+  fullName?: string;
+  shortName?: string;
   description: string;
-  kind: TaskKind;
+  kind: TaskKind | LegacyTaskKind;
   urgency: Urgency;
   deadlineUtc: string | null;
   tzId: string;
 }
 
 export interface ProjectTaskCreateRequest {
-  kind: 'task';
+  kind: 'procurement' | LegacyTaskKind;
   name: string;
+  fullName?: string;
+  shortName?: string;
   description: string;
   urgency: Urgency;
   deadlineUtc: string | null;
@@ -135,6 +154,14 @@ export interface TaskNameUpdateRequest {
   taskId: string;
   name: string;
   expectedName: string;
+}
+
+export interface TaskNamesUpdateRequest {
+  taskId: string;
+  fullName: string;
+  shortName: string;
+  expectedFullName: string;
+  expectedShortName: string;
 }
 
 export interface ProgressInfo {

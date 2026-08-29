@@ -11,10 +11,10 @@ import { useWorkspaceStore } from '../src/renderer/src/state/useWorkspaceStore';
 
 const NORMAL_CARD: TaskCard = {
   task: {
-    id: 'task-normal', name: '普通采购', description: '', kind: 'task', urgency: 'normal',
+    id: 'task-normal', name: '普通采购', fullName: '普通采购', shortName: '普通采购', shortNameNeedsReview: false, description: '', kind: 'task', urgency: 'normal',
     deadlineUtc: '2026-09-01T10:00:00.000Z', remindAtUtc: null, tzId: 'Asia/Shanghai', status: 'active',
     createdAtUtc: '2026-08-20T00:00:00.000Z', updatedAtUtc: '2026-08-20T00:00:00.000Z',
-    archivedAt: null, archiveOutcome: null
+    archivedAt: null, archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
   },
   progress: { done: 0, total: 1, nextTitle: '确认需求' },
   nodes: [{ id: 'node-1', title: '确认需求', startUtc: null, status: 'pending', position: 0 }],
@@ -26,7 +26,7 @@ const CRITICAL_CARD: TaskCard = {
   ...NORMAL_CARD,
   task: {
     ...NORMAL_CARD.task,
-    id: 'task-critical', name: '紧急采购', urgency: 'critical',
+    id: 'task-critical', name: '紧急采购', fullName: '紧急采购', shortName: '紧急采购', urgency: 'critical',
     deadlineUtc: null, createdAtUtc: '2026-08-21T00:00:00.000Z'
   },
   progress: { done: 0, total: 1, nextTitle: '立即询价' },

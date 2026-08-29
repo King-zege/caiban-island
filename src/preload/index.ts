@@ -3,6 +3,9 @@ import type { IpcRendererEvent } from 'electron';
 import type {
   DraftPayload,
   DraftRecord,
+  AgentProposal,
+  AgentProposalApprovalResult,
+  AgentProposalCreateRequest,
   AgentApprovalDecision,
   AgentPermissionMode,
   AgentPermissionSettings,
@@ -38,6 +41,7 @@ import type {
   TaskCreateRequest,
   TaskInput,
   TaskNameUpdateRequest,
+  TaskNamesUpdateRequest,
   TaskNode,
   TaskUrgencyUpdateRequest,
   TransitionRequestResult,
@@ -79,6 +83,7 @@ const api = {
   createTask: (input: TaskCreateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:create', input),
   updateTask: (id: string, input: TaskInput): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:update', id, input),
   setTaskName: (request: TaskNameUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setName', request),
+  setTaskNames: (request: TaskNamesUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setNames', request),
   setTaskUrgency: (request: TaskUrgencyUpdateRequest): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:setUrgency', request),
   completeTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:complete', id),
   cancelTask: (id: string): Promise<IpcResult<Task>> => ipcRenderer.invoke('tasks:cancel', id),
@@ -135,6 +140,11 @@ const api = {
   updateDraft: (id: string, payload: DraftPayload): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:update', id, payload),
   discardDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:discard', id),
   confirmDraft: (id: string): Promise<IpcResult<{ type: 'task' | 'nodes' | 'action'; taskId: string }>> => ipcRenderer.invoke('drafts:confirm', id),
+
+  listAgentProposals: (sessionId?: string): Promise<IpcResult<AgentProposal[]>> => ipcRenderer.invoke('proposals:list', sessionId),
+  createAgentProposal: (request: AgentProposalCreateRequest): Promise<IpcResult<AgentProposal>> => ipcRenderer.invoke('proposals:create', request),
+  discardAgentProposal: (id: string): Promise<IpcResult<AgentProposal>> => ipcRenderer.invoke('proposals:discard', id),
+  approveAgentProposal: (id: string): Promise<IpcResult<AgentProposalApprovalResult>> => ipcRenderer.invoke('proposals:approve', id),
 
   agentStart: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:start', request),
   agentSend: (request: AgentRunRequest): Promise<IpcResult<AgentSessionDetail>> => ipcRenderer.invoke('agent:send', request),

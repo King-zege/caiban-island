@@ -24,17 +24,18 @@ const UrgencySchema = Type.Union([Type.Literal('critical'), Type.Literal('high')
 const NodeStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')]);
 const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc }, { additionalProperties: false });
 const TaskInputSchema = Type.Object({
-  name: Type.String(), description: Type.String(), kind: Type.Literal('task'), urgency: UrgencySchema,
+  name: Type.String(), fullName: Type.Optional(Type.String()), shortName: Type.Optional(Type.String()), description: Type.String(), kind: Type.Union([Type.Literal('procurement'), Type.Literal('task')]), urgency: UrgencySchema,
   deadlineUtc: NullableUtc, tzId: Type.String()
 }, { additionalProperties: false });
 const MiscCreateSchema = Type.Object({ kind: Type.Literal('misc'), name: Type.String(), note: Type.String(), remindAtUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
-const ProjectCreateSchema = Type.Object({ kind: Type.Literal('task'), name: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
+const ProjectCreateSchema = Type.Object({ kind: Type.Union([Type.Literal('procurement'), Type.Literal('task')]), name: Type.String(), fullName: Type.Optional(Type.String()), shortName: Type.Optional(Type.String()), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
 
 const AppCommandSchema = {
   ...Type.Union([
     Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_task_names'), input: Type.Object({ taskId: Type.String(), fullName: Type.String(), shortName: Type.String(), expectedFullName: Type.String(), expectedShortName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('set_task_urgency'), input: Type.Object({ taskId: Type.String(), urgency: UrgencySchema, expectedUrgency: UrgencySchema }, { additionalProperties: false }) }, { additionalProperties: false }),
     ...(['complete_task', 'cancel_task', 'restore_task', 'delete_task'] as const).map((command) => Type.Object({ command: Type.Literal(command), input: TaskIdSchema }, { additionalProperties: false })),
     Type.Object({ command: Type.Literal('set_reminders'), input: Type.Object({ taskId: Type.String(), offsets: Type.Array(Type.Integer({ minimum: 1, maximum: 525600 })) }, { additionalProperties: false }) }, { additionalProperties: false }),

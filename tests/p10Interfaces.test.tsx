@@ -14,6 +14,7 @@ const DETAIL: TaskDetail = {
   task: {
     id: 'task-1',
     name: '办公电脑采购',
+    fullName: '办公电脑采购', shortName: '办公电脑采购', shortNameNeedsReview: false,
     description: '',
     kind: 'task',
     urgency: 'normal',
@@ -24,7 +25,7 @@ const DETAIL: TaskDetail = {
     createdAtUtc: '2026-08-16T00:00:00.000Z',
     updatedAtUtc: '2026-08-16T00:00:00.000Z',
     archivedAt: null,
-    archiveOutcome: null
+    archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
   },
   nodes: [],
   links: [{ id: 'link-1', taskId: 'task-1', kind: 'url', title: '供应商报价', target: 'https://supplier.example/quote?id=1', meta: '{}' }],
@@ -62,13 +63,14 @@ describe('P10 完整界面与安全交互', () => {
     render(<NewTaskForm onClose={() => undefined} />);
 
     expect(screen.getByRole('group', { name: '工作类型' })).not.toBeNull();
-    await userEvent.type(screen.getByRole('textbox', { name: '项目名称' }), '办公电脑采购');
+    await userEvent.type(screen.getByRole('textbox', { name: '项目正式名称' }), '办公电脑采购项目');
+    await userEvent.type(screen.getByRole('textbox', { name: /^卡片简称/ }), '办公电脑采购');
     await userEvent.click(screen.getByRole('button', { name: '补充截止时间、优先级与说明' }));
     expect(screen.getByText('紧急程度')).not.toBeNull();
     await userEvent.click(screen.getByRole('button', { name: '创建项目' }));
 
     expect(await screen.findByText('暂时无法保存')).not.toBeNull();
-    expect((screen.getByRole('textbox', { name: '项目名称' }) as HTMLInputElement).value).toBe('办公电脑采购');
+    expect((screen.getByRole('textbox', { name: '项目正式名称' }) as HTMLInputElement).value).toBe('办公电脑采购项目');
     await userEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(createTask).toHaveBeenCalledTimes(2);
   });

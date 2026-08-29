@@ -10,14 +10,15 @@ import { Dialog } from './ui/Dialog';
 import { Field } from './ui/Field';
 
 const URGENCY_LABEL: Record<Urgency, string> = { critical: '紧急', high: '高', normal: '普通', low: '低' };
-const KIND_LABEL: Record<TaskKind, string> = { task: '采购项目', misc: '杂事' };
+const KIND_LABEL: Record<TaskKind, string> = { procurement: '采购项目', misc: '杂事' };
 
 export default function NewTaskForm({ onClose }: { onClose: () => void }): React.JSX.Element {
   const create = useTaskStore((state) => state.create);
   const notify = useWorkspaceStore((state) => state.notify);
-  const [name, setName] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [shortName, setShortName] = useState('');
   const [description, setDescription] = useState('');
-  const [kind, setKind] = useState<TaskKind>('task');
+  const [kind, setKind] = useState<TaskKind>('procurement');
   const [urgency, setUrgency] = useState<Urgency>('normal');
   const [deadlineText, setDeadlineText] = useState('');
   const [reminderText, setReminderText] = useState('');
@@ -27,7 +28,7 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (saving || name.trim().length === 0) return;
+    if (saving || fullName.trim().length === 0 || (kind === 'procurement' && shortName.trim().length === 0)) return;
     setSaving(true);
     setError(null);
     let timeUtc: string | null = null;
@@ -41,8 +42,8 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
     }
     const tzId = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const input: TaskCreateRequest = kind === 'misc'
-      ? { kind: 'misc', name, note, remindAtUtc: timeUtc, tzId }
-      : { kind: 'task', name, description, urgency, deadlineUtc: timeUtc, tzId };
+      ? { kind: 'misc', name: fullName, note, remindAtUtc: timeUtc, tzId }
+      : { kind: 'procurement', name: shortName, fullName, shortName, description, urgency, deadlineUtc: timeUtc, tzId };
     const result = await create(input);
     setSaving(false);
     if (result) {
@@ -62,7 +63,7 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
       actions={
         <>
           <Button variant="ghost" disabled={saving} onClick={onClose}>取消</Button>
-          <Button icon={Plus} variant="primary" disabled={saving || name.trim().length === 0} onClick={() => void save()}>
+          <Button icon={Plus} variant="primary" disabled={saving || fullName.trim().length === 0 || (kind === 'procurement' && shortName.trim().length === 0)} onClick={() => void save()}>
             {saving ? '正在创建' : kind === 'misc' ? '创建杂事' : '创建项目'}
           </Button>
         </>
@@ -76,14 +77,22 @@ export default function NewTaskForm({ onClose }: { onClose: () => void }): React
           </span>
         </div>
         <Field
-          label={kind === 'misc' ? '杂事名称' : '项目名称'}
-          value={name}
+          label={kind === 'misc' ? '杂事名称' : '项目正式名称'}
+          value={fullName}
           autoFocus
-          placeholder={kind === 'misc' ? '例如：联系物业续门禁卡' : '例如：办公电脑批量采购'}
-          maxLength={200}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter' && kind === 'task' && !expanded) void save(); }}
+          placeholder={kind === 'misc' ? '例如：联系物业续门禁卡' : '例如：2026 年度总部办公电脑框架协议采购项目'}
+          maxLength={kind === 'misc' ? 200 : 500}
+          onChange={(event) => setFullName(event.target.value)}
         />
+        {kind === 'procurement' && <Field
+          label="卡片简称"
+          value={shortName}
+          hint="最多 24 个字符，用于 L2 凭条"
+          placeholder="例如：总部电脑框采"
+          maxLength={24}
+          onChange={(event) => setShortName(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter' && !expanded) void save(); }}
+        />}
         {kind === 'misc' ? (
           <div className="new-task-extra">
             <Field label="提醒时间" type="datetime-local" value={reminderText} hint="不设置就不会提醒" onChange={(event) => setReminderText(event.target.value)} />

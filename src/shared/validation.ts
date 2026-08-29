@@ -1,9 +1,51 @@
-import { KINDS, URGENCIES } from './taskContracts';
+import { URGENCIES } from './taskContracts';
 import type { MiscReminderUpdateRequest, NodeStatus, TaskCreateRequest, TaskInput } from './taskContracts';
 
 export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
 const NAME_MAX = 200;
+export const FULL_NAME_MAX = 500;
+export const SHORT_NAME_MAX = 24;
+
+function graphemes(value: string): string[] {
+  if (typeof Intl.Segmenter === 'function') {
+    return [...new Intl.Segmenter('zh-CN', { granularity: 'grapheme' }).segment(value)].map((entry) => entry.segment);
+  }
+  return Array.from(value);
+}
+
+function graphemeCount(value: string): number {
+  return graphemes(value).length;
+}
+
+export function deriveShortName(value: string): { shortName: string; needsReview: boolean } {
+  const normalized = value.trim();
+  const parts = graphemes(normalized);
+  if (parts.length <= SHORT_NAME_MAX) return { shortName: normalized, needsReview: false };
+  return { shortName: `${parts.slice(0, SHORT_NAME_MAX - 1).join('')}…`, needsReview: true };
+}
+
+export function validateFormalName(value: string): ValidationResult {
+  const name = (value ?? '').trim();
+  if (!name) return { ok: false, errors: ['正式名称不能为空'] };
+  if (graphemeCount(name) > FULL_NAME_MAX) return { ok: false, errors: ['正式名称不能超过 ' + FULL_NAME_MAX + ' 个字符'] };
+  return { ok: true };
+}
+
+export function validateShortName(value: string): ValidationResult {
+  const name = (value ?? '').trim();
+  if (!name) return { ok: false, errors: ['卡片简称不能为空'] };
+  if (graphemeCount(name) > SHORT_NAME_MAX) return { ok: false, errors: ['卡片简称不能超过 ' + SHORT_NAME_MAX + ' 个字符'] };
+  return { ok: true };
+}
+
+export function procurementNames(input: { name: string; fullName?: string; shortName?: string }): { fullName: string; shortName: string } {
+  const fullName = (input.fullName ?? input.name).trim();
+  return {
+    fullName,
+    shortName: (input.shortName ?? deriveShortName(fullName).shortName).trim()
+  };
+}
 
 export function validateTaskName(value: string): ValidationResult {
   const name = (value ?? '').trim();
@@ -21,10 +63,24 @@ export function validateNodeTitle(value: string): ValidationResult {
 
 export function validateTaskInput(input: TaskInput): ValidationResult {
   const errors: string[] = [];
-  const nameResult = validateTaskName(input.name);
-  if (!nameResult.ok) errors.push(...nameResult.errors);
+  if (input.kind === 'misc') {
+    const nameResult = validateTaskName(input.name);
+    if (!nameResult.ok) errors.push(...nameResult.errors);
+    if (!input.tzId) errors.push('缺少时区信息');
+    return errors.length === 0 ? { ok: true } : { ok: false, errors };
+  }
+  const isLegacyAdapterInput = input.kind === 'task' && input.fullName === undefined && input.shortName === undefined;
+  if (isLegacyAdapterInput) {
+    const nameResult = validateTaskName(input.name);
+    if (!nameResult.ok) errors.push(...nameResult.errors);
+  }
+  const names = procurementNames(input);
+  const fullNameResult = validateFormalName(names.fullName);
+  const shortNameResult = validateShortName(names.shortName);
+  if (!fullNameResult.ok) errors.push(...fullNameResult.errors);
+  if (!isLegacyAdapterInput && !shortNameResult.ok) errors.push(...shortNameResult.errors);
   if (!URGENCIES.includes(input.urgency)) errors.push('无效的紧急程度');
-  if (!KINDS.includes(input.kind)) errors.push('无效的任务类型');
+  if (input.kind !== 'procurement' && input.kind !== 'task') errors.push('无效的任务类型');
   if (input.deadlineUtc !== null) {
     if (!isValidIsoUtc(input.deadlineUtc)) errors.push('截止时间格式无效');
   }
@@ -33,7 +89,7 @@ export function validateTaskInput(input: TaskInput): ValidationResult {
 }
 
 export function validateTaskCreateRequest(input: TaskCreateRequest, nowMs = Date.now()): ValidationResult {
-  if (input.kind === 'task') return validateTaskInput(input);
+  if (input.kind !== 'misc') return validateTaskInput(input);
   const errors: string[] = [];
   const nameResult = validateTaskName(input.name);
   if (!nameResult.ok) errors.push(...nameResult.errors);

@@ -14,6 +14,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import AgentPanel from '../components/AgentPanel';
 import MemoryPanel from '../components/MemoryPanel';
 import RenameDialog from '../components/RenameDialog';
+import ProjectNamesDialog from '../components/ProjectNamesDialog';
 import MiscEditor from '../components/MiscEditor';
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
@@ -41,6 +42,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const detailError = useTaskStore((state) => state.detailError);
   const openDetail = useTaskStore((state) => state.openDetail);
   const setTaskName = useTaskStore((state) => state.setTaskName);
+  const setTaskNames = useTaskStore((state) => state.setTaskNames);
   const section = useWorkspaceStore((state) => state.section);
   const taskSection = useWorkspaceStore((state) => state.taskSection);
   const selectedTaskId = useWorkspaceStore((state) => state.selectedTaskId);
@@ -54,7 +56,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const [showForm, setShowForm] = useState(false);
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [mountStage, setMountStage] = useState(0);
-  const [renamingTask, setRenamingTask] = useState<{ id: string; name: string } | null>(null);
+  const [renamingTask, setRenamingTask] = useState<{ id: string; kind: 'procurement' | 'misc'; name: string; fullName: string; shortName: string } | null>(null);
   const compact = (layoutWidth ?? windowWidth) <= 760;
 
   useEffect(() => {
@@ -96,7 +98,9 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('zh-CN');
     if (!query) return tasks;
-    return tasks.filter((card) => card.task.name.toLocaleLowerCase('zh-CN').includes(query) || card.progress.nextTitle?.toLocaleLowerCase('zh-CN').includes(query));
+    return tasks.filter((card) => card.task.fullName.toLocaleLowerCase('zh-CN').includes(query)
+      || card.task.shortName.toLocaleLowerCase('zh-CN').includes(query)
+      || card.progress.nextTitle?.toLocaleLowerCase('zh-CN').includes(query));
   }, [search, tasks]);
 
   const selectTask = (taskId: string) => {
@@ -124,7 +128,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
           <span className="sr-only">选择任务</span>
           <select value={selectedTaskId ?? ''} onChange={(event) => selectTask(event.target.value)}>
             {tasks.length === 0 && <option value="">暂无活跃任务</option>}
-            {tasks.some((card) => card.task.kind === 'task') && <optgroup label="采购项目">{tasks.filter((card) => card.task.kind === 'task').map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}</optgroup>}
+            {tasks.some((card) => card.task.kind !== 'misc') && <optgroup label="采购项目">{tasks.filter((card) => card.task.kind !== 'misc').map((card) => <option key={card.task.id} value={card.task.id}>{card.task.shortName}</option>)}</optgroup>}
             {tasks.some((card) => card.task.kind === 'misc') && <optgroup label="杂事">{tasks.filter((card) => card.task.kind === 'misc').map((card) => <option key={card.task.id} value={card.task.id}>{card.task.name}</option>)}</optgroup>}
           </select>
         </label>
@@ -181,14 +185,14 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                   <div className="workspace-task-title">
                     <span className="eyebrow">当前任务</span>
                     <div>
-                      <h1 tabIndex={-1} data-transition-focus="l3">{currentTask?.task.name ?? detail?.task.name ?? '采购任务'}</h1>
+                      <h1 tabIndex={-1} data-transition-focus="l3">{currentTask?.task.fullName ?? detail?.task.fullName ?? '采购任务'}</h1>
                       {(currentTask?.task ?? detail?.task) && (
                         <IconButton
                           icon={Pencil}
                           label="编辑任务名称"
                           onClick={() => {
                             const task = currentTask?.task ?? detail?.task;
-                            if (task) setRenamingTask({ id: task.id, name: task.name });
+                            if (task) setRenamingTask({ id: task.id, kind: task.kind === 'misc' ? 'misc' : 'procurement', name: task.name, fullName: task.fullName, shortName: task.shortName });
                           }}
                         />
                       )}
@@ -235,7 +239,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
         </main>}
       </div>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
-      {renamingTask && (
+      {renamingTask?.kind === 'misc' && (
         <RenameDialog
           kind="任务"
           currentName={renamingTask.name}
@@ -243,6 +247,24 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
           onSave={async (name) => {
             const error = await setTaskName({ taskId: renamingTask.id, name, expectedName: renamingTask.name });
             if (!error) notify('任务名称已更新', 'success');
+            return error;
+          }}
+        />
+      )}
+      {renamingTask?.kind === 'procurement' && (
+        <ProjectNamesDialog
+          fullName={renamingTask.fullName}
+          shortName={renamingTask.shortName}
+          onClose={() => setRenamingTask(null)}
+          onSave={async (fullName, shortName) => {
+            const error = await setTaskNames({
+              taskId: renamingTask.id,
+              fullName,
+              shortName,
+              expectedFullName: renamingTask.fullName,
+              expectedShortName: renamingTask.shortName
+            });
+            if (!error) notify('项目正式名称与简称已更新', 'success');
             return error;
           }}
         />

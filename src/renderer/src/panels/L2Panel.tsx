@@ -95,7 +95,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   }, [externalTarget, pendingNodeTime, pendingRename, pendingTaskAction, showForm]);
 
   const visibleTasks = useMemo(() => tasks.filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)), [pendingUndo, tasks]);
-  const projectTasks = useMemo(() => visibleTasks.filter((card) => card.task.kind === 'task').sort((left, right) => {
+  const projectTasks = useMemo(() => visibleTasks.filter((card) => card.task.kind !== 'misc').sort((left, right) => {
     if (sortMode === 'urgency') return compareTasks(left.task, right.task);
     if (sortMode === 'updated') return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || compareTasks(left.task, right.task);
     const leftDeadline = left.task.deadlineUtc ?? '9999';

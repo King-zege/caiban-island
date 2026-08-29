@@ -15,6 +15,7 @@ const CARD: TaskCardData = {
   task: {
     id: 'task-1',
     name: '办公电脑采购',
+    fullName: '办公电脑采购', shortName: '办公电脑采购', shortNameNeedsReview: false,
     description: '',
     kind: 'task',
     urgency: 'high',
@@ -25,7 +26,7 @@ const CARD: TaskCardData = {
     createdAtUtc: '2026-08-16T00:00:00.000Z',
     updatedAtUtc: '2026-08-16T00:00:00.000Z',
     archivedAt: null,
-    archiveOutcome: null
+    archiveOutcome: null, workflowTemplateId: null, workflowTemplateVersion: null
   },
   progress: { done: 1, total: 3, nextTitle: '确认技术参数' },
   nodes: [

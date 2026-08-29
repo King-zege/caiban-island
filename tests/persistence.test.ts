@@ -120,7 +120,7 @@ describe('TaskService 持久化', () => {
     const node = service.addNode(task.id, { title: '原节点名', description: '', startUtc: null, endUtc: null });
     expect(service.setName({ taskId: task.id, name: ' 原任务名 ', expectedName: '原任务名' }).name).toBe('原任务名');
     expect(service.setNodeTitle({ nodeId: node.id, title: ' 原节点名 ', expectedTitle: '原节点名' }).title).toBe('原节点名');
-    expect(() => service.setName({ taskId: task.id, name: ' ', expectedName: '原任务名' })).toThrow('任务名称不能为空');
+    expect(() => service.setName({ taskId: task.id, name: ' ', expectedName: '原任务名' })).toThrow('卡片简称不能为空');
     expect(() => service.setNodeTitle({ nodeId: node.id, title: ' ', expectedTitle: '原节点名' })).toThrow('节点标题不能为空');
     const verify = openDatabase(dbPath);
     const row = verify.prepare("SELECT COUNT(*) AS count FROM change_events WHERE task_id = ? AND kind IN ('task_name_updated', 'node_title_updated')").get(task.id) as { count: number };
@@ -162,7 +162,7 @@ describe('TaskService 持久化', () => {
     const cards = service2.listActive();
     expect(cards.map((c) => c.task.name)).toEqual(['持久化任务']);
     const v = db2.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as { v: number };
-    expect(v.v).toBe(7);
+    expect(v.v).toBe(8);
     const nodeReminderTable = db2.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'node_reminders'").get();
     expect(nodeReminderTable).toBeTruthy();
     const miscReminderTable = db2.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'misc_reminders'").get();

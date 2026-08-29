@@ -15,6 +15,7 @@ const DEFINITIONS: readonly AppCommandDefinition[] = [
   { name: 'create_task', risk: 'high', summary: '创建任务卡片', undoable: true, inputFields: ['kind'], expectedOldValueFields: [] },
   { name: 'update_task', risk: 'reversible', summary: '修改任务说明和计划', undoable: true, inputFields: ['taskId', 'task'], expectedOldValueFields: [] },
   { name: 'set_task_name', risk: 'reversible', summary: '修改任务名称', undoable: true, inputFields: ['taskId', 'name', 'expectedName'], expectedOldValueFields: ['expectedName'] },
+  { name: 'set_task_names', risk: 'reversible', summary: '修改项目正式名称与简称', undoable: true, inputFields: ['taskId', 'fullName', 'shortName', 'expectedFullName', 'expectedShortName'], expectedOldValueFields: ['expectedFullName', 'expectedShortName'] },
   { name: 'set_task_urgency', risk: 'reversible', summary: '修改任务紧急度', undoable: true, inputFields: ['taskId', 'urgency', 'expectedUrgency'], expectedOldValueFields: ['expectedUrgency'] },
   { name: 'complete_task', risk: 'high', summary: '完成并归档任务', undoable: true, inputFields: ['taskId'], expectedOldValueFields: [] },
   { name: 'cancel_task', risk: 'high', summary: '取消并归档任务', undoable: true, inputFields: ['taskId'], expectedOldValueFields: [] },
@@ -59,6 +60,7 @@ export class AppCommandService {
       case 'create_task': { const value = this.appSvc.createTask(command.input); data = value; entityId = value.id; break; }
       case 'update_task': { const value = this.appSvc.updateTask(command.input.taskId, command.input.task); data = value; entityId = value.id; break; }
       case 'set_task_name': { const value = this.appSvc.setTaskName(command.input); data = value; entityId = value.id; break; }
+      case 'set_task_names': { const value = this.appSvc.setTaskNames(command.input); data = value; entityId = value.id; break; }
       case 'set_task_urgency': { const value = this.appSvc.setTaskUrgency(command.input); data = value; entityId = value.id; break; }
       case 'complete_task': { const value = this.appSvc.completeTask(command.input.taskId); data = value; entityId = value.id; break; }
       case 'cancel_task': { const value = this.appSvc.cancelTask(command.input.taskId); data = value; entityId = value.id; break; }
