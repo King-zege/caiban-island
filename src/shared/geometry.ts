@@ -8,7 +8,9 @@ export const ISLAND = {
   L2_WIDTH: 760,
   L2_HEIGHT: 280,
   L2_HEIGHT_MISC: 196,
+  L2_HEIGHT_CONTRACT: 244,
   L2_HEIGHT_MIXED: 376,
+  L2_HEIGHT_TRIPLE: 480,
   L2_HEIGHT_DETAIL: 480,
   L2_MIN_WIDTH: 560,
   L2_MAX_WIDTH_RATIO: 0.8,
@@ -38,8 +40,12 @@ export function computeL2Bounds(display: DisplayInfo, detail = false, contentMod
   if (w > display.width) w = display.width;
   const baseHeight = contentMode === 'agent'
     ? ISLAND.L2_HEIGHT_DETAIL
+    : contentMode === 'triple'
+      ? ISLAND.L2_HEIGHT_TRIPLE
     : contentMode === 'misc'
     ? ISLAND.L2_HEIGHT_MISC
+    : contentMode === 'contract'
+      ? ISLAND.L2_HEIGHT_CONTRACT
     : contentMode === 'mixed'
       ? ISLAND.L2_HEIGHT_MIXED
       : ISLAND.L2_HEIGHT;

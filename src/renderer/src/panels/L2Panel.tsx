@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowDownUp, Bot, ClipboardList, LayoutGrid, Maximize2, MoreHorizontal, Plus, Settings } from 'lucide-react';
+import { ArrowDownUp, Bot, ClipboardList, FileSignature, LayoutGrid, Maximize2, MoreHorizontal, Plus, Settings } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import TaskCard from '../components/TaskCard';
@@ -19,6 +19,9 @@ import type { ExternalTarget } from '../components/ui/ExternalTargetDialog';
 import { compareTasks } from '../../../shared/sorting';
 import type { TaskCardNode, TaskUrgencyUpdateRequest } from '../../../shared/types';
 import AgentPanel from '../components/AgentPanel';
+import ContractCard from '../components/ContractCard';
+import NewContractForm from '../components/NewContractForm';
+import { useContractStore } from '../state/useContractStore';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 
@@ -56,7 +59,14 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const setNodeStatus = useTaskStore((state) => state.setNodeStatus);
   const setNodeTitle = useTaskStore((state) => state.setNodeTitle);
   const setNodeStartTime = useTaskStore((state) => state.setNodeStartTime);
+  const contracts = useContractStore((state) => state.contracts);
+  const contractsLoading = useContractStore((state) => state.loading);
+  const contractsError = useContractStore((state) => state.error);
+  const ensureContractsLoaded = useContractStore((state) => state.ensureLoaded);
+  const loadContracts = useContractStore((state) => state.load);
+  const openContractDetail = useContractStore((state) => state.openDetail);
   const openTask = useWorkspaceStore((state) => state.openTask);
+  const openContract = useWorkspaceStore((state) => state.openContract);
   const openSection = useWorkspaceStore((state) => state.openSection);
   const l2View = useWorkspaceStore((state) => state.l2View);
   const setL2View = useWorkspaceStore((state) => state.setL2View);
@@ -64,6 +74,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const notify = useWorkspaceStore((state) => state.notify);
   const [showForm, setShowForm] = useState(false);
+  const [showContractForm, setShowContractForm] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('urgency');
@@ -74,6 +85,8 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   const [taskActionBusy, setTaskActionBusy] = useState(false);
   const [completingMiscId, setCompletingMiscId] = useState<string | null>(null);
   const [cardRenderLimit, setCardRenderLimit] = useState(2);
+
+  useEffect(() => { void ensureContractsLoaded(); }, [ensureContractsLoaded]);
 
   useEffect(() => {
     let secondFrame = 0;
@@ -88,11 +101,11 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
   }, []);
 
   useEffect(() => {
-    const editing = showForm || pendingTaskAction !== null || pendingNodeTime !== null || pendingRename !== null || externalTarget !== null;
+    const editing = showForm || showContractForm || pendingTaskAction !== null || pendingNodeTime !== null || pendingRename !== null || externalTarget !== null;
     void window.api.setL2Detail(editing);
     void window.api.interacting(editing);
     return () => { void window.api.interacting(false); };
-  }, [externalTarget, pendingNodeTime, pendingRename, pendingTaskAction, showForm]);
+  }, [externalTarget, pendingNodeTime, pendingRename, pendingTaskAction, showContractForm, showForm]);
 
   const visibleTasks = useMemo(() => tasks.filter((card) => !(pendingUndo?.kind === 'task' && pendingUndo.id === card.task.id)), [pendingUndo, tasks]);
   const projectTasks = useMemo(() => visibleTasks.filter((card) => card.task.kind !== 'misc').sort((left, right) => {
@@ -114,13 +127,18 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || left.task.id.localeCompare(right.task.id);
   }), [visibleTasks]);
 
-  const overviewContentMode = projectTasks.length > 0 && miscTasks.length > 0
-    ? 'mixed'
-    : projectTasks.length > 0
-      ? 'project'
-      : miscTasks.length > 0
-        ? 'misc'
-        : 'empty';
+  const laneCount = Number(projectTasks.length > 0) + Number(contracts.length > 0) + Number(miscTasks.length > 0);
+  const overviewContentMode = laneCount === 3
+    ? 'triple'
+    : laneCount === 2
+      ? 'mixed'
+      : contracts.length > 0
+        ? 'contract'
+        : projectTasks.length > 0
+          ? 'project'
+          : miscTasks.length > 0
+            ? 'misc'
+            : 'empty';
   const contentMode = l2View === 'agent' ? 'agent' : overviewContentMode;
 
   useEffect(() => {
@@ -160,6 +178,20 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     setActiveMiscId(miscTasks[nextIndex].task.id);
   }, [activeMiscId, activeMiscIndex, miscTasks]);
 
+  const [activeContractIndex, setActiveContractIndex] = useState(0);
+  const [activeContractId, setActiveContractId] = useState<string | null>(null);
+  useEffect(() => {
+    if (contracts.length === 0) {
+      setActiveContractIndex(0);
+      setActiveContractId(null);
+      return;
+    }
+    const preserved = activeContractId ? contracts.findIndex((card) => card.contract.id === activeContractId) : -1;
+    const nextIndex = preserved >= 0 ? preserved : Math.min(activeContractIndex, contracts.length - 1);
+    if (nextIndex !== activeContractIndex) setActiveContractIndex(nextIndex);
+    setActiveContractId(contracts[nextIndex].contract.id);
+  }, [activeContractId, activeContractIndex, contracts]);
+
   useEffect(() => {
     const taskId = projectTasks[activeIndex]?.task.id;
     if (taskId) void prefetchDetail(taskId);
@@ -176,6 +208,14 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
       void prefetchDetail(taskId);
     }
     else openSection('tasks');
+    void window.api.setLevel('l3');
+  };
+
+  const enterContractWorkspace = (contractId?: string) => {
+    if (contractId) {
+      openContract(contractId);
+      void openContractDetail(contractId);
+    } else openSection('contracts');
     void window.api.setLevel('l3');
   };
 
@@ -275,13 +315,18 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         </div>
         <div className="l2-actions">
           {l2View === 'overview' && <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>}
+          {l2View === 'overview' && <IconButton icon={FileSignature} label="新建合同" onClick={() => setShowContractForm(true)} />}
           <IconButton icon={Maximize2} label="展开工作台" onClick={() => {
             if (l2View === 'agent') {
               openSection('agent');
               void window.api.setLevel('l3');
               return;
             }
-            enterWorkspace(projectTasks[activeIndex]?.task.id ?? miscTasks[activeMiscIndex]?.task.id);
+            const projectId = projectTasks[activeIndex]?.task.id;
+            const contractId = contracts[activeContractIndex]?.contract.id;
+            if (projectId) enterWorkspace(projectId);
+            else if (contractId) enterContractWorkspace(contractId);
+            else enterWorkspace(miscTasks[activeMiscIndex]?.task.id);
           }} />
           <details className="more-menu">
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal aria-hidden="true" size={20} strokeWidth={1.75} /></summary>
@@ -308,18 +353,18 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
               requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`)?.focus());
             }}
           />
-        ) : loading || onboarded === null ? (
+        ) : loading || contractsLoading || onboarded === null ? (
           <p className="loading-state">正在整理采购任务</p>
-        ) : loadError ? (
+        ) : loadError || contractsError ? (
           <EmptyState
             icon={ClipboardList}
-            title="暂时无法读取任务"
-            description={loadError}
-            action={<Button variant="primary" onClick={() => void load()}>重试</Button>}
+            title="暂时无法读取工作台"
+            description={loadError ?? contractsError ?? '读取失败'}
+            action={<Button variant="primary" onClick={() => void Promise.all([load(), loadContracts()])}>重试</Button>}
           />
         ) : !onboarded ? (
           <WelcomeView onDone={() => setOnboarded(true)} />
-        ) : visibleTasks.length === 0 ? (
+        ) : visibleTasks.length === 0 && contracts.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
             title="开始第一项采购"
@@ -370,6 +415,32 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
             }}
             />
           </section>}
+          {contracts.length > 0 && <section className="l2-lane contract-lane" aria-label="合同">
+            <div className="l2-lane-heading"><span>合同履约</span><small>{contracts.length} 份活跃合同</small></div>
+            <Carousel
+              itemWidth={232}
+              gap={12}
+              itemCount={contracts.length}
+              activeIndex={activeContractIndex}
+              onActiveIndexChange={(index) => {
+                setActiveContractIndex(index);
+                setActiveContractId(contracts[index]?.contract.id ?? null);
+              }}
+              reducedMotion={reducedMotion}
+              renderLimit={cardRenderLimit}
+              ariaLabel="合同"
+              renderItem={(index) => {
+                const card = contracts[index];
+                return <ContractCard
+                  key={card.contract.id}
+                  card={card}
+                  tabIndex={index === activeContractIndex ? 0 : -1}
+                  onFocus={() => { setActiveContractIndex(index); setActiveContractId(card.contract.id); }}
+                  onOpen={() => enterContractWorkspace(card.contract.id)}
+                />;
+              }}
+            />
+          </section>}
           {miscTasks.length > 0 && <section className="l2-lane misc-lane" aria-label="杂事">
             <Carousel
               itemWidth={216}
@@ -400,6 +471,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
         </div>}
       </main>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
+      {showContractForm && <NewContractForm projects={projectTasks} onClose={() => setShowContractForm(false)} />}
       {pendingNodeTime && (
         <NodeTimeDialog
           open

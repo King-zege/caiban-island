@@ -5,6 +5,7 @@ import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
 import { AgentProposalService } from './agentProposalService';
+import { ContractService } from './contractService';
 import type {
   LinkInput,
   LegacyMiscDeadlineActionRequest,
@@ -25,6 +26,7 @@ import type {
 } from '../shared/taskContracts';
 import { getProcurementTemplate, instantiateProcurementTemplate } from '../shared/procurementContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult } from '../shared/procurementContracts';
+import type { Contract, ContractAction, ContractActionInput, ContractActionReminder, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLink, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 
 // 组合根：任务/归档/提醒/设置的跨服务事务编排
 export class AppService {
@@ -34,6 +36,7 @@ export class AppService {
   readonly settings: SettingsService;
   readonly drafts: DraftService;
   readonly proposals: AgentProposalService;
+  readonly contracts: ContractService;
 
   private listeners: Array<() => void> = [];
 
@@ -56,6 +59,7 @@ export class AppService {
     this.settings = new SettingsService(db);
     this.drafts = new DraftService(db, this.reminders);
     this.proposals = new AgentProposalService(db);
+    this.contracts = new ContractService(db);
     this.reminders.reconcileFutureNodeReminders();
     this.reminders.reconcileFutureMiscReminders();
   }
@@ -107,6 +111,19 @@ export class AppService {
     this.emitChanged();
     return detail;
   }
+
+  createContract(input: ContractCreateRequest): Contract { const value = this.withTransaction(() => this.contracts.create(input)); this.emitChanged(); return value; }
+  updateContract(input: ContractUpdateRequest): Contract { const value = this.withTransaction(() => this.contracts.update(input)); this.emitChanged(); return value; }
+  setContractStatus(input: ContractStatusRequest): Contract { const value = this.withTransaction(() => this.contracts.setStatus(input)); this.emitChanged(); return value; }
+  restoreContract(id: string): Contract { const value = this.withTransaction(() => this.contracts.restoreArchived(id)); this.emitChanged(); return value; }
+  addContractAction(contractId: string, input: ContractActionInput): ContractAction { const value = this.withTransaction(() => this.contracts.addAction(contractId, input)); this.emitChanged(); return value; }
+  updateContractAction(input: ContractActionUpdateRequest): ContractAction { const value = this.withTransaction(() => this.contracts.updateAction(input)); this.emitChanged(); return value; }
+  setContractActionStatus(input: ContractActionStatusRequest): ContractAction { const value = this.withTransaction(() => this.contracts.setActionStatus(input)); this.emitChanged(); return value; }
+  removeContractAction(id: string): boolean { this.withTransaction(() => this.contracts.removeAction(id)); this.emitChanged(); return true; }
+  setContractActionReminder(input: ContractActionReminderRequest): ContractActionReminder | null { const value = this.withTransaction(() => this.contracts.setActionReminder(input)); this.emitChanged(); return value; }
+  addContractLink(contractId: string, input: ContractLinkInput): ContractLink { const value = this.withTransaction(() => this.contracts.addLink(contractId, input)); this.emitChanged(); return value; }
+  removeContractLink(id: string): boolean { this.withTransaction(() => this.contracts.removeLink(id)); this.emitChanged(); return true; }
+  saveContractNote(contractId: string, body: string): boolean { this.withTransaction(() => this.contracts.saveNote(contractId, body)); this.emitChanged(); return true; }
 
   updateTask(id: string, input: TaskInput): Task {
     const t = this.tasks.updateTask(id, input);

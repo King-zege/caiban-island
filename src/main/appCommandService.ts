@@ -14,6 +14,18 @@ export interface AppCommandDefinition {
 const DEFINITIONS: readonly AppCommandDefinition[] = [
   { name: 'create_procurement_project', risk: 'high', summary: '创建采购项目与完整流程', undoable: true, inputFields: ['fullName', 'shortName', 'procurementMethod', 'templateId'], expectedOldValueFields: [] },
   { name: 'apply_procurement_plan', risk: 'high', summary: '批量应用采购流程计划', undoable: true, inputFields: ['taskId', 'nodes', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
+  { name: 'create_contract', risk: 'high', summary: '创建合同台账', undoable: true, inputFields: ['fullName', 'shortName', 'supplierName'], expectedOldValueFields: [] },
+  { name: 'update_contract', risk: 'reversible', summary: '更新合同台账', undoable: true, inputFields: ['contractId', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
+  { name: 'set_contract_status', risk: 'high', summary: '变更合同生命周期状态', undoable: true, inputFields: ['contractId', 'status', 'expectedStatus'], expectedOldValueFields: ['expectedStatus'] },
+  { name: 'restore_contract', risk: 'high', summary: '恢复已归档合同', undoable: true, inputFields: ['contractId'], expectedOldValueFields: [] },
+  { name: 'add_contract_action', risk: 'reversible', summary: '新增合同履约动作', undoable: true, inputFields: ['contractId', 'action'], expectedOldValueFields: [] },
+  { name: 'update_contract_action', risk: 'reversible', summary: '修改合同履约动作', undoable: true, inputFields: ['actionId', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
+  { name: 'set_contract_action_status', risk: 'reversible', summary: '更新合同履约动作状态', undoable: true, inputFields: ['actionId', 'status', 'expectedStatus'], expectedOldValueFields: ['expectedStatus'] },
+  { name: 'remove_contract_action', risk: 'high', summary: '删除合同履约动作', undoable: false, inputFields: ['actionId'], expectedOldValueFields: [] },
+  { name: 'set_contract_action_reminder', risk: 'reversible', summary: '设置合同履约提醒', undoable: true, inputFields: ['actionId', 'fireAtUtc', 'expectedFireAtUtc'], expectedOldValueFields: ['expectedFireAtUtc'] },
+  { name: 'add_contract_link', risk: 'reversible', summary: '新增合同资料', undoable: true, inputFields: ['contractId', 'link'], expectedOldValueFields: [] },
+  { name: 'remove_contract_link', risk: 'high', summary: '删除合同资料', undoable: false, inputFields: ['linkId'], expectedOldValueFields: [] },
+  { name: 'save_contract_note', risk: 'reversible', summary: '保存合同备注', undoable: true, inputFields: ['contractId', 'body'], expectedOldValueFields: [] },
   { name: 'create_task', risk: 'high', summary: '创建任务卡片', undoable: true, inputFields: ['kind'], expectedOldValueFields: [] },
   { name: 'update_task', risk: 'reversible', summary: '修改任务说明和计划', undoable: true, inputFields: ['taskId', 'task'], expectedOldValueFields: [] },
   { name: 'set_task_name', risk: 'reversible', summary: '修改任务名称', undoable: true, inputFields: ['taskId', 'name', 'expectedName'], expectedOldValueFields: ['expectedName'] },
@@ -61,6 +73,18 @@ export class AppCommandService {
     switch (command.name) {
       case 'create_procurement_project': { const value = this.appSvc.createProcurementProject(command.input); data = value; entityId = value.project.id; break; }
       case 'apply_procurement_plan': { const value = this.appSvc.applyProcurementPlan(command.input); data = value; entityId = value.task.id; break; }
+      case 'create_contract': { const value = this.appSvc.createContract(command.input); data = value; entityId = value.id; break; }
+      case 'update_contract': { const value = this.appSvc.updateContract(command.input); data = value; entityId = value.id; break; }
+      case 'set_contract_status': { const value = this.appSvc.setContractStatus(command.input); data = value; entityId = value.id; break; }
+      case 'restore_contract': { const value = this.appSvc.restoreContract(command.input.contractId); data = value; entityId = value.id; break; }
+      case 'add_contract_action': { const value = this.appSvc.addContractAction(command.input.contractId, command.input.action); data = value; entityId = value.id; break; }
+      case 'update_contract_action': { const value = this.appSvc.updateContractAction(command.input); data = value; entityId = value.id; break; }
+      case 'set_contract_action_status': { const value = this.appSvc.setContractActionStatus(command.input); data = value; entityId = value.id; break; }
+      case 'remove_contract_action': data = this.appSvc.removeContractAction(command.input.actionId); entityId = command.input.actionId; break;
+      case 'set_contract_action_reminder': { const value = this.appSvc.setContractActionReminder(command.input); data = value; entityId = command.input.actionId; break; }
+      case 'add_contract_link': { const value = this.appSvc.addContractLink(command.input.contractId, command.input.link); data = value; entityId = value.id; break; }
+      case 'remove_contract_link': data = this.appSvc.removeContractLink(command.input.linkId); entityId = command.input.linkId; break;
+      case 'save_contract_note': data = this.appSvc.saveContractNote(command.input.contractId, command.input.body); entityId = command.input.contractId; break;
       case 'create_task': { const value = this.appSvc.createTask(command.input); data = value; entityId = value.id; break; }
       case 'update_task': { const value = this.appSvc.updateTask(command.input.taskId, command.input.task); data = value; entityId = value.id; break; }
       case 'set_task_name': { const value = this.appSvc.setTaskName(command.input); data = value; entityId = value.id; break; }

@@ -45,6 +45,16 @@ export type DueReminder =
       taskId: string;
       taskName: string;
       fireAt: string;
+    }
+  | {
+      id: string;
+      kind: 'contract';
+      contractId: string;
+      contractName: string;
+      actionId: string;
+      actionTitle: string;
+      actionType: string;
+      fireAt: string;
     };
 
 interface TaskDueRow {
@@ -66,6 +76,15 @@ interface NodeDueRow {
 interface MiscDueRow {
   task_id: string;
   task_name: string;
+  fire_at_utc: string;
+}
+
+interface ContractDueRow {
+  action_id: string;
+  contract_id: string;
+  contract_name: string;
+  action_title: string;
+  action_type: string;
   fire_at_utc: string;
 }
 
@@ -244,7 +263,12 @@ export class ReminderService {
       `SELECT COUNT(*) AS count FROM misc_reminders mr JOIN tasks t ON t.id = mr.task_id
        WHERE mr.fired = 0 AND mr.fire_at_utc < ? AND t.kind = 'misc' AND t.status = 'active'`
     ).get(cutoff) as { count: number };
-    return task.count + node.count + misc.count;
+    const contract = this.db.prepare(
+      `SELECT COUNT(*) AS count FROM contract_action_reminders cr
+       JOIN contract_actions a ON a.id=cr.action_id JOIN contracts c ON c.id=a.contract_id
+       WHERE cr.fired=0 AND cr.fire_at_utc < ? AND c.status IN ('active','closing') AND a.status IN ('pending','in_progress')`
+    ).get(cutoff) as { count: number };
+    return task.count + node.count + misc.count + contract.count;
   }
 
   nextPendingAt(): string | null {
@@ -259,6 +283,10 @@ export class ReminderService {
          UNION ALL
          SELECT mr.fire_at_utc FROM misc_reminders mr JOIN tasks t ON t.id = mr.task_id
          WHERE mr.fired = 0 AND t.kind = 'misc' AND t.status = 'active'
+         UNION ALL
+         SELECT cr.fire_at_utc FROM contract_action_reminders cr
+         JOIN contract_actions a ON a.id=cr.action_id JOIN contracts c ON c.id=a.contract_id
+         WHERE cr.fired=0 AND c.status IN ('active','closing') AND a.status IN ('pending','in_progress')
        )`
     ).get() as { fire_at: string | null };
     return row.fire_at;
@@ -282,6 +310,11 @@ export class ReminderService {
        FROM misc_reminders mr JOIN tasks t ON t.id = mr.task_id
        WHERE mr.fired = 0 AND mr.fire_at_utc ${comparison} ? AND t.kind = 'misc' AND t.status = 'active'`
     ).all(cutoff) as unknown as MiscDueRow[];
+    const contractRows = this.db.prepare(
+      `SELECT cr.action_id, cr.fire_at_utc, a.contract_id, a.title AS action_title, a.type AS action_type, c.short_name AS contract_name
+       FROM contract_action_reminders cr JOIN contract_actions a ON a.id=cr.action_id JOIN contracts c ON c.id=a.contract_id
+       WHERE cr.fired=0 AND cr.fire_at_utc ${comparison} ? AND c.status IN ('active','closing') AND a.status IN ('pending','in_progress')`
+    ).all(cutoff) as unknown as ContractDueRow[];
     const claimed: DueReminder[] = [];
     this.withTransaction(() => {
       const markTask = this.db.prepare('UPDATE reminders SET fired = 1 WHERE id = ? AND fired = 0');
@@ -319,6 +352,11 @@ export class ReminderService {
           taskName: row.task_name,
           fireAt: row.fire_at_utc
         });
+      }
+      const markContract = this.db.prepare('UPDATE contract_action_reminders SET fired=1 WHERE action_id=? AND fired=0');
+      for (const row of contractRows) {
+        if (markContract.run(row.action_id).changes === 0) continue;
+        claimed.push({ id: row.action_id, kind: 'contract', contractId: row.contract_id, contractName: row.contract_name, actionId: row.action_id, actionTitle: row.action_title, actionType: row.action_type, fireAt: row.fire_at_utc });
       }
     });
     return claimed.sort((left, right) => left.fireAt.localeCompare(right.fireAt) || left.id.localeCompare(right.id));

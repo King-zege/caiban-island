@@ -13,6 +13,7 @@ import type {
   TaskUrgencyUpdateRequest
 } from './taskContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from './procurementContracts';
+import type { ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from './contractContracts';
 
 export const APP_COMMAND_NAMES = [
   'create_task', 'update_task', 'set_task_name', 'set_task_names', 'set_task_urgency',
@@ -21,7 +22,10 @@ export const APP_COMMAND_NAMES = [
   'set_node_title', 'set_node_start_time', 'set_node_status', 'reorder_nodes',
   'remove_node', 'add_link', 'remove_link', 'save_note',
   'resolve_legacy_misc_deadline', 'confirm_legacy_draft',
-  'create_procurement_project', 'apply_procurement_plan'
+  'create_procurement_project', 'apply_procurement_plan',
+  'create_contract', 'update_contract', 'set_contract_status', 'restore_contract',
+  'add_contract_action', 'update_contract_action', 'set_contract_action_status', 'remove_contract_action',
+  'set_contract_action_reminder', 'add_contract_link', 'remove_contract_link', 'save_contract_note'
 ] as const;
 
 export type AppCommandName = (typeof APP_COMMAND_NAMES)[number];
@@ -48,7 +52,19 @@ export type AppCommand =
   | { name: 'resolve_legacy_misc_deadline'; input: LegacyMiscDeadlineActionRequest }
   | { name: 'confirm_legacy_draft'; input: { draftId: string } }
   | { name: 'create_procurement_project'; input: ProcurementProjectCreateRequest }
-  | { name: 'apply_procurement_plan'; input: ProcurementPlanApplyRequest };
+  | { name: 'apply_procurement_plan'; input: ProcurementPlanApplyRequest }
+  | { name: 'create_contract'; input: ContractCreateRequest }
+  | { name: 'update_contract'; input: ContractUpdateRequest }
+  | { name: 'set_contract_status'; input: ContractStatusRequest }
+  | { name: 'restore_contract'; input: { contractId: string } }
+  | { name: 'add_contract_action'; input: { contractId: string; action: import('./contractContracts').ContractActionInput } }
+  | { name: 'update_contract_action'; input: ContractActionUpdateRequest }
+  | { name: 'set_contract_action_status'; input: ContractActionStatusRequest }
+  | { name: 'remove_contract_action'; input: { actionId: string } }
+  | { name: 'set_contract_action_reminder'; input: ContractActionReminderRequest }
+  | { name: 'add_contract_link'; input: { contractId: string; link: ContractLinkInput } }
+  | { name: 'remove_contract_link'; input: { linkId: string } }
+  | { name: 'save_contract_note'; input: { contractId: string; body: string } };
 
 export interface AppCommandResult {
   command: AppCommandName;
@@ -62,6 +78,9 @@ const URGENCY_VALUES = new Set(['critical', 'high', 'normal', 'low']);
 const NODE_STATUS_VALUES = new Set(['pending', 'in_progress', 'completed', 'cancelled']);
 const PROCUREMENT_METHOD_VALUES = new Set(['open_tender', 'invited_tender', 'competitive_negotiation', 'single_source', 'inquiry', 'framework', 'custom']);
 const NODE_SOURCE_VALUES = new Set(['template', 'agent', 'custom']);
+const CONTRACT_STATUS_VALUES = new Set(['draft', 'active', 'closing', 'closed', 'terminated', 'archived']);
+const CONTRACT_ACTION_TYPE_VALUES = new Set(['payment', 'invoice', 'delivery', 'acceptance', 'renewal', 'expiry', 'archive', 'custom']);
+const CONTRACT_ACTION_STATUS_VALUES = new Set(['pending', 'in_progress', 'completed', 'waived']);
 
 function object(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(label + '必须是对象');
@@ -88,6 +107,10 @@ function string(record: Record<string, unknown>, key: string): void {
 
 function nullableString(record: Record<string, unknown>, key: string): void {
   if (record[key] !== null && typeof record[key] !== 'string') throw new Error(key + ' 必须是字符串或 null');
+}
+
+function nullableInteger(record: Record<string, unknown>, key: string): void {
+  if (record[key] !== null && (!Number.isSafeInteger(record[key]) || Number(record[key]) < 0)) throw new Error(key + ' 必须是非负整数或 null');
 }
 
 function stringArray(record: Record<string, unknown>, key: string): void {
@@ -117,6 +140,27 @@ function procurementCreateInput(value: unknown): void {
   if (!URGENCY_VALUES.has(String(input.urgency))) throw new Error('紧急度无效');
   if (!PROCUREMENT_METHOD_VALUES.has(String(input.procurementMethod))) throw new Error('采购方式无效');
   if ('nodes' in input && (!Array.isArray(input.nodes) || !input.nodes.every((node) => { try { nodeInput(node); return true; } catch { return false; } }))) throw new Error('采购节点计划无效');
+}
+
+const CONTRACT_EDIT_FIELDS = ['procurementProjectId', 'fullName', 'shortName', 'contractNo', 'supplierName', 'amountMinor', 'currency', 'signedOn', 'effectiveOn', 'expiresOn', 'tzId'] as const;
+const CONTRACT_CREATE_FIELDS = [...CONTRACT_EDIT_FIELDS, 'status'] as const;
+
+function contractCreateInput(value: unknown, update = false): void {
+  const input = object(value, '合同');
+  const fields = update ? ['contractId', ...CONTRACT_EDIT_FIELDS, 'expectedUpdatedAtUtc'] : [...CONTRACT_CREATE_FIELDS];
+  exact(input, fields);
+  nullableString(input, 'procurementProjectId'); string(input, 'fullName'); string(input, 'shortName'); string(input, 'contractNo');
+  string(input, 'supplierName'); nullableInteger(input, 'amountMinor'); string(input, 'currency'); nullableString(input, 'signedOn');
+  nullableString(input, 'effectiveOn'); nullableString(input, 'expiresOn'); string(input, 'tzId');
+  if (!update && input.status !== 'draft' && input.status !== 'active') throw new Error('合同编辑状态无效');
+  if (update) { string(input, 'contractId'); string(input, 'expectedUpdatedAtUtc'); }
+}
+
+function contractActionInput(value: unknown): void {
+  const input = object(value, '合同履约动作');
+  exact(input, ['type', 'title', 'description', 'dueAtUtc', 'amountMinor', 'relatedActionId']);
+  if (!CONTRACT_ACTION_TYPE_VALUES.has(String(input.type))) throw new Error('合同履约动作类型无效');
+  string(input, 'title'); string(input, 'description'); nullableString(input, 'dueAtUtc'); nullableInteger(input, 'amountMinor'); nullableString(input, 'relatedActionId');
 }
 
 function taskInput(value: unknown): void {
@@ -195,6 +239,27 @@ function validateInput(name: AppCommandName, value: unknown): void {
       if (!Array.isArray(input.nodes)) throw new Error('采购节点计划无效');
       input.nodes.forEach(nodeInput);
       break;
+    case 'create_contract': contractCreateInput(input); break;
+    case 'update_contract': contractCreateInput(input, true); break;
+    case 'set_contract_status':
+      exact(input, ['contractId', 'status', 'expectedStatus']); string(input, 'contractId');
+      if (!CONTRACT_STATUS_VALUES.has(String(input.status)) || !CONTRACT_STATUS_VALUES.has(String(input.expectedStatus))) throw new Error('合同状态无效');
+      break;
+    case 'restore_contract': taskIdOnly(input, 'contractId'); break;
+    case 'add_contract_action': exact(input, ['contractId', 'action']); string(input, 'contractId'); contractActionInput(input.action); break;
+    case 'update_contract_action': exact(input, ['actionId', 'input', 'expectedUpdatedAtUtc']); string(input, 'actionId'); string(input, 'expectedUpdatedAtUtc'); contractActionInput(input.input); break;
+    case 'set_contract_action_status':
+      exact(input, ['actionId', 'status', 'expectedStatus']); string(input, 'actionId');
+      if (!CONTRACT_ACTION_STATUS_VALUES.has(String(input.status)) || !CONTRACT_ACTION_STATUS_VALUES.has(String(input.expectedStatus))) throw new Error('履约动作状态无效');
+      break;
+    case 'remove_contract_action': taskIdOnly(input, 'actionId'); break;
+    case 'set_contract_action_reminder': exact(input, ['actionId', 'fireAtUtc', 'expectedFireAtUtc']); string(input, 'actionId'); nullableString(input, 'fireAtUtc'); nullableString(input, 'expectedFireAtUtc'); break;
+    case 'add_contract_link': {
+      exact(input, ['contractId', 'link']); string(input, 'contractId'); const link = object(input.link, '合同资料'); exact(link, ['kind', 'title', 'target']);
+      if (link.kind !== 'url' && link.kind !== 'file') throw new Error('合同资料类型无效'); string(link, 'title'); string(link, 'target'); break;
+    }
+    case 'remove_contract_link': taskIdOnly(input, 'linkId'); break;
+    case 'save_contract_note': exact(input, ['contractId', 'body']); string(input, 'contractId'); string(input, 'body'); break;
   }
 }
 

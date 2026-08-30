@@ -149,6 +149,27 @@ describe('P12 单次原生 resize 协调器', () => {
     controller.dispose();
   });
 
+  it('L2 数据异步到达时重定向同一次展开，三轨直接落到封顶高度', async () => {
+    const { win, setBounds } = createWindow();
+    const controller = new IslandWindowController(win);
+    controller.setRenderMode('composited');
+    await controller.init();
+    setBounds.mockClear();
+
+    controller.setL2ContentMode('mixed');
+    const expand = controller.setLevel('l2');
+    controller.setL2ContentMode('triple');
+    expect(controller.state().transition?.toBounds.height).toBe(480);
+    controller.transitionReady(expand.transitionId!);
+    vi.advanceTimersByTime(TIMING.RESIZE_SETTLE_MS);
+    controller.transitionFinished(expand.transitionId!);
+    vi.advanceTimersByTime(TIMING.FINALIZE_SETTLE_MS);
+    expect(setBounds).toHaveBeenCalledTimes(1);
+    expect(setBounds.mock.calls[0]?.[0]).toMatchObject({ height: 480 });
+    expect(controller.state().level).toBe('l2');
+    controller.dispose();
+  });
+
   it('动画中的快速请求只保留最后层级', async () => {
     const { win } = createWindow();
     const controller = new IslandWindowController(win);

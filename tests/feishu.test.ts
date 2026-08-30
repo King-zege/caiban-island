@@ -134,7 +134,7 @@ function fresh(): { app: AppService; feishu: FeishuService } {
 }
 
 describe('飞书多维表格同步（FR-090~097）', () => {
-  it('首次同步：自动建表格并批量创建记录；再次同步幂等更新', async () => {
+  it('首次同步：只同步采购项目并自动建表；再次同步幂等更新', async () => {
     const { app, feishu } = fresh();
     app.createTask({ name: '任务A', description: '', kind: 'task', urgency: 'high', deadlineUtc: null, tzId: 'Asia/Shanghai' });
     app.createTask({ name: '杂事B', description: '', kind: 'misc', urgency: 'low', deadlineUtc: null, tzId: 'Asia/Shanghai' });
@@ -146,19 +146,20 @@ describe('飞书多维表格同步（FR-090~097）', () => {
       console.log('DEBUG calls:', JSON.stringify(calls));
       throw e;
     }
-    expect(r1).toEqual({ created: 2, updated: 0 });
-    expect(records.size).toBe(2);
+    expect(r1).toEqual({ created: 1, updated: 0 });
+    expect(records.size).toBe(1);
     expect(calls.some((c) => c.includes('/tables'))).toBe(true);
     expect(feishu.getTarget()).toEqual({ appToken: 'mock_app_token', tableId: 'mock_table_id' });
     // 字段映射抽查
     const first = [...records.values()][0].fields;
     expect(first['任务名称']).toBeDefined();
-    expect(['任务', '杂事']).toContain(first['类型']);
+    expect(first['类型']).toBe('任务');
+    expect([...records.values()].some((record) => record.fields['任务名称'] === '杂事B')).toBe(false);
 
     // 再次同步：无新增，全部更新（幂等）
     const r2 = await feishu.sync();
-    expect(r2).toEqual({ created: 0, updated: 2 });
-    expect(records.size).toBe(2);
+    expect(r2).toEqual({ created: 0, updated: 1 });
+    expect(records.size).toBe(1);
   });
 
   it('任务完成归档后不再同步；新增任务创建记录', async () => {

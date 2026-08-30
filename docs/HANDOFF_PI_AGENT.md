@@ -4,12 +4,12 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；版本：`v0.2.1`；P0–P21 已完成。
-- P21 提交：`ce5998466f57d09f37835dad6633d09b5b2d2147`。
-- 数据库迁移：v1–v7。
+- 分支：`main`；版本：`v0.3` 演进中；P0–P24 已完成。
+- 最近已验收节点：P22 双名称/通用提案、P23 采购流程规划、P24 合同生命周期。
+- 数据库迁移：v1–v9。
 - Pi：`@earendil-works/pi-agent-core@0.81.1`、`@earendil-works/pi-ai@0.81.1`，精确锁定，MIT。
 - DeepSeek：官方 Base URL；`deepseek-v4-flash` / `deepseek-v4-pro`；Key 经 safeStorage。
-- Qoder MCP、旧内置 LLM 和 stdio 桥已删除；遗留 pending 草稿保留在统一 Agent 工作区。
+- Qoder MCP、旧内置 LLM、stdio 桥和专用 DraftService 已删除；遗留 pending 草稿已转换为通用 AgentProposal。
 
 v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build 和 package；P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
 
@@ -21,11 +21,11 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 
 ## 2. 当前用户体验
 
-- L2 默认任务卡片，可切换 Agent；L3 使用同一个 AgentWorkspace，不存在第二套会话或“AI 草稿”页面。
+- L2 默认展示采购项目、合同、杂事三轨卡片，可切换 Agent；L3 使用同一个 AgentWorkspace，不存在第二套会话或“AI 草稿”页面。
 - 从 L2 Agent 展开到 L3 保持会话；从 L3 返回一律回到 L2 任务卡片。
 - 两层均有会话切换、新会话、导出、删除、权限、工具进度、错误重试和待确认操作。
 - 收起、切换和 renderer 重载不取消 run；不可见时用不含正文的系统通知恢复目标会话。
-- 遗留草稿与记忆提案在 Agent 对话内审核；确认记忆只在新建或重新载入会话时进入上下文。
+- 通用 AgentProposal 与记忆提案在 Agent 对话内审核；确认记忆只在新建或重新载入会话时进入上下文。
 
 ## 3. 实现入口
 
@@ -33,6 +33,7 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 - `src/main/piAgentAdapter.ts`：Pi/DeepSeek 协议、流式文本和工具循环。
 - `src/main/agentTools.ts`：工具 allowlist。
 - `src/main/agentPermissionService.ts`：三档权限与审批。
+- `src/main/contractService.ts`：合同台账、动作、提醒、资料与生命周期。
 - `src/main/appCommandService.ts`、`src/shared/appCommandContracts.ts`：统一正式命令。
 - `src/main/authorizedFileService.ts`：授权目录文件边界。
 - `src/main/agentSessionService.ts`、`src/main/memoryService.ts`：会话、FTS5 与记忆。
@@ -53,7 +54,7 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 
 ## 5. 工具与记忆边界
 
-- 只读：活跃任务/详情、归档案例、历史会话、授权目录列举与文本读取。
+- 只读：活跃采购/杂事/合同详情、归档案例、历史会话、授权目录列举与文本读取。
 - 写入：一个统一 `execute_app_command`；授权目录内写入、移动与单文件删除；记忆只形成提案。
 - 文件参数只使用授权目录 ID 和相对路径。main 必须拒绝 `..`、设备/UNC、符号链接/联接逃逸与未授权相邻目录。
 - `search_archived_cases` 和 `search_sessions` 只返回有界、脱敏片段，不返回备注全文、链接目标、文件内容、reasoning 或凭据。
@@ -68,6 +69,6 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 
 ## 7. 后续方向
 
-私人知识库必须作为独立 context provider 和新里程碑设计：逐目录授权、来源/版本、分块检索、删除同步和敏感内容策略。不得把文档块塞入 `memories`，也不得给 Agent 任意文件系统访问。
+P25 将私人知识库实现为独立 context provider：主工作目录、来源/版本、分块检索、删除同步和敏感内容策略。不得把文档块塞入 `memories`，也不得给 Agent 任意文件系统访问。P26 再引入受三档权限控制的持久化自动化和每日清单 PDF。
 
 接手提示：先读根目录 `AGENTS.md`，再按任务只读相关正式文档；检查分支、工作区、最新提交和迁移。未经明确需求不要升级 Pi、扩展网络/shell 权限或读取真实凭据。

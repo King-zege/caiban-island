@@ -281,14 +281,30 @@ export class IslandWindowController {
   setL2Detail(value: boolean): TransitionRequestResult {
     if (this.l2Detail === value) return { accepted: false };
     this.l2Detail = value;
-    if (this.currentOrTargetLevel() !== 'l2' || this.transitionState) return { accepted: true };
+    if (this.currentOrTargetLevel() !== 'l2') return { accepted: true };
+    if (this.transitionState) {
+      if (this.transitionState.to === 'l2') {
+        this.transitionState = { ...this.transitionState, toBounds: this.boundsFor('l2') };
+        this.broadcastTransition();
+        this.broadcastState();
+      }
+      return { accepted: true };
+    }
     return this.beginTransition('l2', 'l2-detail', this.boundsFor('l2'));
   }
 
   setL2ContentMode(value: L2ContentMode): TransitionRequestResult {
     if (this.l2ContentMode === value) return { accepted: false };
     this.l2ContentMode = value;
-    if (this.currentOrTargetLevel() !== 'l2' || this.transitionState) return { accepted: true };
+    if (this.currentOrTargetLevel() !== 'l2') return { accepted: true };
+    if (this.transitionState) {
+      if (this.transitionState.to === 'l2') {
+        this.transitionState = { ...this.transitionState, toBounds: this.boundsFor('l2') };
+        this.broadcastTransition();
+        this.broadcastState();
+      }
+      return { accepted: true };
+    }
     return this.beginTransition('l2', 'l2-content', this.boundsFor('l2'));
   }
 

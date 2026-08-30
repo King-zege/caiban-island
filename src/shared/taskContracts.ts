@@ -78,7 +78,8 @@ export interface NodeTitleUpdateRequest {
 export type ReminderEvent =
   | { type: 'fallback'; message: string }
   | { type: 'open-node'; taskId: string; nodeId: string }
-  | { type: 'open-misc'; taskId: string };
+  | { type: 'open-misc'; taskId: string }
+  | { type: 'open-contract'; contractId: string; actionId: string };
 
 export type LinkKind = 'url' | 'file';
 

@@ -196,7 +196,8 @@ export class FeishuService {
     const existingTarget = this.getTarget();
     const target = await this.ensureTarget();
     if (existingTarget) await this.ensureReminderField(target);
-    const cards = this.tasks.listActive();
+    // P24：飞书仍只同步签约前的采购项目；合同、杂事和知识库均留在本机。
+    const cards = this.tasks.listActive().filter((card) => card.task.kind === 'procurement');
     const ids = cards.map((c) => c.task.id);
     const existing = await this.searchByTaskIds(target, ids);
 

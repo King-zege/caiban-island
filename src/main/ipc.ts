@@ -17,6 +17,7 @@ import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepS
 import type { AgentProposalCreateRequest } from '../shared/agentProposalContracts';
 import { PROCUREMENT_WORKFLOW_TEMPLATES } from '../shared/procurementContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from '../shared/procurementContracts';
+import type { ContractActionInput, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 
 export function registerIpc(
   c: IslandWindowController,
@@ -84,6 +85,21 @@ export function registerIpc(
     wrap(() => commands.execute({ name: 'create_procurement_project', input }).data));
   ipcMain.handle('procurements:applyPlan', (_e: IpcMainInvokeEvent, input: ProcurementPlanApplyRequest) =>
     wrap(() => commands.execute({ name: 'apply_procurement_plan', input }).data));
+
+  ipcMain.handle('contracts:list', () => wrap(() => appSvc.contracts.listCards()));
+  ipcMain.handle('contracts:detail', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.contracts.detail(id)));
+  ipcMain.handle('contracts:create', (_e: IpcMainInvokeEvent, input: ContractCreateRequest) => wrap(() => commands.execute({ name: 'create_contract', input }).data));
+  ipcMain.handle('contracts:update', (_e: IpcMainInvokeEvent, input: ContractUpdateRequest) => wrap(() => commands.execute({ name: 'update_contract', input }).data));
+  ipcMain.handle('contracts:setStatus', (_e: IpcMainInvokeEvent, input: ContractStatusRequest) => wrap(() => commands.execute({ name: 'set_contract_status', input }).data));
+  ipcMain.handle('contracts:restore', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'restore_contract', input: { contractId: id } }).data));
+  ipcMain.handle('contractActions:add', (_e: IpcMainInvokeEvent, contractId: string, action: ContractActionInput) => wrap(() => commands.execute({ name: 'add_contract_action', input: { contractId, action } }).data));
+  ipcMain.handle('contractActions:update', (_e: IpcMainInvokeEvent, input: ContractActionUpdateRequest) => wrap(() => commands.execute({ name: 'update_contract_action', input }).data));
+  ipcMain.handle('contractActions:setStatus', (_e: IpcMainInvokeEvent, input: ContractActionStatusRequest) => wrap(() => commands.execute({ name: 'set_contract_action_status', input }).data));
+  ipcMain.handle('contractActions:remove', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'remove_contract_action', input: { actionId: id } }).data));
+  ipcMain.handle('contractActions:setReminder', (_e: IpcMainInvokeEvent, input: ContractActionReminderRequest) => wrap(() => commands.execute({ name: 'set_contract_action_reminder', input }).data));
+  ipcMain.handle('contractLinks:add', (_e: IpcMainInvokeEvent, contractId: string, link: ContractLinkInput) => wrap(() => commands.execute({ name: 'add_contract_link', input: { contractId, link } }).data));
+  ipcMain.handle('contractLinks:remove', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'remove_contract_link', input: { linkId: id } }).data));
+  ipcMain.handle('contractNotes:save', (_e: IpcMainInvokeEvent, contractId: string, body: string) => wrap(() => commands.execute({ name: 'save_contract_note', input: { contractId, body } }).data));
 
   ipcMain.handle('nodes:add', (_e: IpcMainInvokeEvent, taskId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'add_node', input: { taskId, node: input } }).data));
   ipcMain.handle('nodes:update', (_e: IpcMainInvokeEvent, nodeId: string, input: NodeInput) => wrap(() => commands.execute({ name: 'update_node', input: { nodeId, node: input } }).data));

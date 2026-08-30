@@ -111,6 +111,14 @@ app.on('child-process-gone', (_event, details) => {
         controller.win.focus();
       };
 
+      const openContract = (reminder: Extract<DueReminder, { kind: 'contract' }>): void => {
+        if (!controller) return;
+        sendEvent({ type: 'open-contract', contractId: reminder.contractId, actionId: reminder.actionId });
+        if (controller.paused) controller.togglePause();
+        controller.setLevel('l3');
+        controller.win.focus();
+      };
+
       const openTaskList = (): void => {
         if (!controller) return;
         if (controller.paused) controller.togglePause();
@@ -131,7 +139,9 @@ app.on('child-process-gone', (_event, details) => {
               ? '节点「' + first.nodeTitle + '」现在开始'
               : first.kind === 'misc'
                 ? '杂事「' + first.taskName + '」到时间了'
-                : '任务“' + first.taskName + '”的截止提醒已到'
+                : first.kind === 'contract'
+                  ? '合同「' + first.contractName + '」的“' + first.actionTitle + '”到提醒时间了'
+                  : '任务“' + first.taskName + '”的截止提醒已到'
             : '有 ' + due.length + ' 条提醒已到，请查看任务列表';
           showFallback(message);
           return;
@@ -143,6 +153,9 @@ app.on('child-process-gone', (_event, details) => {
           } else if (reminder.kind === 'misc') {
             const body = '杂事「' + reminder.taskName + '」到时间了';
             showToast('采办岛：杂事提醒', body, () => openMisc(reminder), () => showFallback(body));
+          } else if (reminder.kind === 'contract') {
+            const body = '履约动作“' + reminder.actionTitle + '”到提醒时间了';
+            showToast('采办岛：' + reminder.contractName, body, () => openContract(reminder), () => showFallback(body));
           } else {
             const deadlineText = new Date(reminder.deadlineUtc).toLocaleString('zh-CN', { hour12: false });
             const body = '任务“' + reminder.taskName + '”的截止提醒已到';
@@ -155,9 +168,11 @@ app.on('child-process-gone', (_event, details) => {
         if (missed.length === 0 || !controller) return;
         const nodeCount = missed.filter((item) => item.kind === 'node').length;
         const miscCount = missed.filter((item) => item.kind === 'misc').length;
+        const contractCount = missed.filter((item) => item.kind === 'contract').length;
         const parts = [
           nodeCount > 0 ? nodeCount + ' 条节点提醒' : '',
-          miscCount > 0 ? miscCount + ' 条杂事提醒' : ''
+          miscCount > 0 ? miscCount + ' 条杂事提醒' : '',
+          contractCount > 0 ? contractCount + ' 条合同履约提醒' : ''
         ].filter(Boolean);
         const detail = parts.length > 0 ? '，其中 ' + parts.join('、') : '';
         const message = '有 ' + missed.length + ' 条提醒在关机/睡眠期间错过' + detail + '，请查看任务列表';

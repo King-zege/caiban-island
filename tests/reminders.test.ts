@@ -45,7 +45,7 @@ describe('任务与节点提醒（FR-060~069）', () => {
     // 现在已过 fire_at
     const due = app.reminders.dueNow();
     expect(due).toHaveLength(1);
-    expect(due[0].taskName).toBe('due');
+    expect(due[0]).toMatchObject({ kind: 'task', taskName: 'due' });
     expect(app.reminders.dueNow()).toHaveLength(0);
   });
 

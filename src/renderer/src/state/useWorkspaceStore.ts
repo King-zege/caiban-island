@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
-export type WorkspaceSection = 'tasks' | 'agent' | 'memory' | 'archive' | 'settings';
+import type { ContractWorkspaceSection } from '../../../shared/contractContracts';
+
+export type WorkspaceSection = 'tasks' | 'contracts' | 'agent' | 'memory' | 'archive' | 'settings';
 export type TaskWorkspaceSection = 'overview' | 'nodes' | 'materials' | 'reminders' | 'notes';
 export type L2View = 'agent' | 'overview';
 
@@ -22,12 +24,16 @@ interface WorkspaceState {
   l2View: L2View;
   taskSection: TaskWorkspaceSection;
   selectedTaskId: string | null;
+  selectedContractId: string | null;
+  contractSection: ContractWorkspaceSection;
   highlightedNodeId: string | null;
   pendingUndo: PendingUndoAction | null;
   toast: WorkspaceToast | null;
   openSection: (section: WorkspaceSection) => void;
   setL2View: (view: L2View) => void;
   openTask: (taskId: string, section?: TaskWorkspaceSection) => void;
+  openContract: (contractId: string, section?: ContractWorkspaceSection) => void;
+  setContractSection: (section: ContractWorkspaceSection) => void;
   clearTaskSelection: () => void;
   setTaskSection: (section: TaskWorkspaceSection) => void;
   highlightNode: (nodeId: string) => void;
@@ -47,6 +53,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   l2View: 'overview',
   taskSection: 'overview',
   selectedTaskId: null,
+  selectedContractId: null,
+  contractSection: 'overview',
   highlightedNodeId: null,
   pendingUndo: null,
   toast: null,
@@ -54,6 +62,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   openSection: (section) => set({ section }),
   setL2View: (l2View) => set({ l2View }),
   openTask: (taskId, section = 'overview') => set({ section: 'tasks', selectedTaskId: taskId, taskSection: section, highlightedNodeId: null }),
+  openContract: (contractId, contractSection = 'overview') => set({ section: 'contracts', selectedContractId: contractId, contractSection, highlightedNodeId: null }),
+  setContractSection: (contractSection) => set({ contractSection }),
   clearTaskSelection: () => set({ selectedTaskId: null, taskSection: 'overview', highlightedNodeId: null }),
   setTaskSection: (taskSection) => set({ taskSection }),
   highlightNode: (nodeId) => {

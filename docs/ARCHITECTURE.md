@@ -42,6 +42,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `AuthorizedFileService` | 授权根内文件操作与 realpath/逃逸防护 |
 | `AgentSessionService` / `MemoryService` | 可见会话、FTS5 召回、确认记忆与提案 |
 | `ReminderService` | 项目、节点、杂事提醒的派生调度与原子领取 |
+| `ContractService` | 合同台账、履约动作、付款—开票关联、资料、备注与生命周期状态机 |
 | `ArchiveService` / `FeishuService` | 本地快照与恢复；单向飞书 upsert/导出 |
 
 ## 4. Agent 与权限流
@@ -51,23 +52,24 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - L2/L3 渲染同一 Agent store 和组件；组件卸载不取消 run。
 - main 为事件分配单调 sequence，并保存 phase、partialText、activeTool、pendingApproval 与脱敏 error 快照。assistant 消息先落库再广播完成。
 - `beforeToolCall` 根据 AppCommand 风险与权限模式执行、等待批准或阻断。未知工具 fail-closed 为高风险。
-- 只读工具包括任务/归档/会话搜索和授权目录读取；正式数据工具统一调用 AppCommand。
+- 只读工具包括项目、合同、归档、会话搜索和授权目录读取；正式数据工具统一调用 AppCommand。
 - DeepSeek function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足 provider 约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
 - 授权文件只接受目录 ID 与相对路径；main 拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权目标。
-- 无任意 shell、任意 URL 或额外网络工具。Qoder MCP、旧 LLM 和 stdio 服务已删除；migration v7 只清理旧凭据，保留遗留 pending 草稿。
+- 无任意 shell、任意 URL 或额外网络工具。Qoder MCP、旧 LLM 和 stdio 服务已删除；遗留 pending 草稿在 migration v8 转换为通用 AgentProposal。
 
 ## 5. 数据与迁移
 
 数据目录为 `%APPDATA%\caiban-island\`。核心实体：
 
-- `tasks`：项目/杂事、状态、时区、deadline/精确提醒和审计时间。
-- `nodes`、`links`、`notes`、`change_events`。
+- `tasks`：采购项目/杂事、正式全名、卡片简称、流程模板、状态、时区、deadline/精确提醒和审计时间。
+- `nodes`、`links`、`notes`、`change_events`；节点保存阶段 key 和模板/Agent/自定义来源。
+- `contracts`、`contract_actions`、`contract_action_reminders`、`contract_links`、`contract_notes`、`contract_change_events`。
 - `reminders`、`node_reminders`、`misc_reminders`。
-- `drafts`：仅保留遗留待确认内容，可关联 Agent session。
+- `agent_proposals`：持久化待批准命令或命令批次。
 - `agent_sessions`、`agent_messages`、`agent_messages_fts`。
 - `memories`、`memory_proposals`、`settings`。
 
-当前 migration 为 v1–v7：基础任务 → Agent 会话 → 记忆/FTS → 节点提醒 → 杂事提醒 → 草稿会话关联 → 旧通道清理与 P21 设置。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
+当前 migration 为 v1–v9：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
 
 时间以 ISO8601 UTC 保存，按 `tz_id` 显示；ID 为 GUID；排序必须包含稳定 tie-breaker。外键级联处理依附实体，跨服务副作用由 AppService 事务编排。
 
@@ -75,7 +77,8 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 
 IPC 分组而非逐项复制：
 
-- `tasks/nodes/links/notes/reminders/misc/archive`：领域读写，写入经 AppCommand。
+- `procurements/tasks/nodes/links/notes/reminders/misc/archive`：采购与杂事读写，写入经 AppCommand。
+- `contracts/contractActions/contractLinks/contractNotes`：合同台账与履约读写，写入经 AppCommand。
 - `agent/deepseek/memory/drafts`：会话、run、权限、配置、记忆和遗留草稿。
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
 - `settings/feishu/system`：设置、单向同步/导出和安全打开外部目标。
@@ -86,11 +89,11 @@ IPC 分组而非逐项复制：
 
 ## 7. 提醒、归档与同步
 
-- `tasks.deadline_utc`、`nodes.start_utc`、`tasks.remind_at_utc` 是用户计划；提醒表是可重建派生状态。
+- `tasks.deadline_utc`、`nodes.start_utc`、`tasks.remind_at_utc` 与 `contract_actions.due_at_utc` 是用户计划；提醒表是可重建派生状态。
 - 调度按记录主键原子领取，修改时间重置 fired，其他字段不重复提醒；归档/删除/完成/取消移除资格，恢复只同步未来时间。
 - 启动和 `powerMonitor.resume` 合并漏发摘要；Toast 点击以只读事件定位，不携带备注或路径。
 - 归档写 SQLite 与 `archive/YYYY-MM/.../task.md|task.json`；同名不覆盖，恢复校验 JSON 后重建活跃任务。
-- 飞书只 upsert 活跃任务，PersonalBaseToken 经 safeStorage 保存；同步失败不影响本地事务，CSV/Markdown 为无凭据兜底。
+- 飞书只 upsert 活跃采购项目，合同、杂事与知识数据不外发；PersonalBaseToken 经 safeStorage 保存，同步失败不影响本地事务，CSV/Markdown 为无凭据兜底。
 
 ## 8. Windows 窗口与渲染
 

@@ -48,6 +48,7 @@ import type {
   UiPreferences
 } from '../shared/types';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult, ProcurementWorkflowTemplate } from '../shared/procurementContracts';
+import type { Contract, ContractAction, ContractActionInput, ContractActionReminder, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCard, ContractCreateRequest, ContractDetail, ContractLink, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 
 const api = {
   getState: (): Promise<IslandState> => ipcRenderer.invoke('app:getState'),
@@ -92,6 +93,20 @@ const api = {
   listProcurementTemplates: (): Promise<IpcResult<readonly ProcurementWorkflowTemplate[]>> => ipcRenderer.invoke('procurements:templates'),
   createProcurementProject: (input: ProcurementProjectCreateRequest): Promise<IpcResult<ProcurementProjectCreateResult>> => ipcRenderer.invoke('procurements:create', input),
   applyProcurementPlan: (input: ProcurementPlanApplyRequest): Promise<IpcResult<TaskDetail>> => ipcRenderer.invoke('procurements:applyPlan', input),
+  listContracts: (): Promise<IpcResult<ContractCard[]>> => ipcRenderer.invoke('contracts:list'),
+  contractDetail: (id: string): Promise<IpcResult<ContractDetail>> => ipcRenderer.invoke('contracts:detail', id),
+  createContract: (input: ContractCreateRequest): Promise<IpcResult<Contract>> => ipcRenderer.invoke('contracts:create', input),
+  updateContract: (input: ContractUpdateRequest): Promise<IpcResult<Contract>> => ipcRenderer.invoke('contracts:update', input),
+  setContractStatus: (input: ContractStatusRequest): Promise<IpcResult<Contract>> => ipcRenderer.invoke('contracts:setStatus', input),
+  restoreContract: (id: string): Promise<IpcResult<Contract>> => ipcRenderer.invoke('contracts:restore', id),
+  addContractAction: (contractId: string, input: ContractActionInput): Promise<IpcResult<ContractAction>> => ipcRenderer.invoke('contractActions:add', contractId, input),
+  updateContractAction: (input: ContractActionUpdateRequest): Promise<IpcResult<ContractAction>> => ipcRenderer.invoke('contractActions:update', input),
+  setContractActionStatus: (input: ContractActionStatusRequest): Promise<IpcResult<ContractAction>> => ipcRenderer.invoke('contractActions:setStatus', input),
+  removeContractAction: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('contractActions:remove', id),
+  setContractActionReminder: (input: ContractActionReminderRequest): Promise<IpcResult<ContractActionReminder | null>> => ipcRenderer.invoke('contractActions:setReminder', input),
+  addContractLink: (contractId: string, input: ContractLinkInput): Promise<IpcResult<ContractLink>> => ipcRenderer.invoke('contractLinks:add', contractId, input),
+  removeContractLink: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('contractLinks:remove', id),
+  saveContractNote: (contractId: string, body: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('contractNotes:save', contractId, body),
 
   addNode: (taskId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:add', taskId, input),
   updateNode: (nodeId: string, input: NodeInput): Promise<IpcResult<unknown>> => ipcRenderer.invoke('nodes:update', nodeId, input),

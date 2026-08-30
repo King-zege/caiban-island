@@ -24,6 +24,15 @@ const UrgencySchema = Type.Union([Type.Literal('critical'), Type.Literal('high')
 const NodeStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('cancelled')]);
 const ProcurementMethodSchema = Type.Union([Type.Literal('open_tender'), Type.Literal('invited_tender'), Type.Literal('competitive_negotiation'), Type.Literal('single_source'), Type.Literal('inquiry'), Type.Literal('framework'), Type.Literal('custom')]);
 const NodeSourceSchema = Type.Union([Type.Literal('template'), Type.Literal('agent'), Type.Literal('custom')]);
+const ContractStatusSchema = Type.Union([Type.Literal('draft'), Type.Literal('active'), Type.Literal('closing'), Type.Literal('closed'), Type.Literal('terminated'), Type.Literal('archived')]);
+const EditableContractStatusSchema = Type.Union([Type.Literal('draft'), Type.Literal('active')]);
+const ContractActionTypeSchema = Type.Union([Type.Literal('payment'), Type.Literal('invoice'), Type.Literal('delivery'), Type.Literal('acceptance'), Type.Literal('renewal'), Type.Literal('expiry'), Type.Literal('archive'), Type.Literal('custom')]);
+const ContractActionStatusSchema = Type.Union([Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed'), Type.Literal('waived')]);
+const NullableAmount = Type.Union([Type.Null(), Type.Integer({ minimum: 0 })]);
+const ContractEditFields = { procurementProjectId: NullableUtc, fullName: Type.String(), shortName: Type.String(), contractNo: Type.String(), supplierName: Type.String(), amountMinor: NullableAmount, currency: Type.String(), signedOn: NullableUtc, effectiveOn: NullableUtc, expiresOn: NullableUtc, tzId: Type.String() };
+const ContractCreateSchema = Type.Object({ ...ContractEditFields, status: EditableContractStatusSchema }, { additionalProperties: false });
+const ContractUpdateSchema = Type.Object({ ...ContractEditFields, contractId: Type.String(), expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false });
+const ContractActionSchema = Type.Object({ type: ContractActionTypeSchema, title: Type.String(), description: Type.String(), dueAtUtc: NullableUtc, amountMinor: NullableAmount, relatedActionId: NullableUtc }, { additionalProperties: false });
 const NodeSchema = Type.Object({ title: Type.String(), description: Type.String(), startUtc: NullableUtc, endUtc: NullableUtc, stageKey: Type.Optional(NullableUtc), source: Type.Optional(NodeSourceSchema) }, { additionalProperties: false });
 const TaskInputSchema = Type.Object({
   name: Type.String(), fullName: Type.Optional(Type.String()), shortName: Type.Optional(Type.String()), description: Type.String(), kind: Type.Union([Type.Literal('procurement'), Type.Literal('task')]), urgency: UrgencySchema,
@@ -36,6 +45,18 @@ const AppCommandSchema = {
   ...Type.Union([
     Type.Object({ command: Type.Literal('create_procurement_project'), input: Type.Object({ fullName: Type.String(), shortName: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String(), procurementMethod: ProcurementMethodSchema, templateId: NullableUtc, nodes: Type.Optional(Type.Array(NodeSchema)) }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('apply_procurement_plan'), input: Type.Object({ taskId: Type.String(), templateId: NullableUtc, templateVersion: Type.Union([Type.Null(), Type.Integer({ minimum: 1 })]), procurementMethod: ProcurementMethodSchema, nodes: Type.Array(NodeSchema), expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('create_contract'), input: ContractCreateSchema }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('update_contract'), input: ContractUpdateSchema }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_contract_status'), input: Type.Object({ contractId: Type.String(), status: ContractStatusSchema, expectedStatus: ContractStatusSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('restore_contract'), input: Type.Object({ contractId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('add_contract_action'), input: Type.Object({ contractId: Type.String(), action: ContractActionSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('update_contract_action'), input: Type.Object({ actionId: Type.String(), input: ContractActionSchema, expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_contract_action_status'), input: Type.Object({ actionId: Type.String(), status: ContractActionStatusSchema, expectedStatus: ContractActionStatusSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('remove_contract_action'), input: Type.Object({ actionId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('set_contract_action_reminder'), input: Type.Object({ actionId: Type.String(), fireAtUtc: NullableUtc, expectedFireAtUtc: NullableUtc }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('add_contract_link'), input: Type.Object({ contractId: Type.String(), link: Type.Object({ kind: Type.Union([Type.Literal('url'), Type.Literal('file')]), title: Type.String(), target: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('remove_contract_link'), input: Type.Object({ linkId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+    Type.Object({ command: Type.Literal('save_contract_note'), input: Type.Object({ contractId: Type.String(), body: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('create_task'), input: Type.Union([ProjectCreateSchema, MiscCreateSchema]) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('update_task'), input: Type.Object({ taskId: Type.String(), task: TaskInputSchema }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('set_task_name'), input: Type.Object({ taskId: Type.String(), name: Type.String(), expectedName: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
@@ -119,7 +140,16 @@ export function createAgentTools(
     name: 'search_archived_cases', label: '搜索归档案例', description: '只读检索归档任务的有限结构化摘要', parameters: SearchArchivedCasesSchema,
     execute: async (_id, params, signal) => { checkCancelled(signal); return text(appSvc.archive.searchCases(params.query, params.limit ?? 5)); }
   };
-  const tools: AgentTool[] = [list, detail, commandTool, archivedCases];
+  const listContracts: AgentTool<typeof EmptySchema, ToolDetails> = {
+    name: 'list_contracts', label: '读取合同卡片', description: '列出合同、供应商、下一履约动作和风险，不修改数据', parameters: EmptySchema,
+    execute: async (_id, _params, signal) => { checkCancelled(signal); return text(appSvc.contracts.listCards()); }
+  };
+  const ContractIdSchema = Type.Object({ contractId: Type.String() }, { additionalProperties: false });
+  const contractDetail: AgentTool<typeof ContractIdSchema, ToolDetails> = {
+    name: 'get_contract_detail', label: '读取合同台账', description: '读取合同台账、履约动作、提醒、资料标题和备注', parameters: ContractIdSchema,
+    execute: async (_id, params, signal) => { checkCancelled(signal); return text(appSvc.contracts.detail(params.contractId)); }
+  };
+  const tools: AgentTool[] = [list, detail, listContracts, contractDetail, commandTool, archivedCases];
   if (files) {
     tools.push({ name: 'list_authorized_files', label: '列举授权目录', description: '列出用户已授权目录中的文件名、类型和大小', parameters: FileListSchema, execute: async (_id, params, signal) => text(await files.list(params.directoryId, params.path ?? '.', signal)) } as AgentTool<typeof FileListSchema, ToolDetails>);
     tools.push({ name: 'read_authorized_file', label: '读取授权文件', description: '读取授权目录内最多 256KB 的 UTF-8 文本文件', parameters: FileLocationSchema, execute: async (_id, params, signal) => text({ content: await files.read(params.directoryId, params.path, signal) }) } as AgentTool<typeof FileLocationSchema, ToolDetails>);
@@ -143,7 +173,7 @@ export function createAgentTools(
 }
 
 export const AGENT_TOOL_NAMES = [
-  'list_active_tasks', 'get_task_detail', 'execute_app_command', 'search_archived_cases',
+  'list_active_tasks', 'get_task_detail', 'list_contracts', 'get_contract_detail', 'execute_app_command', 'search_archived_cases',
   'list_authorized_files', 'read_authorized_file', 'write_authorized_file', 'move_authorized_file', 'delete_authorized_file',
   'propose_memory', 'search_sessions'
 ] as const;

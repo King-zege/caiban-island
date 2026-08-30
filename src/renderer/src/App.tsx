@@ -10,6 +10,7 @@ import { ToastHost } from './components/ui/ToastHost';
 import { useTaskStore } from './state/useStore';
 import { useWorkspaceStore } from './state/useWorkspaceStore';
 import { useAgentStore } from './state/useAgentStore';
+import { useContractStore } from './state/useContractStore';
 
 const INITIAL_PREFERENCES: UiPreferences = {
   colorScheme: 'dark',
@@ -75,6 +76,8 @@ export default function App(): React.JSX.Element {
   const l2View = useWorkspaceStore((state) => state.l2View);
   const setL2View = useWorkspaceStore((state) => state.setL2View);
   const openTask = useWorkspaceStore((state) => state.openTask);
+  const openContract = useWorkspaceStore((state) => state.openContract);
+  const openContractDetail = useContractStore((state) => state.openDetail);
   const highlightNode = useWorkspaceStore((state) => state.highlightNode);
   const notify = useWorkspaceStore((state) => state.notify);
   const selectedTaskName = useTaskStore((state) => state.tasks.find((card) => card.task.id === selectedTaskId)?.task.name ?? '当前任务');
@@ -117,10 +120,16 @@ export default function App(): React.JSX.Element {
       void openDetail(event.taskId);
       return;
     }
+    if (event.type === 'open-contract') {
+      openContract(event.contractId, 'performance');
+      void openContractDetail(event.contractId);
+      void window.api.setLevel('l3');
+      return;
+    }
     openTask(event.taskId, 'nodes');
     highlightNode(event.nodeId);
     void openDetail(event.taskId);
-  }), [highlightNode, notify, openDetail, openTask]);
+  }), [highlightNode, notify, openContract, openContractDetail, openDetail, openTask]);
 
   useEffect(() => {
     let active = true;

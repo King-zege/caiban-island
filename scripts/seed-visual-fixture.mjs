@@ -31,15 +31,17 @@ const urgencies = ['critical', 'high', 'normal', 'low'];
 
 db.exec('BEGIN');
 try {
+  const projectIds = [];
   db.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES('onboarded', '1')").run();
   db.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES('acrylic_disabled', '1')").run();
   for (let index = 0; index < count; index += 1) {
     const taskId = randomUUID();
+    projectIds.push(taskId);
     const deadline = new Date(now.getTime() + (index === 0 ? -86400000 : (index + 1) * 86400000));
     const name = names[index % names.length] + (index >= names.length ? ' ' + (index + 1) : '');
     db.prepare(`INSERT INTO tasks(
       id, name, description, kind, urgency, deadline_utc, tz_id, status, archived_at, archive_outcome, created_at, updated_at
-    ) VALUES(?, ?, ?, 'task', ?, ?, 'Asia/Shanghai', 'active', NULL, NULL, ?, ?)`).run(
+    ) VALUES(?, ?, ?, 'procurement', ?, ?, 'Asia/Shanghai', 'active', NULL, NULL, ?, ?)`).run(
       taskId,
       name,
       '用于视觉回归的合成采购任务，不包含真实业务数据。',
@@ -81,6 +83,28 @@ try {
       db.prepare('INSERT INTO misc_reminders(task_id, fire_at_utc, fired) VALUES(?,?,0)')
         .run(taskId, fixture.remindAt);
     }
+  }
+  const contractFixtures = [
+    { fullName: '总部办公电脑批量采购合同（第一批）', shortName: '电脑框采一批', no: 'HT-2026-001', supplier: '合成科技有限公司', action: '支付首付款', type: 'payment', offset: 3 },
+    { fullName: '年度物流服务框架合同', shortName: '物流框架合同', no: 'HT-2026-002', supplier: '远途供应链有限公司', action: '提醒供应商开票', type: 'invoice', offset: 1 },
+    { fullName: '实验室安全防护用品采购合同', shortName: '实验室防护合同', no: 'HT-2026-003', supplier: '安健工业用品有限公司', action: '到货验收', type: 'acceptance', offset: -1 }
+  ];
+  for (let index = 0; index < contractFixtures.length; index += 1) {
+    const fixture = contractFixtures[index];
+    const contractId = randomUUID();
+    const actionId = randomUUID();
+    const updatedAt = new Date(liveNow - index * 90000).toISOString();
+    const dueAt = new Date(liveNow + fixture.offset * 86400000).toISOString();
+    db.prepare(`INSERT INTO contracts(
+      id, procurement_project_id, full_name, short_name, contract_no, supplier_name, amount_minor, currency,
+      signed_on, effective_on, expires_on, tz_id, status, archived_from_status, created_at, updated_at
+    ) VALUES(?,?,?,?,?,?,?,'CNY','2026-08-01','2026-08-02','2027-08-01','Asia/Shanghai','active',NULL,?,?)`).run(
+      contractId, projectIds[index] ?? null, fixture.fullName, fixture.shortName, fixture.no, fixture.supplier, 12800000 + index * 3500000, updatedAt, updatedAt
+    );
+    db.prepare(`INSERT INTO contract_actions(
+      id, contract_id, type, title, description, due_at_utc, amount_minor, related_action_id, status, position, completed_at_utc, created_at, updated_at
+    ) VALUES(?,?,?,?,?,?,NULL,NULL,'pending',0,NULL,?,?)`).run(actionId, contractId, fixture.type, fixture.action, '合成视觉回归履约事项。', dueAt, updatedAt, updatedAt);
+    if (fixture.offset >= 0) db.prepare('INSERT INTO contract_action_reminders(action_id, fire_at_utc, fired) VALUES(?,?,0)').run(actionId, dueAt);
   }
   const archivedId = randomUUID();
   const archivedAt = new Date(now.getTime() - 3 * 86400000).toISOString();

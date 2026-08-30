@@ -195,7 +195,70 @@ const SCHEMA_V8 = [
 
 const SCHEMA_V9 = [
   "UPDATE nodes SET source = 'custom' WHERE source IS NULL OR trim(source) = ''",
-  'CREATE INDEX IF NOT EXISTS nodes_task_stage ON nodes(task_id, stage_key, position)'
+  'CREATE INDEX IF NOT EXISTS nodes_task_stage ON nodes(task_id, stage_key, position)',
+  `CREATE TABLE IF NOT EXISTS contracts(
+    id TEXT PRIMARY KEY,
+    procurement_project_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+    full_name TEXT NOT NULL,
+    short_name TEXT NOT NULL,
+    contract_no TEXT NOT NULL DEFAULT '',
+    supplier_name TEXT NOT NULL DEFAULT '',
+    amount_minor INTEGER CHECK(amount_minor IS NULL OR amount_minor >= 0),
+    currency TEXT NOT NULL DEFAULT 'CNY',
+    signed_on TEXT,
+    effective_on TEXT,
+    expires_on TEXT,
+    tz_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('draft','active','closing','closed','terminated','archived')),
+    archived_from_status TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS contracts_project_status ON contracts(procurement_project_id, status, updated_at)',
+  'CREATE INDEX IF NOT EXISTS contracts_status_expiry ON contracts(status, expires_on)',
+  `CREATE TABLE IF NOT EXISTS contract_actions(
+    id TEXT PRIMARY KEY,
+    contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN ('payment','invoice','delivery','acceptance','renewal','expiry','archive','custom')),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    due_at_utc TEXT,
+    amount_minor INTEGER CHECK(amount_minor IS NULL OR amount_minor >= 0),
+    related_action_id TEXT REFERENCES contract_actions(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','completed','waived')),
+    position INTEGER NOT NULL,
+    completed_at_utc TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS contract_actions_contract_order ON contract_actions(contract_id, position, id)',
+  'CREATE INDEX IF NOT EXISTS contract_actions_due ON contract_actions(status, due_at_utc)',
+  `CREATE TABLE IF NOT EXISTS contract_action_reminders(
+    action_id TEXT PRIMARY KEY REFERENCES contract_actions(id) ON DELETE CASCADE,
+    fire_at_utc TEXT NOT NULL,
+    fired INTEGER NOT NULL DEFAULT 0
+  )`,
+  'CREATE INDEX IF NOT EXISTS contract_action_reminders_due ON contract_action_reminders(fired, fire_at_utc)',
+  `CREATE TABLE IF NOT EXISTS contract_links(
+    id TEXT PRIMARY KEY,
+    contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('url','file')),
+    title TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL,
+    meta TEXT NOT NULL DEFAULT '{}'
+  )`,
+  `CREATE TABLE IF NOT EXISTS contract_notes(
+    contract_id TEXT PRIMARY KEY REFERENCES contracts(id) ON DELETE CASCADE,
+    body TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS contract_change_events(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id TEXT NOT NULL,
+    at_utc TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '{}'
+  )`
 ];
 
 function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
