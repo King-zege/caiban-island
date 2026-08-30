@@ -14,6 +14,7 @@ import type {
 } from './taskContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from './procurementContracts';
 import type { ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from './contractContracts';
+import type { WorkspaceProjectBindingRequest } from './knowledgeContracts';
 
 export const APP_COMMAND_NAMES = [
   'create_task', 'update_task', 'set_task_name', 'set_task_names', 'set_task_urgency',
@@ -25,7 +26,8 @@ export const APP_COMMAND_NAMES = [
   'create_procurement_project', 'apply_procurement_plan',
   'create_contract', 'update_contract', 'set_contract_status', 'restore_contract',
   'add_contract_action', 'update_contract_action', 'set_contract_action_status', 'remove_contract_action',
-  'set_contract_action_reminder', 'add_contract_link', 'remove_contract_link', 'save_contract_note'
+  'set_contract_action_reminder', 'add_contract_link', 'remove_contract_link', 'save_contract_note',
+  'bind_workspace_project'
 ] as const;
 
 export type AppCommandName = (typeof APP_COMMAND_NAMES)[number];
@@ -64,7 +66,8 @@ export type AppCommand =
   | { name: 'set_contract_action_reminder'; input: ContractActionReminderRequest }
   | { name: 'add_contract_link'; input: { contractId: string; link: ContractLinkInput } }
   | { name: 'remove_contract_link'; input: { linkId: string } }
-  | { name: 'save_contract_note'; input: { contractId: string; body: string } };
+  | { name: 'save_contract_note'; input: { contractId: string; body: string } }
+  | { name: 'bind_workspace_project'; input: WorkspaceProjectBindingRequest };
 
 export interface AppCommandResult {
   command: AppCommandName;
@@ -260,6 +263,8 @@ function validateInput(name: AppCommandName, value: unknown): void {
     }
     case 'remove_contract_link': taskIdOnly(input, 'linkId'); break;
     case 'save_contract_note': exact(input, ['contractId', 'body']); string(input, 'contractId'); string(input, 'body'); break;
+    case 'bind_workspace_project':
+      exact(input, ['directoryId', 'relativeRoot', 'taskId']); string(input, 'directoryId'); string(input, 'relativeRoot'); string(input, 'taskId'); break;
   }
 }
 

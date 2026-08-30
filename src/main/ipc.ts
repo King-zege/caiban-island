@@ -18,6 +18,7 @@ import type { AgentProposalCreateRequest } from '../shared/agentProposalContract
 import { PROCUREMENT_WORKFLOW_TEMPLATES } from '../shared/procurementContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from '../shared/procurementContracts';
 import type { ContractActionInput, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
+import type { KnowledgeService } from './knowledgeService';
 
 export function registerIpc(
   c: IslandWindowController,
@@ -28,7 +29,8 @@ export function registerIpc(
   memories: MemoryService,
   permissions: AgentPermissionService,
   localCommands: LocalCommandRuntime,
-  commands: AppCommandService
+  commands: AppCommandService,
+  knowledge: KnowledgeService
 ): void {
   const holdIsolatedTestLevel = !app.isPackaged && Boolean(process.env['CAIBAN_TEST_USER_DATA_DIR']) && process.env['CAIBAN_TEST_HOLD_LEVEL'] === '1';
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
@@ -191,9 +193,29 @@ export function registerIpc(
     if (selected.canceled || selected.filePaths.length === 0) return { ok: true as const, data: permissions.snapshot() };
     return wrap(() => permissions.addDirectory(selected.filePaths[0]));
   });
-  ipcMain.handle('agent:removeAuthorizedDirectory', (_e: IpcMainInvokeEvent, id: string) => wrap(() => permissions.removeDirectory(id)));
+  ipcMain.handle('agent:removeAuthorizedDirectory', (_e: IpcMainInvokeEvent, id: string) => wrap(() => {
+    const wasPrimary = permissions.snapshot().authorizedDirectories.some((entry) => entry.id === id && entry.isPrimaryWorkspace);
+    const result = permissions.removeDirectory(id);
+    if (wasPrimary) knowledge.stopWatching();
+    return result;
+  }));
   ipcMain.handle('agent:resolveApproval', (_e: IpcMainInvokeEvent, id: string, decision: AgentApprovalDecision) =>
     wrap(() => permissions.resolveApproval(id, decision)));
+  ipcMain.handle('knowledge:status', () => wrap(() => knowledge.status()));
+  ipcMain.handle('knowledge:choosePrimary', async () => {
+    const selected = await dialog.showOpenDialog(c.win, { properties: ['openDirectory'], title: '选择采购工作主目录' });
+    if (selected.canceled || selected.filePaths.length === 0) return { ok: true as const, data: knowledge.status() };
+    const settings = permissions.addDirectory(selected.filePaths[0]);
+    const directory = settings.authorizedDirectories.find((entry) => path.normalize(entry.path).toLowerCase() === path.normalize(selected.filePaths[0]).toLowerCase());
+    if (!directory) return { ok: false as const, error: '工作目录授权失败' };
+    try { return { ok: true as const, data: await knowledge.setPrimaryDirectory(directory.id) }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('knowledge:tree', () => wrap(() => knowledge.getWorkspaceTree()));
+  ipcMain.handle('knowledge:search', (_e: IpcMainInvokeEvent, query: string, limit?: number) => wrap(() => knowledge.searchWorkspace(query, limit)));
+  ipcMain.handle('knowledge:sourceExcerpt', (_e: IpcMainInvokeEvent, sourceId: string, locator?: string) => wrap(() => knowledge.getSourceExcerpt(sourceId, locator)));
+  ipcMain.handle('knowledge:refresh', () => wrap(() => knowledge.refreshWorkspaceIndex()));
+  ipcMain.handle('knowledge:cancelScan', () => wrap(() => knowledge.cancelScan()));
   ipcMain.handle('localCommands:getConfig', () => wrap(() => localCommands.config()));
   ipcMain.handle('deepseek:status', () => wrap(() => deepSeek.status()));
   ipcMain.handle('deepseek:saveConfig', (_e: IpcMainInvokeEvent, model: DeepSeekModel, key: string) =>

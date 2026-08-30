@@ -1,5 +1,6 @@
 import { Brain, Download, FolderPlus, ShieldAlert, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { KnowledgeWorkspaceStatus } from '../../../shared/types';
 import { isAgentRunning, useAgentStore } from '../state/useAgentStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import AgentConversation from './AgentConversation';
@@ -22,12 +23,42 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
   const permissions = useAgentStore((state) => state.permissions);
   const setPermissionMode = useAgentStore((state) => state.setPermissionMode);
   const chooseAuthorizedDirectory = useAgentStore((state) => state.chooseAuthorizedDirectory);
+  const refreshPermissions = useAgentStore((state) => state.refreshPermissions);
   const removeAuthorizedDirectory = useAgentStore((state) => state.removeAuthorizedDirectory);
   const openSection = useWorkspaceStore((state) => state.openSection);
   const notify = useWorkspaceStore((state) => state.notify);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [bypassOpen, setBypassOpen] = useState(false);
+  const [knowledge, setKnowledge] = useState<KnowledgeWorkspaceStatus | null>(null);
+  const [knowledgeBusy, setKnowledgeBusy] = useState(false);
+
+  const refreshKnowledge = async () => {
+    if (typeof window.api.getKnowledgeStatus !== 'function') return;
+    const result = await window.api.getKnowledgeStatus();
+    if (result.ok) setKnowledge(result.data);
+  };
+
+  useEffect(() => { void refreshKnowledge(); }, []);
+
+  const chooseWorkspace = async () => {
+    setKnowledgeBusy(true);
+    const result = await window.api.choosePrimaryWorkspaceDirectory();
+    setKnowledgeBusy(false);
+    if (!result.ok) { notify(result.error, 'error'); return; }
+    setKnowledge(result.data);
+    await refreshPermissions();
+    if (result.data.hasPrimaryDirectory) notify('主工作目录已建立并完成索引校对', 'success');
+  };
+
+  const refreshIndex = async () => {
+    setKnowledgeBusy(true);
+    const result = await window.api.refreshWorkspaceIndex();
+    setKnowledgeBusy(false);
+    if (!result.ok) { notify(result.error, 'error'); return; }
+    await refreshKnowledge();
+    notify(`索引已更新：${result.data.indexedFiles} 个正文来源`, 'success');
+  };
 
   const exportSession = async (format: 'json' | 'markdown') => {
     if (!detail) return;
@@ -83,6 +114,12 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
             ))}
           </div>
         </details>
+        <div className="agent-workspace-status" aria-live="polite">
+          <span><strong>主工作目录</strong><small>{knowledge?.primaryDirectoryLabel ?? '尚未设置'}</small></span>
+          {knowledge?.hasPrimaryDirectory && <small>{knowledge.sourceCount} 个来源 · {knowledge.indexedSourceCount} 个可检索{knowledge.lastScan?.status === 'running' ? ' · 扫描中' : ''}</small>}
+          <Button icon={FolderPlus} variant="ghost" disabled={knowledgeBusy} onClick={() => void chooseWorkspace()}>{knowledge?.hasPrimaryDirectory ? '更换' : '选择目录'}</Button>
+          {knowledge?.hasPrimaryDirectory && <Button variant="ghost" disabled={knowledgeBusy} onClick={() => void refreshIndex()}>刷新索引</Button>}
+        </div>
       </div>
       <div className="agent-layout">
         <aside className="agent-sessions" aria-label="Agent 会话">

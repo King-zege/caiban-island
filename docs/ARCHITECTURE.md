@@ -11,7 +11,7 @@
 | 数据 | Electron `node:sqlite`，WAL + foreign keys，main 独占 |
 | Agent | `@earendil-works/pi-agent-core` / `pi-ai` 0.81.1，DeepSeek 官方 provider |
 | Windows 集成 | koffi Acrylic、Toast、托盘、单实例、全屏检测 |
-| 内容 / 同步 | react-markdown；飞书 bitable v1；CSV/Markdown 导出 |
+| 内容 / 同步 | react-markdown、JSZip、PDF.js；飞书 bitable v1；CSV/Markdown 导出 |
 | 测试 / 打包 | Vitest、Testing Library、axe、Electron 截图/基准；electron-builder portable |
 
 Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `pi-coding-agent`、TUI、通用文件/终端工具或 Pi 会话目录。Pi 为纯 ESM，构建必须保留当前内联与 lazy-provider 处理，避免生成 CJS `require`。
@@ -40,6 +40,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `PiAgentAdapter` | Pi/DeepSeek 流式协议与工具循环；不含业务写入 |
 | `AgentPermissionService` | 三档权限、审批等待、Bypass 和授权目录元数据 |
 | `AuthorizedFileService` | 授权根内文件操作与 realpath/逃逸防护 |
+| `KnowledgeService` | 单一主工作目录、增量扫描、Office/PDF 提取、FTS5、来源定位与不可信正文脱敏 |
 | `AgentSessionService` / `MemoryService` | 可见会话、FTS5 召回、确认记忆与提案 |
 | `ReminderService` | 项目、节点、杂事提醒的派生调度与原子领取 |
 | `ContractService` | 合同台账、履约动作、付款—开票关联、资料、备注与生命周期状态机 |
@@ -52,7 +53,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - L2/L3 渲染同一 Agent store 和组件；组件卸载不取消 run。
 - main 为事件分配单调 sequence，并保存 phase、partialText、activeTool、pendingApproval 与脱敏 error 快照。assistant 消息先落库再广播完成。
 - `beforeToolCall` 根据 AppCommand 风险与权限模式执行、等待批准或阻断。未知工具 fail-closed 为高风险。
-- 只读工具包括项目、合同、归档、会话搜索和授权目录读取；正式数据工具统一调用 AppCommand。
+- 只读工具包括项目、合同、归档、会话搜索、授权目录读取，以及工作目录树/检索/来源片段/派生索引刷新；正式数据工具统一调用 AppCommand。
 - DeepSeek function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足 provider 约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
 - 授权文件只接受目录 ID 与相对路径；main 拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权目标。
 - 无任意 shell、任意 URL 或额外网络工具。Qoder MCP、旧 LLM 和 stdio 服务已删除；遗留 pending 草稿在 migration v8 转换为通用 AgentProposal。
@@ -68,8 +69,9 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - `agent_proposals`：持久化待批准命令或命令批次。
 - `agent_sessions`、`agent_messages`、`agent_messages_fts`。
 - `memories`、`memory_proposals`、`settings`。
+- `knowledge_scans`、`knowledge_sources`、`knowledge_chunks`/FTS5 与 `workspace_project_bindings`；数据库只保存相对路径和本机派生正文，不记录工作目录绝对路径。
 
-当前 migration 为 v1–v9：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
+当前 migration 为 v1–v10：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域；v10 增加工作目录扫描、来源、分块 FTS5 与项目绑定。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
 
 时间以 ISO8601 UTC 保存，按 `tz_id` 显示；ID 为 GUID；排序必须包含稳定 tie-breaker。外键级联处理依附实体，跨服务副作用由 AppService 事务编排。
 
@@ -80,6 +82,7 @@ IPC 分组而非逐项复制：
 - `procurements/tasks/nodes/links/notes/reminders/misc/archive`：采购与杂事读写，写入经 AppCommand。
 - `contracts/contractActions/contractLinks/contractNotes`：合同台账与履约读写，写入经 AppCommand。
 - `agent/deepseek/memory/drafts`：会话、run、权限、配置、记忆和遗留草稿。
+- `knowledge`：主目录状态/选择、相对目录树、检索、来源片段、刷新与取消；选择之外不向 renderer 暴露绝对路径。
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
 - `settings/feishu/system`：设置、单向同步/导出和安全打开外部目标。
 

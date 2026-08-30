@@ -74,7 +74,7 @@ describe('P20 migration v6 与草稿会话修订', () => {
     sessions.delete(session.id);
     expect(app.drafts.get(draft.id).sessionId).toBeNull();
     migrate(upgraded);
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 9 });
+    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 10 });
     upgraded.close();
   });
 

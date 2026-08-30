@@ -37,6 +37,7 @@ export interface AuthorizedDirectory {
   label: string;
   path: string;
   createdAt: string;
+  isPrimaryWorkspace?: boolean;
 }
 
 export interface AgentPermissionSettings {

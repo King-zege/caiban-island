@@ -261,6 +261,71 @@ const SCHEMA_V9 = [
   )`
 ];
 
+const SCHEMA_V10 = [
+  `CREATE TABLE IF NOT EXISTS knowledge_scans(
+    id TEXT PRIMARY KEY,
+    directory_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('queued','running','completed','cancelled','failed')),
+    total_files INTEGER NOT NULL DEFAULT 0,
+    indexed_files INTEGER NOT NULL DEFAULT 0,
+    metadata_only_files INTEGER NOT NULL DEFAULT 0,
+    skipped_files INTEGER NOT NULL DEFAULT 0,
+    failed_files INTEGER NOT NULL DEFAULT 0,
+    removed_files INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    error_category TEXT
+  )`,
+  'CREATE INDEX IF NOT EXISTS knowledge_scans_directory_started ON knowledge_scans(directory_id, started_at DESC)',
+  `CREATE TABLE IF NOT EXISTS knowledge_sources(
+    id TEXT PRIMARY KEY,
+    directory_id TEXT NOT NULL,
+    relative_path TEXT NOT NULL COLLATE NOCASE,
+    file_name TEXT NOT NULL,
+    extension TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    modified_at_utc TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    extract_state TEXT NOT NULL CHECK(extract_state IN ('indexed','metadata_only','skipped','failed')),
+    skip_reason TEXT,
+    project_candidate TEXT,
+    updated_at TEXT NOT NULL,
+    UNIQUE(directory_id, relative_path)
+  )`,
+  'CREATE INDEX IF NOT EXISTS knowledge_sources_directory_state ON knowledge_sources(directory_id, extract_state, relative_path)',
+  `CREATE TABLE IF NOT EXISTS knowledge_chunks(
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    locator TEXT NOT NULL,
+    locator_kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    UNIQUE(source_id, ordinal)
+  )`,
+  'CREATE INDEX IF NOT EXISTS knowledge_chunks_source_order ON knowledge_chunks(source_id, ordinal)',
+  "CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(text, content='knowledge_chunks', content_rowid='rowid', tokenize='unicode61')",
+  `CREATE TRIGGER IF NOT EXISTS knowledge_chunks_fts_insert AFTER INSERT ON knowledge_chunks BEGIN
+    INSERT INTO knowledge_chunks_fts(rowid, text) VALUES (new.rowid, new.text);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS knowledge_chunks_fts_delete AFTER DELETE ON knowledge_chunks BEGIN
+    INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS knowledge_chunks_fts_update AFTER UPDATE OF text ON knowledge_chunks BEGIN
+    INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+    INSERT INTO knowledge_chunks_fts(rowid, text) VALUES (new.rowid, new.text);
+  END`,
+  `CREATE TABLE IF NOT EXISTS workspace_project_bindings(
+    id TEXT PRIMARY KEY,
+    directory_id TEXT NOT NULL,
+    relative_root TEXT NOT NULL COLLATE NOCASE,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    UNIQUE(directory_id, relative_root),
+    UNIQUE(directory_id, task_id)
+  )`
+];
+
 function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
   const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as unknown as Array<{ name: string }>;
   return columns.some((entry) => entry.name === column);
@@ -333,6 +398,10 @@ export function migrate(db: DatabaseSync): void {
       addColumnIfMissing(db, 'nodes', 'source', "source TEXT NOT NULL DEFAULT 'custom'");
       for (const stmt of SCHEMA_V9) db.exec(stmt);
       record(9);
+    }
+    if (!applied.has(10)) {
+      for (const stmt of SCHEMA_V10) db.exec(stmt);
+      record(10);
     }
     db.exec('COMMIT');
   } catch (e) {

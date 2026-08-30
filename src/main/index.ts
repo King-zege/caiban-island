@@ -22,6 +22,7 @@ import { classifyRenderMode } from '../shared/renderMode';
 import type { RenderMode } from '../shared/types';
 import type { AgentAttentionEvent, AgentRunEvent, ReminderEvent } from '../shared/types';
 import type { DueReminder } from './reminderService';
+import { KnowledgeService } from './knowledgeService';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 const testUserDataDir = process.env['CAIBAN_TEST_USER_DATA_DIR'];
@@ -50,6 +51,7 @@ let localCommandRuntime: LocalCommandRuntime | null = null;
 let isQuitting = false;
 let fullscreenDetector: FullscreenDetector | null = null;
 let agentService: AgentService | null = null;
+let knowledgeService: KnowledgeService | null = null;
 let detectedRenderMode: RenderMode = 'software';
 let gpuCrashed = false;
 
@@ -273,7 +275,8 @@ app.on('child-process-gone', (_event, details) => {
       const memories = new MemoryService(db);
       const permissions = new AgentPermissionService(appSvc.settings);
       const authorizedFiles = new AuthorizedFileService(permissions);
-      const appCommands = new AppCommandService(appSvc);
+      knowledgeService = new KnowledgeService(db, permissions);
+      const appCommands = new AppCommandService(appSvc, knowledgeService);
       const localTokenVault = new LocalApiTokenVault(appSvc.settings, safeStorage);
 
       // P6：飞书同步（手动按钮 + 变更后自动同步，防抖 3s）
@@ -327,9 +330,10 @@ app.on('child-process-gone', (_event, details) => {
       };
       agentService = new AgentService(
         appSvc, agentSessions, deepSeek, emitAgentEvent,
-        undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles
+        undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService
       );
-      registerIpc(controller, appSvc, feishu, agentService, deepSeek, memories, permissions, localCommandRuntime, appCommands);
+      registerIpc(controller, appSvc, feishu, agentService, deepSeek, memories, permissions, localCommandRuntime, appCommands, knowledgeService);
+      void knowledgeService.initialize().catch(() => undefined);
 
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -366,6 +370,7 @@ app.on('child-process-gone', (_event, details) => {
       if (feishuTimer) clearTimeout(feishuTimer);
       if (localCommandRuntime) void localCommandRuntime.close();
       if (agentService) void agentService.dispose();
+      knowledgeService?.dispose();
     });
   }
 }

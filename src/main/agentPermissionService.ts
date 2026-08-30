@@ -66,11 +66,18 @@ export class AgentPermissionService {
 
   snapshot(): AgentPermissionSettings {
     const savedMode = this.settings.get(MODE_KEY);
+    let primarySeen = false;
+    const authorizedDirectories = this.settings.getJson<AuthorizedDirectory[]>(DIRECTORIES_KEY, [])
+      .filter((entry) => entry && typeof entry.id === 'string' && typeof entry.path === 'string')
+      .map((entry) => {
+        const isPrimaryWorkspace = entry.isPrimaryWorkspace === true && !primarySeen;
+        if (isPrimaryWorkspace) primarySeen = true;
+        return { ...entry, isPrimaryWorkspace };
+      });
     return {
       mode: isMode(savedMode) ? savedMode : 'confirm_all',
       bypassWarningAccepted: this.settings.get(BYPASS_ACCEPTED_KEY) === 'true',
-      authorizedDirectories: this.settings.getJson<AuthorizedDirectory[]>(DIRECTORIES_KEY, [])
-        .filter((entry) => entry && typeof entry.id === 'string' && typeof entry.path === 'string')
+      authorizedDirectories
     };
   }
 
@@ -103,6 +110,16 @@ export class AgentPermissionService {
     return this.snapshot();
   }
 
+  setPrimaryDirectory(id: string): AgentPermissionSettings {
+    const directories = this.snapshot().authorizedDirectories;
+    if (!directories.some((entry) => entry.id === id)) throw new AgentPermissionError('目录未授权');
+    this.settings.setJson(DIRECTORIES_KEY, directories.map((entry) => ({
+      ...entry,
+      isPrimaryWorkspace: entry.id === id
+    })));
+    return this.snapshot();
+  }
+
   onApproval(listener: (event: ApprovalListener) => void): () => void {
     this.listener = listener;
     return () => { if (this.listener === listener) this.listener = null; };
@@ -129,7 +146,7 @@ export class AgentPermissionService {
       : toolName;
     const command = typeof commandName === 'string' ? APP_COMMAND_REGISTRY.get(commandName as AppCommandName) : undefined;
     if (command) return command.risk;
-    if (['list_active_tasks', 'get_task_detail', 'list_contracts', 'get_contract_detail', 'search_archived_cases', 'list_authorized_files', 'read_authorized_file', 'search_sessions'].includes(toolName)) return 'read';
+    if (['list_active_tasks', 'get_task_detail', 'list_contracts', 'get_contract_detail', 'search_archived_cases', 'list_authorized_files', 'read_authorized_file', 'search_sessions', 'get_workspace_tree', 'search_workspace', 'get_source_excerpt', 'refresh_workspace_index'].includes(toolName)) return 'read';
     if (toolName === 'write_authorized_file' || toolName === 'move_authorized_file' || toolName === 'delete_authorized_file' || toolName === 'propose_memory') return 'high';
     if (toolName.startsWith('propose_')) return 'high';
     return 'high';

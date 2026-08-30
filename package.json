@@ -17,8 +17,10 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
+    "jszip": "3.10.1",
     "koffi": "^3.1.5",
     "lucide-react": "^1.31.0",
+    "pdfjs-dist": "6.2.108",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

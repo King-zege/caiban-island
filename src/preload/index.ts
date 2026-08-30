@@ -47,6 +47,7 @@ import type {
   TransitionRequestResult,
   UiPreferences
 } from '../shared/types';
+import type { KnowledgeMatch, KnowledgeScanSummary, KnowledgeSourceExcerpt, KnowledgeWorkspaceStatus, WorkspaceTreeEntry } from '../shared/knowledgeContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult, ProcurementWorkflowTemplate } from '../shared/procurementContracts';
 import type { Contract, ContractAction, ContractActionInput, ContractActionReminder, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCard, ContractCreateRequest, ContractDetail, ContractLink, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 
@@ -179,6 +180,13 @@ const api = {
   setAgentPermissionMode: (mode: AgentPermissionMode, bypassWarningAccepted = false): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:setPermissionMode', mode, bypassWarningAccepted),
   chooseAgentAuthorizedDirectory: (): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:chooseAuthorizedDirectory'),
   removeAgentAuthorizedDirectory: (id: string): Promise<IpcResult<AgentPermissionSettings>> => ipcRenderer.invoke('agent:removeAuthorizedDirectory', id),
+  getKnowledgeStatus: (): Promise<IpcResult<KnowledgeWorkspaceStatus>> => ipcRenderer.invoke('knowledge:status'),
+  choosePrimaryWorkspaceDirectory: (): Promise<IpcResult<KnowledgeWorkspaceStatus>> => ipcRenderer.invoke('knowledge:choosePrimary'),
+  getWorkspaceTree: (): Promise<IpcResult<WorkspaceTreeEntry[]>> => ipcRenderer.invoke('knowledge:tree'),
+  searchWorkspace: (query: string, limit?: number): Promise<IpcResult<KnowledgeMatch[]>> => ipcRenderer.invoke('knowledge:search', query, limit),
+  getKnowledgeSourceExcerpt: (sourceId: string, locator?: string): Promise<IpcResult<KnowledgeSourceExcerpt>> => ipcRenderer.invoke('knowledge:sourceExcerpt', sourceId, locator),
+  refreshWorkspaceIndex: (): Promise<IpcResult<KnowledgeScanSummary>> => ipcRenderer.invoke('knowledge:refresh'),
+  cancelWorkspaceScan: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('knowledge:cancelScan'),
   resolveAgentApproval: (id: string, decision: AgentApprovalDecision): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:resolveApproval', id, decision),
   getLocalCommandConfig: (): Promise<IpcResult<LocalCommandConfig>> => ipcRenderer.invoke('localCommands:getConfig'),
   onAgentEvent: (cb: (event: AgentRunEvent) => void): (() => void) => {

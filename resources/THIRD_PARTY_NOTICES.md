@@ -15,3 +15,10 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## P25 document extraction dependencies
+
+- `jszip@3.10.1` — MIT OR GPL-3.0-or-later（采办岛按 MIT 条款使用），用于读取 OOXML 容器。
+- `pdfjs-dist@6.2.108` — Apache License 2.0，用于本地 PDF 文本与页码提取。
+
+完整许可证文本随对应 npm 软件包分发于 `node_modules`；portable 构建包含本文件。

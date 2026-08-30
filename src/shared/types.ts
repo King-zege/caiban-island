@@ -47,3 +47,4 @@ export * from './agentContracts';
 export * from './agentProposalContracts';
 export * from './procurementContracts';
 export * from './contractContracts';
+export * from './knowledgeContracts';

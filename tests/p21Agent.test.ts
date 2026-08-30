@@ -141,7 +141,7 @@ describe('P21 migration v7', () => {
     expect(upgraded.prepare('SELECT name FROM tasks WHERE id = ?').get(task.id)).toEqual({ name: '保留任务' });
     expect(upgraded.prepare("SELECT state FROM drafts WHERE id='legacy-draft'").get()).toEqual({ state: 'pending' });
     expect(upgraded.prepare("SELECT title FROM agent_sessions WHERE id='legacy-session'").get()).toEqual({ title: '旧会话' });
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 9 });
+    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 10 });
     upgraded.close();
   });
 });
