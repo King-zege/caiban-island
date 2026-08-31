@@ -1,5 +1,3 @@
-import type { NodeInput, NodeStatus, TaskNode } from './taskContracts';
-
 export const DEEPSEEK_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const;
 export type DeepSeekModel = (typeof DEEPSEEK_MODELS)[number];
 
@@ -63,13 +61,12 @@ export interface AgentRunSnapshot {
   activeTool: { toolCallId: string; toolName: string } | null;
   pendingApproval: AgentApprovalRequest | null;
   error: { message: string; retryable: boolean; category: string } | null;
-  latestDraftId?: string;
   latestMemoryProposalId?: string;
 }
 
 export interface AgentAttentionEvent {
   sessionId: string;
-  draftId?: string;
+  proposalId?: string;
   memoryProposalId?: string;
 }
 
@@ -79,7 +76,7 @@ export type AgentRunEvent = SequencedAgentEvent & (
   | { type: 'state'; sessionId: string; state: AgentRunState; phase: AgentRunPhase }
   | { type: 'text_delta'; sessionId: string; delta: string }
   | { type: 'tool_start'; sessionId: string; toolCallId: string; toolName: string }
-  | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; draftId?: string; memoryProposalId?: string }
+  | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; proposalId?: string; memoryProposalId?: string }
   | { type: 'approval_required'; sessionId: string; request: AgentApprovalRequest }
   | { type: 'approval_resolved'; sessionId: string; approvalId: string; decision: AgentApprovalDecision }
   | { type: 'message'; sessionId: string; message: AgentMessageDto }
@@ -117,34 +114,6 @@ export interface DeepSeekStatus {
   configured: boolean;
   baseUrl: 'https://api.deepseek.com';
   model: DeepSeekModel;
-}
-
-export type AgentTaskAction =
-  | { kind: 'set_node_status'; nodeId: string; before: NodeStatus; after: NodeStatus }
-  | { kind: 'set_reminders'; before: number[]; after: number[] }
-  | { kind: 'add_node'; beforeNodeIds: string[]; input: NodeInput }
-  | { kind: 'update_node'; nodeId: string; before: NodeInput; after: NodeInput }
-  | { kind: 'delete_node'; before: TaskNode }
-  | { kind: 'reorder_nodes'; before: string[]; after: string[] };
-
-export interface AgentActionDraftPayload {
-  type: 'action';
-  taskId: string;
-  sessionId: string;
-  action: AgentTaskAction;
-  summary: string;
-  warnings: string[];
-}
-
-export interface AgentActionRequest {
-  taskId: string;
-  sessionId: string;
-  kind: AgentTaskAction['kind'];
-  nodeId?: string;
-  status?: NodeStatus;
-  offsets?: number[];
-  node?: NodeInput;
-  orderedNodeIds?: string[];
 }
 
 export type MemoryCategory = 'profile' | 'work';

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppCommandService } from '../src/main/appCommandService';
 import { AppService } from '../src/main/appService';
-import { openDatabase } from '../src/main/db';
+import { migrate, openDatabase } from '../src/main/db';
 
 const dirs: string[] = [];
 const databases: Array<{ close(): void }> = [];
@@ -54,6 +54,28 @@ describe('P22 双名称、判别类型与通用提案', () => {
     expect(() => app.proposals.approve(failed.id, (command) => commands.execute(command))).toThrow('任务不存在');
     expect(app.proposals.get(failed.id).state).toBe('pending');
     expect(app.tasks.listActive().some((card) => card.task.shortName === '回滚项目')).toBe(false);
+  });
+
+  it('migration v12 将 pending 遗留草稿转换为可批准提案并删除旧表', () => {
+    const { db, app, commands } = fresh();
+    const payload = {
+      type: 'task',
+      taskInput: { kind: 'misc', name: '提交报销', note: '附上发票', remindAtUtc: '2099-09-01T08:30:00.000Z', tzId: 'Asia/Shanghai' },
+      nodes: [], warnings: ['核对金额']
+    };
+    db.exec(`
+      CREATE TABLE drafts(id TEXT PRIMARY KEY, source TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, session_id TEXT);
+      CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at);
+      DELETE FROM schema_migrations WHERE version = 12;
+    `);
+    db.prepare("INSERT INTO drafts(id,source,payload,state,created_at,session_id) VALUES('legacy-misc','pi',?,'pending','2026-01-01',NULL)").run(JSON.stringify(payload));
+
+    migrate(db);
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='drafts'").get()).toBeUndefined();
+    const proposal = app.proposals.get('legacy-misc');
+    expect(proposal).toMatchObject({ kind: 'legacy_draft', state: 'pending', payload: { warnings: ['核对金额'] } });
+    app.proposals.approve(proposal.id, (command) => commands.execute(command));
+    expect(app.tasks.listActive()[0].task).toMatchObject({ kind: 'misc', shortName: '提交报销' });
   });
 
   it('正式名称和简称使用独立乐观前置值更新', () => {

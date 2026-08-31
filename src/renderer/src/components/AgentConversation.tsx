@@ -1,11 +1,10 @@
 import { Check, ChevronDown, EyeOff, MessageSquarePlus, Send, Sparkles, Square, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentMessageDto, DraftRecord, MemoryProposal } from '../../../shared/types';
+import type { AgentMessageDto, AgentProposal, MemoryProposal } from '../../../shared/types';
 import { isAgentRunning, useAgentStore } from '../state/useAgentStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import { AsyncFeedback } from './ui/AsyncFeedback';
 import { Button } from './ui/Button';
-import { Dialog } from './ui/Dialog';
 import { EmptyState } from './ui/EmptyState';
 
 interface AgentConversationProps {
@@ -36,7 +35,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   const streaming = useAgentStore((state) => state.streaming);
   const activeToolName = useAgentStore((state) => state.activeToolName);
   const error = useAgentStore((state) => state.error);
-  const drafts = useAgentStore((state) => state.drafts);
+  const proposals = useAgentStore((state) => state.proposals);
   const memoryProposals = useAgentStore((state) => state.memoryProposals);
   const attention = useAgentStore((state) => state.attention);
   const pendingApproval = useAgentStore((state) => state.pendingApproval);
@@ -44,22 +43,19 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   const newConversation = useAgentStore((state) => state.newConversation);
   const send = useAgentStore((state) => state.send);
   const cancel = useAgentStore((state) => state.cancel);
-  const confirmDraft = useAgentStore((state) => state.confirmDraft);
-  const discardDraft = useAgentStore((state) => state.discardDraft);
+  const approveProposal = useAgentStore((state) => state.approveProposal);
+  const discardProposal = useAgentStore((state) => state.discardProposal);
   const confirmMemory = useAgentStore((state) => state.confirmMemoryProposal);
   const discardMemory = useAgentStore((state) => state.discardMemoryProposal);
   const resolveApproval = useAgentStore((state) => state.resolveApproval);
   const notify = useWorkspaceStore((state) => state.notify);
-  const scheduleUndo = useWorkspaceStore((state) => state.scheduleUndo);
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [deleteDraft, setDeleteDraft] = useState<DraftRecord | null>(null);
-  const [hiddenDraftIds, setHiddenDraftIds] = useState<Set<string>>(() => new Set());
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [firstPacketSlow, setFirstPacketSlow] = useState(false);
 
   const running = isAgentRunning(runState);
-  const proposals = useMemo(() => drafts.filter((draft) => !hiddenDraftIds.has(draft.id)), [drafts, hiddenDraftIds]);
+  const visibleProposals = useMemo(() => proposals.filter((proposal) => proposal.state === 'pending'), [proposals]);
 
   useEffect(() => {
     setFirstPacketSlow(false);
@@ -69,7 +65,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   }, [runPhase]);
 
   useEffect(() => {
-    const targetId = attention?.draftId ?? attention?.memoryProposalId;
+    const targetId = attention?.proposalId ?? attention?.memoryProposalId;
     if (!targetId) return;
     const frame = requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>(`[data-proposal-id="${CSS.escape(targetId)}"]`);
@@ -77,7 +73,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
       target?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [attention?.draftId, attention?.memoryProposalId, proposals.length, memoryProposals.length]);
+  }, [attention?.proposalId, attention?.memoryProposalId, visibleProposals.length, memoryProposals.length]);
 
   const submit = async (value = input) => {
     const content = value.trim();
@@ -91,44 +87,20 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
     if (lastUser) void submit(lastUser.content);
   };
 
-  const applyDraft = async (draft: DraftRecord) => {
-    if (draft.payload.type === 'action' && draft.payload.action.kind === 'delete_node') {
-      setDeleteDraft(draft);
-      return;
-    }
-    setBusyId(draft.id);
-    const result = await confirmDraft(draft.id);
+  const applyProposal = async (proposal: AgentProposal) => {
+    setBusyId(proposal.id);
+    const result = await approveProposal(proposal.id);
     setBusyId(null);
-    if (typeof result === 'string') return;
-    notify(draft.payload.type === 'task' ? '方案已创建为正式任务' : draft.payload.type === 'nodes' ? '节点已添加到正式任务' : '操作已应用', 'success');
-    if (draft.payload.type === 'task') onTaskConfirmed?.(result.taskId);
+    if (result) return;
+    notify('提案中的操作已原子应用', 'success');
+    void onTaskConfirmed;
   };
 
-  const removeDraft = async (id: string) => {
+  const removeProposal = async (id: string) => {
     setBusyId(id);
-    const result = await discardDraft(id);
+    const result = await discardProposal(id);
     setBusyId(null);
     if (!result) notify('方案已丢弃', 'success');
-  };
-
-  const scheduleDelete = () => {
-    if (!deleteDraft || deleteDraft.payload.type !== 'action' || deleteDraft.payload.action.kind !== 'delete_node') return;
-    const current = deleteDraft;
-    const nodeTitle = deleteDraft.payload.action.before.title;
-    const scheduled = scheduleUndo({
-      id: current.id,
-      kind: 'node',
-      label: `节点「${nodeTitle}」`,
-      commit: async () => {
-        const result = await confirmDraft(current.id);
-        return typeof result === 'string' ? result : null;
-      }
-    });
-    setDeleteDraft(null);
-    if (scheduled) {
-      setHiddenDraftIds((ids) => new Set(ids).add(current.id));
-      notify('节点删除将在 5 秒后应用，可撤销', 'info');
-    }
   };
 
   const acceptMemory = async (proposal: MemoryProposal) => {
@@ -183,16 +155,16 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
           </article>
         )}
 
-        {(proposals.length > 0 || memoryProposals.length > 0) && (
+        {(visibleProposals.length > 0 || memoryProposals.length > 0) && (
           <section className="agent-proposals" aria-label="待确认方案">
-            <div className="agent-proposals-head"><strong>待你确认</strong><span>{proposals.length + memoryProposals.length}</span></div>
-            {proposals.map((draft) => (
+            <div className="agent-proposals-head"><strong>待你确认</strong><span>{visibleProposals.length + memoryProposals.length}</span></div>
+            {visibleProposals.map((proposal) => (
               <ProposalCard
-                key={draft.id}
-                draft={draft}
-                busy={busyId === draft.id}
-                onConfirm={() => void applyDraft(draft)}
-                onDiscard={() => void removeDraft(draft.id)}
+                key={proposal.id}
+                proposal={proposal}
+                busy={busyId === proposal.id}
+                onConfirm={() => void applyProposal(proposal)}
+                onDiscard={() => void removeProposal(proposal.id)}
               />
             ))}
             {memoryProposals.map((proposal) => (
@@ -213,7 +185,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
           value={input}
           disabled={running}
           aria-label="发送给 Pi Agent"
-          placeholder={proposals.length > 0 ? '继续说明要修改哪份方案，或直接确认…' : '例如：我要完成一个加油站招标项目…'}
+          placeholder={visibleProposals.length > 0 ? '继续说明要修改哪份方案，或直接确认…' : '例如：我要完成一个加油站招标项目…'}
           onFocus={() => { if (typeof window.api.interacting === 'function') void window.api.interacting(true); }}
           onBlur={() => { if (typeof window.api.interacting === 'function') void window.api.interacting(false); }}
           onChange={(event) => setInput(event.target.value)}
@@ -222,13 +194,6 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
         {running ? <Button icon={Square} variant="danger" onClick={() => void cancel()}>取消</Button> : <Button icon={Send} variant="primary" disabled={!input.trim()} onClick={() => void submit()}>发送</Button>}
       </div>
 
-      <Dialog
-        open={deleteDraft !== null}
-        title="确认删除这个节点？"
-        description="删除会在 5 秒后执行，期间可以撤销。"
-        onClose={() => setDeleteDraft(null)}
-        actions={<><Button variant="ghost" onClick={() => setDeleteDraft(null)}>返回</Button><Button variant="danger" onClick={scheduleDelete}>确认并进入撤销倒计时</Button></>}
-      ><p>确认时还会核对节点内容与位置，避免覆盖刚发生的修改。</p></Dialog>
     </section>
   );
 }
@@ -238,22 +203,15 @@ function MessageBubble({ message }: { message: AgentMessageDto }): React.JSX.Ele
   return <div className={'agent-message ' + message.role}><span>{label}{message.toolName ? ' · ' + message.toolName : ''}</span><p>{message.content}</p></div>;
 }
 
-function ProposalCard({ draft, busy, onConfirm, onDiscard }: { draft: DraftRecord; busy: boolean; onConfirm: () => void; onDiscard: () => void }): React.JSX.Element {
-  const payload = draft.payload;
-  const title = payload.type === 'task'
-    ? payload.taskInput.name || '未命名任务'
-    : payload.type === 'nodes'
-      ? `新增 ${payload.nodes.length} 个节点`
-      : payload.summary;
-  const kind = payload.type === 'task' ? (payload.taskInput.kind === 'misc' ? '杂事方案' : '任务方案') : payload.type === 'nodes' ? '节点方案' : '操作差异';
+function ProposalCard({ proposal, busy, onConfirm, onDiscard }: { proposal: AgentProposal; busy: boolean; onConfirm: () => void; onDiscard: () => void }): React.JSX.Element {
+  const payload = proposal.payload;
   return (
-    <article className="agent-proposal-card" data-proposal-id={draft.id} tabIndex={-1}>
-      <div><span className="eyebrow">{kind}</span><strong>{title}</strong></div>
-      {payload.type === 'task' && payload.taskInput.kind === 'task' && payload.taskInput.description && <p>{payload.taskInput.description}</p>}
-      {payload.type === 'task' && payload.taskInput.kind === 'misc' && payload.taskInput.note && <p>{payload.taskInput.note}</p>}
-      {payload.type !== 'action' && payload.nodes.length > 0 && <ol>{payload.nodes.map((node, index) => <li key={`${node.title}-${index}`}>{node.title}</li>)}</ol>}
+    <article className="agent-proposal-card" data-proposal-id={proposal.id} tabIndex={-1}>
+      <div><span className="eyebrow">{proposal.kind === 'legacy_draft' ? '迁移提案' : '命令提案'}</span><strong>{proposal.title}</strong></div>
+      {proposal.summary && <p>{proposal.summary}</p>}
+      <ol>{payload.commands.map((command, index) => <li key={`${command.name}-${index}`}>{command.name}</li>)}</ol>
       {payload.warnings.length > 0 && <small>留意：{payload.warnings.join('；')}</small>}
-      <div className="agent-proposal-actions"><Button icon={X} variant="ghost" disabled={busy} onClick={onDiscard}>丢弃</Button><Button icon={Check} variant="primary" disabled={busy} onClick={onConfirm}>{busy ? '正在应用' : payload.type === 'task' ? '创建任务' : '确认应用'}</Button></div>
+      <div className="agent-proposal-actions"><Button icon={X} variant="ghost" disabled={busy} onClick={onDiscard}>丢弃</Button><Button icon={Check} variant="primary" disabled={busy || payload.commands.length === 0} onClick={onConfirm}>{busy ? '正在应用' : '确认应用'}</Button></div>
     </article>
   );
 }

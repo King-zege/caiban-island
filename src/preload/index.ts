@@ -1,8 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
-  DraftPayload,
-  DraftRecord,
   AgentProposal,
   AgentProposalApprovalResult,
   AgentProposalCreateRequest,
@@ -23,7 +21,7 @@ import type {
   ArchivedItem,
   ArchivedDetail,
   IslandLevel,
-  L2ContentMode,
+  L2TrackDescriptor,
   IslandState,
   IslandTransitionState,
   IpcResult,
@@ -48,6 +46,7 @@ import type {
   UiPreferences
 } from '../shared/types';
 import type { KnowledgeMatch, KnowledgeScanSummary, KnowledgeSourceExcerpt, KnowledgeWorkspaceStatus, WorkspaceTreeEntry } from '../shared/knowledgeContracts';
+import type { AgentAutomation, AutomationCreateRequest, AutomationEnabledRequest, AutomationRun, AutomationUpdateRequest } from '../shared/automationContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest, ProcurementProjectCreateResult, ProcurementWorkflowTemplate } from '../shared/procurementContracts';
 import type { Contract, ContractAction, ContractActionInput, ContractActionReminder, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCard, ContractCreateRequest, ContractDetail, ContractLink, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 
@@ -58,7 +57,7 @@ const api = {
   interacting: (v: boolean): Promise<boolean> => ipcRenderer.invoke('ui:interacting', v),
   togglePause: (): Promise<boolean> => ipcRenderer.invoke('island:togglePause'),
   setL2Detail: (v: boolean): Promise<TransitionRequestResult> => ipcRenderer.invoke('window:setL2Detail', v),
-  setL2ContentMode: (mode: L2ContentMode): Promise<TransitionRequestResult> => ipcRenderer.invoke('window:setL2ContentMode', mode),
+  setL2ContentMode: (tracks: L2TrackDescriptor): Promise<TransitionRequestResult> => ipcRenderer.invoke('window:setL2ContentMode', tracks),
   transitionReady: (id: string): Promise<boolean> => ipcRenderer.invoke('window:transitionReady', id),
   transitionFinished: (id: string): Promise<boolean> => ipcRenderer.invoke('window:transitionFinished', id),
   activate: (): Promise<boolean> => ipcRenderer.invoke('window:activate'),
@@ -155,12 +154,6 @@ const api = {
   openPath: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:openPath', p),
   showInFolder: (p: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('system:showInFolder', p),
 
-  listDrafts: (sessionId?: string): Promise<IpcResult<DraftRecord[]>> => ipcRenderer.invoke('drafts:list', sessionId),
-  getDraft: (id: string): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:get', id),
-  updateDraft: (id: string, payload: DraftPayload): Promise<IpcResult<DraftRecord>> => ipcRenderer.invoke('drafts:update', id, payload),
-  discardDraft: (id: string): Promise<IpcResult<unknown>> => ipcRenderer.invoke('drafts:discard', id),
-  confirmDraft: (id: string): Promise<IpcResult<{ type: 'task' | 'nodes' | 'action'; taskId: string }>> => ipcRenderer.invoke('drafts:confirm', id),
-
   listAgentProposals: (sessionId?: string): Promise<IpcResult<AgentProposal[]>> => ipcRenderer.invoke('proposals:list', sessionId),
   createAgentProposal: (request: AgentProposalCreateRequest): Promise<IpcResult<AgentProposal>> => ipcRenderer.invoke('proposals:create', request),
   discardAgentProposal: (id: string): Promise<IpcResult<AgentProposal>> => ipcRenderer.invoke('proposals:discard', id),
@@ -187,6 +180,18 @@ const api = {
   getKnowledgeSourceExcerpt: (sourceId: string, locator?: string): Promise<IpcResult<KnowledgeSourceExcerpt>> => ipcRenderer.invoke('knowledge:sourceExcerpt', sourceId, locator),
   refreshWorkspaceIndex: (): Promise<IpcResult<KnowledgeScanSummary>> => ipcRenderer.invoke('knowledge:refresh'),
   cancelWorkspaceScan: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke('knowledge:cancelScan'),
+  listAutomations: (): Promise<IpcResult<{ enabled: boolean; automations: AgentAutomation[]; runs: AutomationRun[] }>> => ipcRenderer.invoke('automations:list'),
+  createAutomation: (input: AutomationCreateRequest): Promise<IpcResult<AgentAutomation>> => ipcRenderer.invoke('automations:create', input),
+  updateAutomation: (input: AutomationUpdateRequest): Promise<IpcResult<AgentAutomation>> => ipcRenderer.invoke('automations:update', input),
+  setAutomationEnabled: (input: AutomationEnabledRequest): Promise<IpcResult<AgentAutomation>> => ipcRenderer.invoke('automations:setEnabled', input),
+  deleteAutomation: (id: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('automations:delete', id),
+  setAutomationsGlobalEnabled: (enabled: boolean): Promise<IpcResult<boolean>> => ipcRenderer.invoke('automations:setGlobalEnabled', enabled),
+  approveAutomationRun: (id: string): Promise<IpcResult<AutomationRun>> => ipcRenderer.invoke('automations:approveRun', id),
+  onAutomationEvent: (cb: (run: AutomationRun) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, value: AutomationRun) => cb(value);
+    ipcRenderer.on('automation:event', listener);
+    return () => ipcRenderer.removeListener('automation:event', listener);
+  },
   resolveAgentApproval: (id: string, decision: AgentApprovalDecision): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agent:resolveApproval', id, decision),
   getLocalCommandConfig: (): Promise<IpcResult<LocalCommandConfig>> => ipcRenderer.invoke('localCommands:getConfig'),
   onAgentEvent: (cb: (event: AgentRunEvent) => void): (() => void) => {

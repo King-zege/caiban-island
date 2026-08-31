@@ -1,6 +1,6 @@
 import { Brain, Download, FolderPlus, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { KnowledgeWorkspaceStatus } from '../../../shared/types';
+import type { AgentAutomation, AutomationRun, KnowledgeWorkspaceStatus } from '../../../shared/types';
 import { isAgentRunning, useAgentStore } from '../state/useAgentStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import AgentConversation from './AgentConversation';
@@ -32,6 +32,7 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
   const [bypassOpen, setBypassOpen] = useState(false);
   const [knowledge, setKnowledge] = useState<KnowledgeWorkspaceStatus | null>(null);
   const [knowledgeBusy, setKnowledgeBusy] = useState(false);
+  const [automations, setAutomations] = useState<{ enabled: boolean; automations: AgentAutomation[]; runs: AutomationRun[] }>({ enabled: true, automations: [], runs: [] });
 
   const refreshKnowledge = async () => {
     if (typeof window.api.getKnowledgeStatus !== 'function') return;
@@ -39,7 +40,15 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
     if (result.ok) setKnowledge(result.data);
   };
 
-  useEffect(() => { void refreshKnowledge(); }, []);
+  const refreshAutomations = async () => {
+    if (typeof window.api.listAutomations !== 'function') return;
+    const result = await window.api.listAutomations(); if (result.ok) setAutomations(result.data);
+  };
+
+  useEffect(() => {
+    void refreshKnowledge(); void refreshAutomations();
+    return typeof window.api.onAutomationEvent === 'function' ? window.api.onAutomationEvent(() => void refreshAutomations()) : undefined;
+  }, []);
 
   const chooseWorkspace = async () => {
     setKnowledgeBusy(true);
@@ -49,6 +58,7 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
     setKnowledge(result.data);
     await refreshPermissions();
     if (result.data.hasPrimaryDirectory) notify('主工作目录已建立并完成索引校对', 'success');
+    await refreshAutomations();
   };
 
   const refreshIndex = async () => {
@@ -120,6 +130,11 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
           <Button icon={FolderPlus} variant="ghost" disabled={knowledgeBusy} onClick={() => void chooseWorkspace()}>{knowledge?.hasPrimaryDirectory ? '更换' : '选择目录'}</Button>
           {knowledge?.hasPrimaryDirectory && <Button variant="ghost" disabled={knowledgeBusy} onClick={() => void refreshIndex()}>刷新索引</Button>}
         </div>
+        {!compact && automations.automations[0] && <div className="agent-automation-status" aria-live="polite">
+          <span><strong>{automations.automations[0].name}</strong><small>{automations.automations[0].lastFailure ? `失败：${automations.automations[0].lastFailure}` : automations.automations[0].nextRunAtUtc ? `下次 ${new Date(automations.automations[0].nextRunAtUtc).toLocaleString('zh-CN', { hour12: false })}` : '已暂停'}</small></span>
+          <Button variant="ghost" onClick={async () => { const result = await window.api.setAutomationsGlobalEnabled(!automations.enabled); if (result.ok) { await refreshAutomations(); notify(result.data ? 'Agent 自动化已启用' : 'Agent 自动化已暂停', 'success'); } else notify(result.error, 'error'); }}>{automations.enabled ? '全部暂停' : '全部启用'}</Button>
+          {automations.runs.find((run) => run.status === 'waiting_approval') && <Button onClick={async () => { const run = automations.runs.find((item) => item.status === 'waiting_approval'); if (!run) return; const result = await window.api.approveAutomationRun(run.id); if (!result.ok) notify(result.error, 'error'); else { notify('已批准生成每日工作清单', 'success'); await refreshAutomations(); } }}>批准生成</Button>}
+        </div>}
       </div>
       <div className="agent-layout">
         <aside className="agent-sessions" aria-label="Agent 会话">

@@ -10,7 +10,7 @@ export type PiAdapterEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'assistant_message'; text: string; inputTokens: number; outputTokens: number }
   | { type: 'tool_start'; toolCallId: string; toolName: string }
-  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; errorMessage?: string; draftId?: string; memoryProposalId?: string };
+  | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; errorMessage?: string; proposalId?: string; memoryProposalId?: string };
 
 export interface PiRunOptions {
   sessionId: string;
@@ -153,9 +153,9 @@ export class PiAgentAdapter implements PiAgentRunner {
         const errorMessage = isRecord(raw) && Array.isArray(raw.content)
           ? raw.content.flatMap((block) => isRecord(block) && block.type === 'text' && typeof block.text === 'string' ? [block.text] : []).join(' ').slice(0, 240)
           : undefined;
-        const draftId = details && typeof details.draftId === 'string' ? details.draftId : undefined;
+        const proposalId = details && typeof details.proposalId === 'string' ? details.proposalId : undefined;
         const memoryProposalId = details && typeof details.memoryProposalId === 'string' ? details.memoryProposalId : undefined;
-        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, errorMessage: event.isError ? errorMessage : undefined, draftId, memoryProposalId });
+        await options.onEvent({ type: 'tool_end', toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, errorMessage: event.isError ? errorMessage : undefined, proposalId, memoryProposalId });
       }
     });
 

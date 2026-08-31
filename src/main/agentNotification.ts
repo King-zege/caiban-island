@@ -15,10 +15,10 @@ export class AgentNotificationTracker {
       this.notifiedRuns.delete(event.sessionId);
       return null;
     }
-    if (event.type === 'tool_end' && !event.isError && (event.draftId || event.memoryProposalId)) {
+    if (event.type === 'tool_end' && !event.isError && (event.proposalId || event.memoryProposalId)) {
       this.attention.set(event.sessionId, {
         sessionId: event.sessionId,
-        draftId: event.draftId,
+        proposalId: event.proposalId,
         memoryProposalId: event.memoryProposalId
       });
       return null;
@@ -31,7 +31,7 @@ export class AgentNotificationTracker {
     return {
       attention,
       body: event.state === 'completed'
-        ? attention.draftId || attention.memoryProposalId
+        ? attention.proposalId || attention.memoryProposalId
           ? 'Agent 待确认操作已生成，点击查看'
           : 'Agent 已完成回复，点击查看'
         : 'Agent 处理需要查看，点击返回会话'

@@ -1,26 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Archive, ArrowLeft, Bell, Bot, Brain, CircleDollarSign, ClipboardCheck, ClipboardList, FileSignature, Gauge, ListChecks, Paperclip, Pencil, Plus, ReceiptText, Search, Settings, StickyNote } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTaskStore } from '../state/useStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import type { TaskWorkspaceSection, WorkspaceSection } from '../state/useWorkspaceStore';
-import TaskEditor from '../components/TaskEditor';
-import ArchiveView from '../components/ArchiveView';
-import SettingsView from '../components/SettingsView';
 import NewTaskForm from '../components/NewTaskForm';
 import VirtualTaskSwitcher from '../components/VirtualTaskSwitcher';
 import { Button, IconButton } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import AgentPanel from '../components/AgentPanel';
-import MemoryPanel from '../components/MemoryPanel';
 import RenameDialog from '../components/RenameDialog';
 import ProjectNamesDialog from '../components/ProjectNamesDialog';
-import MiscEditor from '../components/MiscEditor';
-import ContractEditor from '../components/ContractEditor';
 import NewContractForm from '../components/NewContractForm';
 import { useContractStore } from '../state/useContractStore';
 import type { ContractWorkspaceSection } from '../../../shared/contractContracts';
 import { CONTRACT_STATUS_LABELS } from '../../../shared/contractContracts';
+
+const TaskEditor = lazy(() => import('../components/TaskEditor'));
+const MiscEditor = lazy(() => import('../components/MiscEditor'));
+const ContractEditor = lazy(() => import('../components/ContractEditor'));
+const ArchiveView = lazy(() => import('../components/ArchiveView'));
+const SettingsView = lazy(() => import('../components/SettingsView'));
+const MemoryPanel = lazy(() => import('../components/MemoryPanel'));
+
+function Deferred({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <Suspense fallback={<div className="workspace-loading" role="status">正在载入工作区…</div>}>{children}</Suspense>;
+}
 
 const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: LucideIcon }> = [
   { id: 'overview', label: '概览', icon: Gauge },
@@ -299,7 +304,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                       description={detailError ?? '任务详情尚未准备好'}
                       action={selectedTaskId ? <Button variant="primary" onClick={() => void openDetail(selectedTaskId)}>重试</Button> : undefined}
                     />
-                  ) : detail.task.kind === 'misc' ? <MiscEditor detail={detail} /> : <TaskEditor detail={detail} section={taskSection} />}
+                  ) : <Deferred>{detail.task.kind === 'misc' ? <MiscEditor detail={detail} /> : <TaskEditor detail={detail} section={taskSection} />}</Deferred>}
                 </div>
               </>
             )
@@ -347,15 +352,15 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                       description={contractDetailError ?? '合同详情尚未准备好'}
                       action={selectedContractId ? <Button variant="primary" onClick={() => void openContractDetail(selectedContractId)}>重试</Button> : undefined}
                     />
-                  ) : <ContractEditor detail={contractDetail} section={contractSection} />}
+                  ) : <Deferred><ContractEditor detail={contractDetail} section={contractSection} /></Deferred>}
                 </div>
               </>
             )
           )}
           {section === 'agent' && <div className="workspace-scroll standalone-section"><AgentPanel /></div>}
-          {section === 'memory' && <div className="workspace-scroll standalone-section"><MemoryPanel /></div>}
-          {section === 'archive' && <div className="workspace-scroll standalone-section"><ArchiveView /></div>}
-          {section === 'settings' && <div className="workspace-scroll standalone-section"><SettingsView /></div>}
+          {section === 'memory' && <div className="workspace-scroll standalone-section"><Deferred><MemoryPanel /></Deferred></div>}
+          {section === 'archive' && <div className="workspace-scroll standalone-section"><Deferred><ArchiveView /></Deferred></div>}
+          {section === 'settings' && <div className="workspace-scroll standalone-section"><Deferred><SettingsView /></Deferred></div>}
         </main>}
       </div>
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}

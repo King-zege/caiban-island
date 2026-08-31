@@ -4,14 +4,16 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；版本：`v0.3` 演进中；P0–P25 已完成。
-- 最近已验收节点：P23 采购流程规划、P24 合同生命周期、P25 工作目录知识库。
-- 数据库迁移：v1–v9。
+- 分支：`main`；版本：`v0.3.0`；P0–P28 已完成。
+- 最近已验收节点：P26 Agent 自动化与每日清单、P27 性能与遗留实现清理、P28 Windows/安全/打包发布硬化。
+- 数据库迁移：v1–v12。
 - Pi：`@earendil-works/pi-agent-core@0.81.1`、`@earendil-works/pi-ai@0.81.1`，精确锁定，MIT。
 - DeepSeek：官方 Base URL；`deepseek-v4-flash` / `deepseek-v4-pro`；Key 经 safeStorage。
 - Qoder MCP、旧内置 LLM、stdio 桥和专用 DraftService 已删除；遗留 pending 草稿已转换为通用 AgentProposal。
 
-v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build 和 package；P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
+P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 renderer JS 为 759 KB，相比 P22 前约 1.20 MB 降低约 36%。P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
+
+P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、package 与 `npm audit --omit=dev`（0 漏洞）；Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 已核对。发布产物为 `Caiban-Island-0.3.0-Windows-x64.exe` 与同名 ZIP。
 
 ### v0.2.1 维护修复
 
@@ -34,6 +36,7 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 - `src/main/agentTools.ts`：工具 allowlist。
 - `src/main/agentPermissionService.ts`：三档权限与审批。
 - `src/main/contractService.ts`：合同台账、动作、提醒、资料与生命周期。
+- `src/main/knowledgeService.ts`、`automationService.ts`：本地知识索引、持久化自动化、每日清单与固定模板 PDF。
 - `src/main/appCommandService.ts`、`src/shared/appCommandContracts.ts`：统一正式命令。
 - `src/main/authorizedFileService.ts`：授权目录文件边界。
 - `src/main/agentSessionService.ts`、`src/main/memoryService.ts`：会话、FTS5 与记忆。
@@ -69,6 +72,6 @@ v0.2.1 发布门禁通过 typecheck、38 个测试文件/212 项测试、build �
 
 ## 7. 后续方向
 
-P25 已由 `KnowledgeService` 实现：主工作目录、来源/版本、分块 FTS5、删除同步和不可信正文策略；文档块不进入 `memories`，Agent 也没有任意文件系统访问。P26 引入受三档权限控制的持久化自动化和每日清单 PDF。
+P25 由 `KnowledgeService` 实现本地知识库。P26 由 `AutomationService` 实现三档权限控制的持久化计划、每日清单和固定模板 PDF；模型只重排既有条目 ID 并给建议，失败时确定性降级。P27 将遗留 pending 草稿统一迁移至 AgentProposal，并按需加载 L3 与非当前编辑器。后续自动化执行器不得放开任意 shell、原始 cron 或网络。
 
 接手提示：先读根目录 `AGENTS.md`，再按任务只读相关正式文档；检查分支、工作区、最新提交和迁移。未经明确需求不要升级 Pi、扩展网络/shell 权限或读取真实凭据。

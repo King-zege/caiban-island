@@ -33,7 +33,7 @@ function setApi(api: Partial<Window['api']> = {}): void {
     chooseAgentAuthorizedDirectory: vi.fn(async () => ({ ok: true as const, data: { mode: 'confirm_all' as const, bypassWarningAccepted: false, authorizedDirectories: [] } })),
     removeAgentAuthorizedDirectory: vi.fn(async () => ({ ok: true as const, data: { mode: 'confirm_all' as const, bypassWarningAccepted: false, authorizedDirectories: [] } })),
     resolveAgentApproval: vi.fn(async () => ({ ok: true as const, data: true })),
-    listDrafts: vi.fn(async () => ({ ok: true as const, data: [] })), listMemoryProposals: vi.fn(async () => ({ ok: true as const, data: [] })),
+    listAgentProposals: vi.fn(async () => ({ ok: true as const, data: [] })), listMemoryProposals: vi.fn(async () => ({ ok: true as const, data: [] })),
     agentCancel: vi.fn(async () => ({ ok: true as const, data: true })), exportAgentSession: vi.fn(async () => ({ ok: true as const, data: 'exported' })),
     deleteAgentSession: vi.fn(async () => ({ ok: true as const, data: true })), clearAgentSessions: vi.fn(async () => ({ ok: true as const, data: 1 })),
     ...api
@@ -49,7 +49,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function close(): void { this.removeAttribute('open'); };
   useTaskStore.setState({ tasks: [CARD], loading: false, loaded: true, loadError: null, detail: null, detailLoading: false, detailError: null, detailCache: {}, onboarded: true });
   useWorkspaceStore.setState({ l2View: 'overview', section: 'tasks', taskSection: 'overview', selectedTaskId: null, highlightedNodeId: null, pendingUndo: null, toast: null });
-  useAgentStore.setState({ sessions: [SESSION.session], detail: SESSION, runState: 'idle', runPhase: 'idle', runningSessionId: null, streaming: '', activeToolName: null, error: null, errorCategory: null, lastSequence: 0, lastActivityAt: null, pendingApproval: null, permissions: { mode: 'confirm_all', bypassWarningAccepted: false, authorizedDirectories: [] }, drafts: [], memoryProposals: [], attention: null, bootstrapped: true });
+  useAgentStore.setState({ sessions: [SESSION.session], detail: SESSION, runState: 'idle', runPhase: 'idle', runningSessionId: null, streaming: '', activeToolName: null, error: null, errorCategory: null, lastSequence: 0, lastActivityAt: null, pendingApproval: null, permissions: { mode: 'confirm_all', bypassWarningAccepted: false, authorizedDirectories: [] }, proposals: [], memoryProposals: [], attention: null, bootstrapped: true });
   setApi();
 });
 afterEach(() => { cleanup(); useWorkspaceStore.getState().undoPending(); useWorkspaceStore.getState().clearToast(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });

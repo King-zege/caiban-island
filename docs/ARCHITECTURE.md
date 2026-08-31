@@ -41,6 +41,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `AgentPermissionService` | 三档权限、审批等待、Bypass 和授权目录元数据 |
 | `AuthorizedFileService` | 授权根内文件操作与 realpath/逃逸防护 |
 | `KnowledgeService` | 单一主工作目录、增量扫描、Office/PDF 提取、FTS5、来源定位与不可信正文脱敏 |
+| `AutomationService` | 结构化计划、持久队列/防重/审批、DailyBriefingDocument、模型降级和 PDF 生成编排 |
 | `AgentSessionService` / `MemoryService` | 可见会话、FTS5 召回、确认记忆与提案 |
 | `ReminderService` | 项目、节点、杂事提醒的派生调度与原子领取 |
 | `ContractService` | 合同台账、履约动作、付款—开票关联、资料、备注与生命周期状态机 |
@@ -70,8 +71,9 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - `agent_sessions`、`agent_messages`、`agent_messages_fts`。
 - `memories`、`memory_proposals`、`settings`。
 - `knowledge_scans`、`knowledge_sources`、`knowledge_chunks`/FTS5 与 `workspace_project_bindings`；数据库只保存相对路径和本机派生正文，不记录工作目录绝对路径。
+- `agent_automations`、`automation_runs`；计划触发时间唯一，运行状态跨重启保持 queued/running/waiting_approval/succeeded/failed/skipped。
 
-当前 migration 为 v1–v10：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域；v10 增加工作目录扫描、来源、分块 FTS5 与项目绑定。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
+当前 migration 为 v1–v12：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域；v10 增加工作目录扫描、来源、分块 FTS5 与项目绑定；v11 增加 Agent 自动化与持久运行；v12 将遗留 pending 草稿转换为通用提案并删除旧草稿表。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
 
 时间以 ISO8601 UTC 保存，按 `tz_id` 显示；ID 为 GUID；排序必须包含稳定 tie-breaker。外键级联处理依附实体，跨服务副作用由 AppService 事务编排。
 
@@ -81,8 +83,9 @@ IPC 分组而非逐项复制：
 
 - `procurements/tasks/nodes/links/notes/reminders/misc/archive`：采购与杂事读写，写入经 AppCommand。
 - `contracts/contractActions/contractLinks/contractNotes`：合同台账与履约读写，写入经 AppCommand。
-- `agent/deepseek/memory/drafts`：会话、run、权限、配置、记忆和遗留草稿。
+- `agent/deepseek/memory/proposals`：会话、run、权限、配置、记忆和通用提案。
 - `knowledge`：主目录状态/选择、相对目录树、检索、来源片段、刷新与取消；选择之外不向 renderer 暴露绝对路径。
+- `automations`：列表/运行、总开关和审批；创建、更新、单项启停和删除仍经 AppCommand。
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
 - `settings/feishu/system`：设置、单向同步/导出和安全打开外部目标。
 

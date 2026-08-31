@@ -146,7 +146,7 @@ export class AgentPermissionService {
       : toolName;
     const command = typeof commandName === 'string' ? APP_COMMAND_REGISTRY.get(commandName as AppCommandName) : undefined;
     if (command) return command.risk;
-    if (['list_active_tasks', 'get_task_detail', 'list_contracts', 'get_contract_detail', 'search_archived_cases', 'list_authorized_files', 'read_authorized_file', 'search_sessions', 'get_workspace_tree', 'search_workspace', 'get_source_excerpt', 'refresh_workspace_index'].includes(toolName)) return 'read';
+    if (['list_active_tasks', 'get_task_detail', 'list_contracts', 'get_contract_detail', 'search_archived_cases', 'list_authorized_files', 'read_authorized_file', 'search_sessions', 'get_workspace_tree', 'search_workspace', 'get_source_excerpt', 'refresh_workspace_index', 'list_automations'].includes(toolName)) return 'read';
     if (toolName === 'write_authorized_file' || toolName === 'move_authorized_file' || toolName === 'delete_authorized_file' || toolName === 'propose_memory') return 'high';
     if (toolName.startsWith('propose_')) return 'high';
     return 'high';

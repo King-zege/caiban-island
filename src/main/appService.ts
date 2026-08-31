@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ArchiveService } from './archiveService';
-import { DraftService } from './draftService';
 import { ReminderService } from './reminderService';
 import { SettingsService } from './settingsService';
 import { TaskService } from './taskService';
@@ -34,7 +33,6 @@ export class AppService {
   readonly archive: ArchiveService;
   readonly reminders: ReminderService;
   readonly settings: SettingsService;
-  readonly drafts: DraftService;
   readonly proposals: AgentProposalService;
   readonly contracts: ContractService;
 
@@ -57,7 +55,6 @@ export class AppService {
     this.archive = new ArchiveService(db, this.dataDir);
     this.reminders = new ReminderService(db);
     this.settings = new SettingsService(db);
-    this.drafts = new DraftService(db, this.reminders);
     this.proposals = new AgentProposalService(db);
     this.contracts = new ContractService(db);
     this.reminders.reconcileFutureNodeReminders();
@@ -286,20 +283,6 @@ export class AppService {
   saveNote(taskId: string, body: string): void {
     this.tasks.saveNote(taskId, body);
     this.emitChanged();
-  }
-
-  confirmDraft(id: string): { type: 'task' | 'nodes' | 'action'; taskId: string } {
-    const result = this.drafts.confirm(id);
-    if (result.type === 'task') {
-      const task = this.tasks.getTask(result.taskId);
-      if (task?.kind === 'misc') this.reminders.syncMiscReminder(result.taskId);
-      else {
-        const defaults = this.settings.getJson<number[]>('reminder_default_offsets', []);
-        if (task?.deadlineUtc && defaults.length > 0) this.reminders.setOffsets(result.taskId, defaults);
-      }
-    }
-    this.emitChanged();
-    return result;
   }
 
   private withTransaction<T>(action: () => T): T {

@@ -11,14 +11,15 @@ import type { MemoryService } from './memoryService';
 import type { AgentPermissionService } from './agentPermissionService';
 import type { LocalCommandRuntime } from './localCommandServer';
 import type { AppCommandService } from './appCommandService';
-import type { DraftPayload } from '../shared/draftContracts';
-import type { IslandLevel, L2ContentMode, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
+import type { IslandLevel, L2TrackDescriptor, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
 import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 import type { AgentProposalCreateRequest } from '../shared/agentProposalContracts';
 import { PROCUREMENT_WORKFLOW_TEMPLATES } from '../shared/procurementContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from '../shared/procurementContracts';
 import type { ContractActionInput, ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from '../shared/contractContracts';
 import type { KnowledgeService } from './knowledgeService';
+import type { AutomationService } from './automationService';
+import type { AutomationCreateRequest, AutomationEnabledRequest, AutomationUpdateRequest } from '../shared/automationContracts';
 
 export function registerIpc(
   c: IslandWindowController,
@@ -30,7 +31,8 @@ export function registerIpc(
   permissions: AgentPermissionService,
   localCommands: LocalCommandRuntime,
   commands: AppCommandService,
-  knowledge: KnowledgeService
+  knowledge: KnowledgeService,
+  automations: AutomationService
 ): void {
   const holdIsolatedTestLevel = !app.isPackaged && Boolean(process.env['CAIBAN_TEST_USER_DATA_DIR']) && process.env['CAIBAN_TEST_HOLD_LEVEL'] === '1';
   ipcMain.handle('window:setLevel', (_e: IpcMainInvokeEvent, level: IslandLevel) => {
@@ -48,7 +50,7 @@ export function registerIpc(
   ipcMain.handle('window:setL2Detail', (_e: IpcMainInvokeEvent, v: boolean) => {
     return c.setL2Detail(v);
   });
-  ipcMain.handle('window:setL2ContentMode', (_e: IpcMainInvokeEvent, mode: L2ContentMode) => c.setL2ContentMode(mode));
+  ipcMain.handle('window:setL2ContentMode', (_e: IpcMainInvokeEvent, tracks: L2TrackDescriptor) => c.setL2ContentMode(tracks));
   ipcMain.handle('window:activate', () => {
     if (!c.win.isFocused()) c.win.focus();
     return true;
@@ -157,13 +159,6 @@ export function registerIpc(
     return err === '' ? { ok: true, data: true } : { ok: false, error: err };
   });
 
-  // —— 遗留待确认草稿（只在 Agent 工作区呈现） ——
-  ipcMain.handle('drafts:list', (_e: IpcMainInvokeEvent, sessionId?: string) => wrap(() => appSvc.drafts.listPending(sessionId)));
-  ipcMain.handle('drafts:get', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.get(id)));
-  ipcMain.handle('drafts:update', (_e: IpcMainInvokeEvent, id: string, payload: DraftPayload) => wrap(() => appSvc.drafts.updatePayload(id, payload)));
-  ipcMain.handle('drafts:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.drafts.discard(id)));
-  ipcMain.handle('drafts:confirm', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'confirm_legacy_draft', input: { draftId: id } }).data));
-
   // —— 通用 Agent 提案：命令批次在同一事务内批准或完整回滚 ——
   ipcMain.handle('proposals:list', (_e: IpcMainInvokeEvent, sessionId?: string) => wrap(() => appSvc.proposals.listPending(sessionId)));
   ipcMain.handle('proposals:create', (_e: IpcMainInvokeEvent, request: AgentProposalCreateRequest) => wrap(() => appSvc.proposals.create(request)));
@@ -208,7 +203,11 @@ export function registerIpc(
     const settings = permissions.addDirectory(selected.filePaths[0]);
     const directory = settings.authorizedDirectories.find((entry) => path.normalize(entry.path).toLowerCase() === path.normalize(selected.filePaths[0]).toLowerCase());
     if (!directory) return { ok: false as const, error: '工作目录授权失败' };
-    try { return { ok: true as const, data: await knowledge.setPrimaryDirectory(directory.id) }; }
+    try {
+      const data = await knowledge.setPrimaryDirectory(directory.id);
+      automations.ensureDefault(); void automations.tick();
+      return { ok: true as const, data };
+    }
     catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
   });
   ipcMain.handle('knowledge:tree', () => wrap(() => knowledge.getWorkspaceTree()));
@@ -216,6 +215,13 @@ export function registerIpc(
   ipcMain.handle('knowledge:sourceExcerpt', (_e: IpcMainInvokeEvent, sourceId: string, locator?: string) => wrap(() => knowledge.getSourceExcerpt(sourceId, locator)));
   ipcMain.handle('knowledge:refresh', () => wrap(() => knowledge.refreshWorkspaceIndex()));
   ipcMain.handle('knowledge:cancelScan', () => wrap(() => knowledge.cancelScan()));
+  ipcMain.handle('automations:list', () => wrap(() => ({ enabled: automations.globalEnabled(), automations: automations.list(), runs: automations.listRuns(20) })));
+  ipcMain.handle('automations:create', (_e: IpcMainInvokeEvent, input: AutomationCreateRequest) => wrap(() => commands.execute({ name: 'create_automation', input }).data));
+  ipcMain.handle('automations:update', (_e: IpcMainInvokeEvent, input: AutomationUpdateRequest) => wrap(() => commands.execute({ name: 'update_automation', input }).data));
+  ipcMain.handle('automations:setEnabled', (_e: IpcMainInvokeEvent, input: AutomationEnabledRequest) => wrap(() => commands.execute({ name: 'set_automation_enabled', input }).data));
+  ipcMain.handle('automations:delete', (_e: IpcMainInvokeEvent, id: string) => wrap(() => commands.execute({ name: 'delete_automation', input: { automationId: id } }).data));
+  ipcMain.handle('automations:setGlobalEnabled', (_e: IpcMainInvokeEvent, enabled: boolean) => wrap(() => automations.setGlobalEnabled(enabled)));
+  ipcMain.handle('automations:approveRun', (_e: IpcMainInvokeEvent, id: string) => wrap(() => automations.approveRun(id)));
   ipcMain.handle('localCommands:getConfig', () => wrap(() => localCommands.config()));
   ipcMain.handle('deepseek:status', () => wrap(() => deepSeek.status()));
   ipcMain.handle('deepseek:saveConfig', (_e: IpcMainInvokeEvent, model: DeepSeekModel, key: string) =>

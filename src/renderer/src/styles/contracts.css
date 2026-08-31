@@ -116,6 +116,20 @@
 .contract-card-next strong { overflow: hidden; color: var(--text-primary); font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .contract-card-foot { justify-content: flex-start; }
 
+.l2-lanes-triple .contract-card {
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  gap: 2px;
+}
+
+.l2-lanes-triple .contract-card-title {
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.l2-lanes-triple .contract-card-next small { display: none; }
+
 .task-indicator.contract { background: var(--accent); }
 .task-indicator.contract.risk-overdue { background: var(--urgency-critical); }
 .task-indicator.contract.risk-due_soon { background: var(--status-pending); }

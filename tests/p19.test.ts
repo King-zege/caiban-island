@@ -57,7 +57,7 @@ describe('P19 数据迁移与任务分层', () => {
     expect(db.prepare("SELECT body FROM notes WHERE task_id='m1'").get()).toEqual({ body: '原备注\n\n原任务说明\n旧说明一' });
     expect(db.prepare("SELECT body FROM notes WHERE task_id='m2'").get()).toEqual({ body: '旧说明二' });
     expect(db.prepare('SELECT COUNT(*) AS count FROM reminders').get()).toEqual({ count: 0 });
-    expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 10 });
+    expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 12 });
     db.close();
   });
 
@@ -128,21 +128,4 @@ describe('P19 杂事精确提醒', () => {
     expect(app.resolveLegacyMiscDeadline({ taskId: second.id, action: 'clear', expectedDeadlineUtc: past }).deadlineUtc).toBeNull();
   });
 
-  it('Pi 杂事草稿确认前不落正式数据，确认后同事务生成备注与提醒', () => {
-    const { app } = fresh();
-    const remindAtUtc = '2099-09-01T08:30:00.000Z';
-    const draft = app.drafts.create('pi', {
-      type: 'task',
-      taskInput: { kind: 'misc', name: '提交报销', note: '附上发票', remindAtUtc, tzId: 'Asia/Shanghai' },
-      nodes: [],
-      warnings: []
-    });
-    expect(app.tasks.listActive()).toEqual([]);
-    const result = app.confirmDraft(draft.id);
-    const detail = app.tasks.getTaskDetail(result.taskId);
-    expect(detail.task.kind).toBe('misc');
-    expect(detail.note).toBe('附上发票');
-    expect(app.reminders.listMiscReminder(result.taskId)?.fire_at_utc).toBe(remindAtUtc);
-    expect(() => app.confirmDraft(draft.id)).toThrow('草稿已处理');
-  });
 });

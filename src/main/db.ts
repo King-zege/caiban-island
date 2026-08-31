@@ -326,6 +326,76 @@ const SCHEMA_V10 = [
   )`
 ];
 
+const SCHEMA_V11 = [
+  `CREATE TABLE IF NOT EXISTS agent_automations(
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    schedule_kind TEXT NOT NULL CHECK(schedule_kind IN ('once','daily','weekly')),
+    time_zone TEXT NOT NULL,
+    local_time TEXT NOT NULL,
+    weekdays_json TEXT NOT NULL DEFAULT '[]',
+    run_at_utc TEXT,
+    next_run_at_utc TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    is_default_daily_briefing INTEGER NOT NULL DEFAULT 0,
+    last_failure TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS agent_automations_default_daily ON agent_automations(is_default_daily_briefing) WHERE is_default_daily_briefing=1',
+  'CREATE INDEX IF NOT EXISTS agent_automations_due ON agent_automations(enabled,next_run_at_utc)',
+  `CREATE TABLE IF NOT EXISTS automation_runs(
+    id TEXT PRIMARY KEY,
+    automation_id TEXT NOT NULL REFERENCES agent_automations(id) ON DELETE CASCADE,
+    scheduled_for_utc TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('queued','running','waiting_approval','succeeded','failed','skipped')),
+    session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL,
+    output_relative_path TEXT,
+    approval_required INTEGER NOT NULL DEFAULT 0,
+    error_category TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    UNIQUE(automation_id,scheduled_for_utc)
+  )`,
+  'CREATE INDEX IF NOT EXISTS automation_runs_status_created ON automation_runs(status,created_at)'
+];
+
+function convertLegacyDraft(raw: string): { commands: unknown[]; warnings: string[]; title: string } {
+  try {
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    const warnings = Array.isArray(payload.warnings) ? payload.warnings.filter((item): item is string => typeof item === 'string') : [];
+    if (payload.type === 'task' && payload.taskInput && typeof payload.taskInput === 'object') {
+      const input = payload.taskInput as Record<string, unknown>;
+      if (input.kind === 'misc') return { title: `迁移杂事方案 · ${String(input.name ?? '')}`, warnings, commands: [{ name: 'create_task', input }] };
+      const name = String(input.fullName ?? input.name ?? '').trim();
+      const shortName = String(input.shortName ?? input.name ?? '').trim().slice(0, 24);
+      const nodes = Array.isArray(payload.nodes) ? payload.nodes.map((node) => ({ ...(node as Record<string, unknown>), source: 'custom' })) : [];
+      return { title: `迁移采购方案 · ${shortName || name}`, warnings, commands: [{ name: 'create_procurement_project', input: {
+        fullName: name, shortName: shortName || name.slice(0, 24), description: String(input.description ?? ''), urgency: input.urgency ?? 'normal',
+        deadlineUtc: input.deadlineUtc ?? null, tzId: String(input.tzId ?? 'Asia/Shanghai'), procurementMethod: 'custom', templateId: null, nodes
+      } }] };
+    }
+    if (payload.type === 'nodes' && typeof payload.taskId === 'string' && Array.isArray(payload.nodes)) {
+      return { title: '迁移节点方案', warnings, commands: payload.nodes.map((node) => ({ name: 'add_node', input: { taskId: payload.taskId, node: { ...(node as Record<string, unknown>), source: 'custom' } } })) };
+    }
+    if (payload.type === 'action' && typeof payload.taskId === 'string' && payload.action && typeof payload.action === 'object') {
+      const action = payload.action as Record<string, unknown>; let command: unknown = null;
+      if (action.kind === 'set_node_status') command = { name: 'set_node_status', input: { nodeId: action.nodeId, status: action.after } };
+      if (action.kind === 'set_reminders') command = { name: 'set_reminders', input: { taskId: payload.taskId, offsets: action.after } };
+      if (action.kind === 'add_node') command = { name: 'add_node', input: { taskId: payload.taskId, node: action.input } };
+      if (action.kind === 'update_node') command = { name: 'update_node', input: { nodeId: action.nodeId, node: action.after } };
+      if (action.kind === 'delete_node') command = { name: 'remove_node', input: { nodeId: (action.before as Record<string, unknown> | undefined)?.id } };
+      if (action.kind === 'reorder_nodes') command = { name: 'reorder_nodes', input: { taskId: payload.taskId, orderedNodeIds: action.after } };
+      return { title: `迁移操作方案 · ${String(payload.summary ?? action.kind ?? '')}`, warnings, commands: command ? [command] : [] };
+    }
+    return { title: '无法自动转换的遗留方案', commands: [], warnings: [...warnings, '原草稿格式无法转换，请丢弃并重新提出需求'] };
+  } catch {
+    return { title: '损坏的遗留方案', commands: [], warnings: ['原草稿数据损坏，请丢弃并重新提出需求'] };
+  }
+}
+
 function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
   const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as unknown as Array<{ name: string }>;
   return columns.some((entry) => entry.name === column);
@@ -402,6 +472,23 @@ export function migrate(db: DatabaseSync): void {
     if (!applied.has(10)) {
       for (const stmt of SCHEMA_V10) db.exec(stmt);
       record(10);
+    }
+    if (!applied.has(11)) {
+      for (const stmt of SCHEMA_V11) db.exec(stmt);
+      record(11);
+    }
+    if (!applied.has(12)) {
+      const legacyRows = db.prepare("SELECT id,session_id,payload,created_at FROM drafts WHERE state='pending'").all() as unknown as Array<{ id: string; session_id: string | null; payload: string; created_at: string }>;
+      const upsert = db.prepare(`INSERT INTO agent_proposals(id,session_id,kind,title,summary,payload,state,created_at,updated_at)
+        VALUES(?,?,'legacy_draft',?,'由旧草稿迁移；批准前不会写入正式数据',?,'pending',?,?)
+        ON CONFLICT(id) DO UPDATE SET kind='legacy_draft',title=excluded.title,summary=excluded.summary,payload=excluded.payload,state='pending',updated_at=excluded.updated_at`);
+      for (const row of legacyRows) {
+        const converted = convertLegacyDraft(row.payload);
+        upsert.run(row.id, row.session_id, converted.title, JSON.stringify({ commands: converted.commands, warnings: converted.warnings }), row.created_at, new Date().toISOString());
+      }
+      db.exec('DROP INDEX IF EXISTS drafts_session_state_created');
+      db.exec('DROP TABLE drafts');
+      record(12);
     }
     db.exec('COMMIT');
   } catch (e) {

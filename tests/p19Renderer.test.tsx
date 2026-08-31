@@ -116,7 +116,7 @@ describe('P19 Renderer 任务分层', () => {
     render(<div><L2Panel reducedMotion /><div data-app-overlay-root="true" /></div>);
 
     const sticker = await screen.findByRole('button', { name: /打开杂事「联系物业续门禁卡」/ });
-    await waitFor(() => expect(setL2ContentMode).toHaveBeenCalledWith('mixed'));
+    await waitFor(() => expect(setL2ContentMode).toHaveBeenCalledWith({ agent: false, procurement: true, contracts: false, misc: true }));
     expect(screen.getByRole('region', { name: '采购项目' })).not.toBeNull();
     expect(screen.getByRole('region', { name: '杂事' })).not.toBeNull();
     await userEvent.click(sticker);

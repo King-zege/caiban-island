@@ -10,7 +10,6 @@ import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
 import { migrate, openDatabase } from '../src/main/db';
 import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 import type { PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
-import type { TaskDraftPayload } from '../src/shared/types';
 import type { AgentRunEvent, AgentRunPhase, AgentRunState } from '../src/shared/types';
 
 const dirs: string[] = [];
@@ -42,64 +41,27 @@ function fresh() {
   return { dir, dbPath, db, app, sessions };
 }
 
-function taskDraft(name: string): TaskDraftPayload {
-  return {
-    type: 'task',
-    taskInput: { kind: 'task', name, description: `${name}说明`, urgency: 'normal', deadlineUtc: null, tzId: 'Asia/Shanghai' },
-    nodes: [{ title: '需求确认', description: '', startUtc: null, endUtc: null }],
-    warnings: []
-  };
-}
-
 afterEach(() => {
   for (const dir of dirs.splice(0)) {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
   }
 });
 
-describe('P20 migration v6 与草稿会话修订', () => {
-  it('从 v5 升级保留旧草稿，建立索引并在会话删除时置空', () => {
+describe('P20 migration 回滚', () => {
+  it('迁移失败完整回滚且不会伪造 v12 记录', () => {
     const f = fresh();
-    f.db.exec('DROP INDEX drafts_session_state_created; ALTER TABLE drafts DROP COLUMN session_id; DELETE FROM schema_migrations WHERE version >= 6;');
-    f.db.prepare("INSERT INTO drafts(id, source, payload, state, created_at) VALUES('legacy','mcp',?,'pending','2026-08-01T00:00:00.000Z')").run(JSON.stringify(taskDraft('旧草稿')));
-    f.db.close();
-
-    const upgraded = openDatabase(f.dbPath);
-    const app = new AppService(upgraded, f.dir);
-    const sessions = new AgentSessionService(upgraded, f.dir);
-    expect(app.drafts.get('legacy').sessionId).toBeNull();
-    expect(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='drafts_session_state_created'").get()).toBeTruthy();
-    const session = sessions.create('deepseek-v4-flash', '规划项目');
-    const draft = app.drafts.create('pi', taskDraft('新项目'), { sessionId: session.id });
-    sessions.delete(session.id);
-    expect(app.drafts.get(draft.id).sessionId).toBeNull();
-    migrate(upgraded);
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 10 });
-    upgraded.close();
-  });
-
-  it('迁移失败完整回滚且不会伪造 v6 记录', () => {
-    const f = fresh();
-    f.db.exec('DELETE FROM schema_migrations WHERE version >= 6;');
+    f.db.exec(`
+      CREATE TABLE drafts(id TEXT PRIMARY KEY, source TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, session_id TEXT);
+      CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at);
+      INSERT INTO drafts VALUES('rollback-draft','pi','{}','pending','2026-01-01',NULL);
+      CREATE TRIGGER reject_legacy_proposal BEFORE INSERT ON agent_proposals BEGIN SELECT RAISE(ABORT, 'synthetic migration failure'); END;
+      DELETE FROM schema_migrations WHERE version = 12;
+    `);
     expect(() => migrate(f.db)).toThrow();
-    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 5 });
+    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 11 });
+    expect(f.db.prepare("SELECT id FROM drafts WHERE id='rollback-draft'").get()).toEqual({ id: 'rollback-draft' });
   });
 
-  it('同会话修订原子替代旧任务稿，独立提案保留；跨会话与失败修订不改变旧稿', () => {
-    const f = fresh();
-    const firstSession = f.sessions.create('deepseek-v4-flash', '规划一');
-    const secondSession = f.sessions.create('deepseek-v4-flash', '规划二');
-    const original = f.app.drafts.create('pi', taskDraft('原方案'), { sessionId: firstSession.id });
-    const independent = f.app.drafts.create('pi', taskDraft('独立方案'), { sessionId: firstSession.id });
-    const revised = f.app.drafts.create('pi', taskDraft('修订方案'), { sessionId: firstSession.id, replacesDraftId: original.id });
-
-    expect(f.app.drafts.get(original.id).state).toBe('superseded');
-    expect(f.app.drafts.listPending(firstSession.id).map((draft) => draft.id).sort()).toEqual([independent.id, revised.id].sort());
-    expect(() => f.app.drafts.confirm(original.id)).toThrow('草稿已处理');
-    expect(() => f.app.drafts.create('pi', taskDraft('越界修订'), { sessionId: secondSession.id, replacesDraftId: independent.id })).toThrow('不能替代其他会话');
-    expect(f.app.drafts.get(independent.id).state).toBe('pending');
-    expect(f.app.drafts.listPending(secondSession.id)).toEqual([]);
-  });
 });
 
 describe('P20 归档案例与后台运行', () => {
@@ -146,9 +108,9 @@ describe('P20 归档案例与后台运行', () => {
     expect(tracker.handle(stateEvent('s1', 'completed', 'completed'), true)).toBeNull();
     expect(tracker.handle(stateEvent('s1', 'completed', 'completed'), false)).toBeNull();
     tracker.handle(stateEvent('s2', 'running', 'connecting'), false);
-    tracker.handle({ type: 'tool_end', sessionId: 's2', toolCallId: 't1', toolName: 'execute_app_command', isError: false, draftId: 'draft-1', sequence: ++eventSequence, at: new Date().toISOString() }, false);
+    tracker.handle({ type: 'tool_end', sessionId: 's2', toolCallId: 't1', toolName: 'execute_app_command', isError: false, proposalId: 'proposal-1', sequence: ++eventSequence, at: new Date().toISOString() }, false);
     const notice = tracker.handle(stateEvent('s2', 'completed', 'completed'), false);
-    expect(notice).toEqual({ attention: { sessionId: 's2', draftId: 'draft-1', memoryProposalId: undefined }, body: 'Agent 待确认操作已生成，点击查看' });
+    expect(notice).toEqual({ attention: { sessionId: 's2', proposalId: 'proposal-1', memoryProposalId: undefined }, body: 'Agent 待确认操作已生成，点击查看' });
     expect(JSON.stringify(notice)).not.toContain('加油站');
     expect(tracker.handle(stateEvent('s2', 'completed', 'completed'), false)).toBeNull();
     tracker.handle(stateEvent('s2', 'running', 'connecting'), false);

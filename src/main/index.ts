@@ -1,5 +1,6 @@
 import { app, BrowserWindow, nativeTheme, Notification, powerMonitor, safeStorage } from 'electron';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { IslandWindowController } from './windowController';
 import { registerIpc } from './ipc';
 import { createTray } from './tray';
@@ -23,6 +24,8 @@ import type { RenderMode } from '../shared/types';
 import type { AgentAttentionEvent, AgentRunEvent, ReminderEvent } from '../shared/types';
 import type { DueReminder } from './reminderService';
 import { KnowledgeService } from './knowledgeService';
+import { AutomationService, type DailyBriefingAnalysis } from './automationService';
+import { PiAgentAdapter } from './piAgentAdapter';
 
 // 数据目录固定为 %APPDATA%\caiban-island（SPEC 第 5 节）
 const testUserDataDir = process.env['CAIBAN_TEST_USER_DATA_DIR'];
@@ -52,6 +55,7 @@ let isQuitting = false;
 let fullscreenDetector: FullscreenDetector | null = null;
 let agentService: AgentService | null = null;
 let knowledgeService: KnowledgeService | null = null;
+let automationService: AutomationService | null = null;
 let detectedRenderMode: RenderMode = 'software';
 let gpuCrashed = false;
 
@@ -276,7 +280,42 @@ app.on('child-process-gone', (_event, details) => {
       const permissions = new AgentPermissionService(appSvc.settings);
       const authorizedFiles = new AuthorizedFileService(permissions);
       knowledgeService = new KnowledgeService(db, permissions);
-      const appCommands = new AppCommandService(appSvc, knowledgeService);
+      const renderPdf = async (html: string): Promise<Buffer> => {
+        const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+        try {
+          await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+          return await pdfWindow.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+        } finally { pdfWindow.destroy(); }
+      };
+      const analyzeBriefing = async (document: import('../shared/types').DailyBriefingDocument, signal: AbortSignal): Promise<DailyBriefingAnalysis> => {
+        const chunks: string[] = [];
+        const runner = new PiAgentAdapter();
+        const result = await runner.run({
+          sessionId: randomUUID(), model: deepSeek.model(), apiKey: deepSeek.apiKey(), history: [], tools: [], signal,
+          input: JSON.stringify(document),
+          systemPrompt: '你是采购工作清单排序器。输入是可信的结构化 DailyBriefingDocument；不得新增、删除或改写事项，只能按风险重排各区的 id，并给出最多 8 条简短行动建议。只输出 JSON：{"overdueOrder":[],"todayOrder":[],"nextSevenDaysOrder":[],"notes":[]}。',
+          onEvent: (event) => { if (event.type === 'text_delta') chunks.push(event.delta); }
+        });
+        if (result !== 'completed') throw new Error('Agent 分析未完成');
+        const raw = chunks.join('').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+        const value: unknown = JSON.parse(raw);
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Agent 分析结构无效');
+        const record = value as Record<string, unknown>;
+        const stringArray = (key: string): string[] => Array.isArray(record[key]) && (record[key] as unknown[]).every((item) => typeof item === 'string') ? record[key] as string[] : [];
+        return { overdueOrder: stringArray('overdueOrder'), todayOrder: stringArray('todayOrder'), nextSevenDaysOrder: stringArray('nextSevenDaysOrder'), notes: stringArray('notes') };
+      };
+      automationService = new AutomationService(
+        db, permissions, knowledgeService, agentSessions, deepSeek, renderPdf,
+        () => agentService?.isRunning() ?? false,
+        (run) => {
+          if (!win.isDestroyed()) win.webContents.send('automation:event', run);
+          const attention = run.sessionId ? { sessionId: run.sessionId } : undefined;
+          const body = run.status === 'waiting_approval' ? '每日工作清单等待批准生成' : run.status === 'succeeded' ? '今日工作清单与 PDF 已生成' : run.status === 'failed' ? '自动化运行失败，请查看状态' : '';
+          if (body) showToast('采办岛 Agent', body, attention ? () => openAgentAttention(attention) : undefined);
+        },
+        analyzeBriefing
+      );
+      const appCommands = new AppCommandService(appSvc, knowledgeService, automationService);
       const localTokenVault = new LocalApiTokenVault(appSvc.settings, safeStorage);
 
       // P6：飞书同步（手动按钮 + 变更后自动同步，防抖 3s）
@@ -330,10 +369,12 @@ app.on('child-process-gone', (_event, details) => {
       };
       agentService = new AgentService(
         appSvc, agentSessions, deepSeek, emitAgentEvent,
-        undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService
+        undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService, automationService
       );
-      registerIpc(controller, appSvc, feishu, agentService, deepSeek, memories, permissions, localCommandRuntime, appCommands, knowledgeService);
+      registerIpc(controller, appSvc, feishu, agentService, deepSeek, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
       void knowledgeService.initialize().catch(() => undefined);
+      automationService.ensureDefault();
+      automationService.start();
 
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -356,6 +397,7 @@ app.on('child-process-gone', (_event, details) => {
       fullscreenDetector = new FullscreenDetector(controller);
       fullscreenDetector.start();
       startReminderScheduler(appSvc, win);
+      powerMonitor.on('resume', () => automationService?.resume());
     }
 
     app.whenReady().then(createWindow);
@@ -371,6 +413,7 @@ app.on('child-process-gone', (_event, details) => {
       if (localCommandRuntime) void localCommandRuntime.close();
       if (agentService) void agentService.dispose();
       knowledgeService?.dispose();
+      automationService?.stop();
     });
   }
 }

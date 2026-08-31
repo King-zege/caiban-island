@@ -61,20 +61,20 @@ export class AgentProposalService {
 
   listPending(sessionId?: string): AgentProposal[] {
     const rows = (sessionId
-      ? this.db.prepare("SELECT * FROM agent_proposals WHERE state='pending' AND session_id=? AND kind='command_batch' ORDER BY created_at, id").all(sessionId)
-      : this.db.prepare("SELECT * FROM agent_proposals WHERE state='pending' AND kind='command_batch' ORDER BY created_at, id").all()) as unknown as Record<string, unknown>[];
+      ? this.db.prepare("SELECT * FROM agent_proposals WHERE state='pending' AND session_id=? ORDER BY created_at, id").all(sessionId)
+      : this.db.prepare("SELECT * FROM agent_proposals WHERE state='pending' ORDER BY created_at, id").all()) as unknown as Record<string, unknown>[];
     return rows.map(toProposal);
   }
 
   get(id: string): AgentProposal {
-    const row = this.db.prepare("SELECT * FROM agent_proposals WHERE id=? AND kind='command_batch'").get(id) as Record<string, unknown> | undefined;
+    const row = this.db.prepare('SELECT * FROM agent_proposals WHERE id=?').get(id) as Record<string, unknown> | undefined;
     if (!row) throw new AgentProposalError('提案不存在');
     return toProposal(row);
   }
 
   discard(id: string): AgentProposal {
     const now = new Date().toISOString();
-    const result = this.db.prepare("UPDATE agent_proposals SET state='discarded', updated_at=? WHERE id=? AND kind='command_batch' AND state='pending'").run(now, id);
+    const result = this.db.prepare("UPDATE agent_proposals SET state='discarded', updated_at=? WHERE id=? AND state='pending'").run(now, id);
     if (result.changes !== 1) throw new AgentProposalError('提案不存在或已处理');
     return this.get(id);
   }
@@ -82,6 +82,7 @@ export class AgentProposalService {
   approve(id: string, execute: (command: AppCommand) => AppCommandResult): AgentProposalApprovalResult {
     const proposal = this.get(id);
     if (proposal.state !== 'pending') throw new AgentProposalError('提案已处理');
+    if (proposal.payload.commands.length === 0) throw new AgentProposalError('提案没有可执行命令，只能丢弃');
     this.db.exec('BEGIN');
     try {
       const results = proposal.payload.commands.map(execute);

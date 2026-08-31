@@ -156,9 +156,9 @@ describe('P12 单次原生 resize 协调器', () => {
     await controller.init();
     setBounds.mockClear();
 
-    controller.setL2ContentMode('mixed');
+    controller.setL2ContentMode({ agent: false, procurement: true, contracts: false, misc: true });
     const expand = controller.setLevel('l2');
-    controller.setL2ContentMode('triple');
+    controller.setL2ContentMode({ agent: false, procurement: true, contracts: true, misc: true });
     expect(controller.state().transition?.toBounds.height).toBe(480);
     controller.transitionReady(expand.transitionId!);
     vi.advanceTimersByTime(TIMING.RESIZE_SETTLE_MS);

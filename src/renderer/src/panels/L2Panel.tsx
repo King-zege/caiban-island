@@ -127,24 +127,31 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
     return right.task.updatedAtUtc.localeCompare(left.task.updatedAtUtc) || left.task.id.localeCompare(right.task.id);
   }), [visibleTasks]);
 
-  const laneCount = Number(projectTasks.length > 0) + Number(contracts.length > 0) + Number(miscTasks.length > 0);
-  const overviewContentMode = laneCount === 3
-    ? 'triple'
-    : laneCount === 2
-      ? 'mixed'
-      : contracts.length > 0
-        ? 'contract'
-        : projectTasks.length > 0
-          ? 'project'
-          : miscTasks.length > 0
-            ? 'misc'
-            : 'empty';
-  const contentMode = l2View === 'agent' ? 'agent' : overviewContentMode;
+  const trackDescriptor = useMemo(() => ({
+    agent: l2View === 'agent',
+    procurement: l2View !== 'agent' && projectTasks.length > 0,
+    contracts: l2View !== 'agent' && contracts.length > 0,
+    misc: l2View !== 'agent' && miscTasks.length > 0
+  }), [contracts.length, l2View, miscTasks.length, projectTasks.length]);
+  const laneCount = Number(trackDescriptor.procurement) + Number(trackDescriptor.contracts) + Number(trackDescriptor.misc);
+  const contentMode = trackDescriptor.agent
+    ? 'agent'
+    : laneCount === 3
+      ? 'triple'
+      : laneCount === 2
+        ? 'mixed'
+        : trackDescriptor.contracts
+          ? 'contract'
+          : trackDescriptor.procurement
+            ? 'project'
+            : trackDescriptor.misc
+              ? 'misc'
+              : 'empty';
 
   useEffect(() => {
     const setContentMode = window.api.setL2ContentMode;
-    if (typeof setContentMode === 'function') void setContentMode(contentMode);
-  }, [contentMode]);
+    if (typeof setContentMode === 'function') void setContentMode(trackDescriptor);
+  }, [trackDescriptor]);
 
   useEffect(() => {
     if (projectTasks.length === 0) {

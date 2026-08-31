@@ -9,6 +9,7 @@ import type { AgentPermissionService } from './agentPermissionService';
 import type { AuthorizedFileService } from './authorizedFileService';
 import type { KnowledgeService } from './knowledgeService';
 import { AppCommandService } from './appCommandService';
+import type { AutomationService } from './automationService';
 import type {
   AgentRunEvent,
   AgentRunRequest,
@@ -44,7 +45,6 @@ interface ActiveRun {
   timedOut: boolean;
   state: AgentRunState;
   startedAt: string;
-  latestDraftId?: string;
   latestMemoryProposalId?: string;
   phase: AgentRunPhase;
   lastActivityAt: string;
@@ -76,7 +76,8 @@ export class AgentService {
     private readonly contextProviders: AgentContextProvider[] = [],
     private readonly permissions?: AgentPermissionService,
     private readonly files?: AuthorizedFileService,
-    private readonly knowledge?: KnowledgeService
+    private readonly knowledge?: KnowledgeService,
+    private readonly automations?: AutomationService
   ) {
     this.releaseApprovalListener = this.permissions?.onApproval((event) => {
       if (event.type === 'required') {
@@ -146,6 +147,7 @@ export class AgentService {
 
   setSurfaceVisible(visible: boolean): void { this.surfaceVisible = visible; }
   isSurfaceVisible(): boolean { return this.surfaceVisible; }
+  isRunning(): boolean { return this.active !== null; }
 
   async waitForIdle(): Promise<void> {
     await this.active?.promise;
@@ -218,7 +220,7 @@ export class AgentService {
         model: session.model,
         apiKey: key,
         systemPrompt: this.systemPrompt(session.id, [...history, currentMessage]),
-        tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories, this.files, new AppCommandService(this.appSvc, this.knowledge), this.knowledge),
+        tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories, this.files, new AppCommandService(this.appSvc, this.knowledge, this.automations), this.knowledge, this.automations),
         signal: active.controller.signal,
         onEvent: (event) => this.handleRunnerEvent(session.id, event),
         beforeToolCall: permissions
@@ -267,16 +269,15 @@ export class AgentService {
       this.emitEvent({ type: 'tool_start', sessionId, toolCallId: event.toolCallId, toolName: event.toolName });
       return;
     }
-    const label = event.isError ? '执行失败' : event.draftId ? '已生成遗留待确认草稿' : event.memoryProposalId ? '已生成待审核记忆' : '操作完成';
+    const label = event.isError ? '执行失败' : event.proposalId ? '已生成待审核操作' : event.memoryProposalId ? '已生成待审核记忆' : '操作完成';
     if (!event.isError && this.active?.sessionId === sessionId) {
-      if (event.draftId) this.active.latestDraftId = event.draftId;
       if (event.memoryProposalId) this.active.latestMemoryProposalId = event.memoryProposalId;
     }
     const message = this.sessions.append(sessionId, 'tool', `${event.toolName}：${label}`, event.toolName);
     this.snapshot.activeTool = null;
     this.updatePhase(event.isError ? 'tool' : 'applying');
     this.emitEvent({ type: 'message', sessionId, message });
-    this.emitEvent({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, draftId: event.draftId, memoryProposalId: event.memoryProposalId });
+    this.emitEvent({ type: 'tool_end', sessionId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, proposalId: event.proposalId, memoryProposalId: event.memoryProposalId });
   }
 
   private systemPrompt(sessionId: string, messages: AgentSessionDetail['messages']): string {
@@ -293,12 +294,11 @@ export class AgentService {
       .slice(-12)
       .map((message) => `- ${message.id}（${message.role}）：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`)
       .join('\n');
-    const pendingPlans = this.appSvc.drafts.listPending(sessionId)
-      .filter((draft) => draft.payload.type === 'task')
-      .map((draft) => `- draftId=${draft.id}：${JSON.stringify(draft.payload)}`)
+    const pendingPlans = this.appSvc.proposals.listPending(sessionId)
+      .map((proposal) => `- proposalId=${proposal.id}：${proposal.title}（${proposal.payload.commands.length} 条命令）`)
       .join('\n');
     const directories = this.permissions?.snapshot().authorizedDirectories.map((entry) => `- ${entry.id}：${entry.label}`).join('\n') ?? '';
-    return `${SYSTEM_PROMPT}\n8. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n9. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[遗留待确认任务方案]\n${pendingPlans || '无'}\n\n[已授权目录，仅使用 ID 与相对路径]\n${directories || '无'}\n\n[当前会话可引用证据]\n${evidence}`;
+    return `${SYSTEM_PROMPT}\n8. 长期记忆只能通过 propose_memory 提议并引用下列证据消息 ID；未确认提案不是事实。\n9. 需要召回旧会话时只能使用 search_sessions。\n\n${context}\n\n[待确认命令提案]\n${pendingPlans || '无'}\n\n[已授权目录，仅使用 ID 与相对路径]\n${directories || '无'}\n\n[当前会话可引用证据]\n${evidence}`;
   }
 
   private updatePhase(phase: AgentRunPhase): void {

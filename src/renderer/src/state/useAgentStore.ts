@@ -11,7 +11,7 @@ import type {
   AgentRunState,
   AgentSessionDetail,
   AgentSessionSummary,
-  DraftRecord,
+  AgentProposal,
   MemoryProposal
 } from '../../../shared/types';
 import { useTaskStore } from './useStore';
@@ -33,7 +33,7 @@ interface AgentStoreState {
   lastActivityAt: string | null;
   pendingApproval: AgentApprovalRequest | null;
   permissions: AgentPermissionSettings;
-  drafts: DraftRecord[];
+  proposals: AgentProposal[];
   memoryProposals: MemoryProposal[];
   attention: AgentAttentionEvent | null;
   bootstrapped: boolean;
@@ -52,8 +52,8 @@ interface AgentStoreState {
   handleEvent: (event: AgentRunEvent) => void;
   handleAttention: (event: AgentAttentionEvent) => Promise<void>;
   refreshProposals: (sessionId?: string | null) => Promise<void>;
-  confirmDraft: (id: string) => Promise<{ type: 'task' | 'nodes' | 'action'; taskId: string } | string>;
-  discardDraft: (id: string) => Promise<string | null>;
+  approveProposal: (id: string) => Promise<string | null>;
+  discardProposal: (id: string) => Promise<string | null>;
   confirmMemoryProposal: (id: string) => Promise<string | null>;
   discardMemoryProposal: (id: string) => Promise<string | null>;
   deleteCurrentSession: () => Promise<string | null>;
@@ -79,7 +79,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   sessions: [], detail: null, runState: 'idle', runPhase: 'idle', runningSessionId: null,
   streaming: '', activeToolName: null, error: null, errorCategory: null, lastSequence: 0,
   lastActivityAt: null, pendingApproval: null, permissions: EMPTY_PERMISSIONS,
-  drafts: [], memoryProposals: [], attention: null, bootstrapped: false,
+  proposals: [], memoryProposals: [], attention: null, bootstrapped: false,
 
   bootstrap: async () => {
     if (get().bootstrapped) return;
@@ -153,7 +153,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
   newConversation: () => {
     if (RUNNING_STATES.includes(get().runState)) return;
-    set({ detail: null, streaming: '', activeToolName: null, error: null, errorCategory: null, drafts: [], memoryProposals: [], attention: null, runState: 'idle', runPhase: 'idle' });
+    set({ detail: null, streaming: '', activeToolName: null, error: null, errorCategory: null, proposals: [], memoryProposals: [], attention: null, runState: 'idle', runPhase: 'idle' });
   },
 
   send: async (rawContent) => {
@@ -212,8 +212,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     }
     if (event.type === 'tool_end') {
       set({ activeToolName: null, runPhase: event.isError ? 'tool' : 'applying' });
-      if (!event.isError && (event.draftId || event.memoryProposalId)) {
-        set({ attention: { sessionId: event.sessionId, draftId: event.draftId, memoryProposalId: event.memoryProposalId } });
+      if (!event.isError && (event.proposalId || event.memoryProposalId)) {
+        set({ attention: { sessionId: event.sessionId, proposalId: event.proposalId, memoryProposalId: event.memoryProposalId } });
         if (get().detail?.session.id === event.sessionId) void get().refreshProposals(event.sessionId);
       }
       return;
@@ -228,23 +228,23 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   },
 
   refreshProposals: async (sessionId = get().detail?.session.id) => {
-    const [draftResult, memoryResult] = await Promise.all([window.api.listDrafts(), window.api.listMemoryProposals()]);
-    if (!draftResult.ok) set({ error: draftResult.error });
+    const [proposalResult, memoryResult] = await Promise.all([window.api.listAgentProposals(sessionId ?? undefined), window.api.listMemoryProposals()]);
+    if (!proposalResult.ok) set({ error: proposalResult.error });
     if (!memoryResult.ok) set({ error: memoryResult.error });
     set({
-      drafts: draftResult.ok ? draftResult.data.filter((draft) => draft.sessionId === null || draft.sessionId === sessionId) : get().drafts,
+      proposals: proposalResult.ok ? proposalResult.data.filter((proposal) => proposal.sessionId === null || proposal.sessionId === sessionId) : get().proposals,
       memoryProposals: memoryResult.ok && sessionId ? memoryResult.data.filter((proposal) => proposal.sourceSessionId === sessionId && proposal.state === 'pending') : []
     });
   },
 
-  confirmDraft: async (id) => {
-    const result = await window.api.confirmDraft(id);
+  approveProposal: async (id) => {
+    const result = await window.api.approveAgentProposal(id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
     await Promise.all([get().refreshProposals(), useTaskStore.getState().load()]);
-    return result.data;
+    return null;
   },
-  discardDraft: async (id) => {
-    const result = await window.api.discardDraft(id);
+  discardProposal: async (id) => {
+    const result = await window.api.discardAgentProposal(id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
     await get().refreshProposals(); return null;
   },
@@ -263,7 +263,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!current) return null;
     const result = await window.api.deleteAgentSession(current.session.id);
     if (!result.ok) { set({ error: result.error }); return result.error; }
-    set({ detail: null, drafts: [], memoryProposals: [], attention: null });
+    set({ detail: null, proposals: [], memoryProposals: [], attention: null });
     await get().refreshSessions();
     const first = get().sessions[0];
     if (first) await get().openSession(first.id);
@@ -272,7 +272,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   clearSessions: async () => {
     const result = await window.api.clearAgentSessions();
     if (!result.ok) { set({ error: result.error }); return result.error; }
-    set({ sessions: [], detail: null, drafts: [], memoryProposals: [], attention: null });
+    set({ sessions: [], detail: null, proposals: [], memoryProposals: [], attention: null });
     return result.data;
   }
 }));

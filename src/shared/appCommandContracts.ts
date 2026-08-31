@@ -15,6 +15,7 @@ import type {
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from './procurementContracts';
 import type { ContractActionReminderRequest, ContractActionStatusRequest, ContractActionUpdateRequest, ContractCreateRequest, ContractLinkInput, ContractStatusRequest, ContractUpdateRequest } from './contractContracts';
 import type { WorkspaceProjectBindingRequest } from './knowledgeContracts';
+import type { AutomationCreateRequest, AutomationEnabledRequest, AutomationUpdateRequest } from './automationContracts';
 
 export const APP_COMMAND_NAMES = [
   'create_task', 'update_task', 'set_task_name', 'set_task_names', 'set_task_urgency',
@@ -22,12 +23,12 @@ export const APP_COMMAND_NAMES = [
   'set_reminders', 'set_misc_reminder', 'add_node', 'update_node',
   'set_node_title', 'set_node_start_time', 'set_node_status', 'reorder_nodes',
   'remove_node', 'add_link', 'remove_link', 'save_note',
-  'resolve_legacy_misc_deadline', 'confirm_legacy_draft',
+  'resolve_legacy_misc_deadline',
   'create_procurement_project', 'apply_procurement_plan',
   'create_contract', 'update_contract', 'set_contract_status', 'restore_contract',
   'add_contract_action', 'update_contract_action', 'set_contract_action_status', 'remove_contract_action',
   'set_contract_action_reminder', 'add_contract_link', 'remove_contract_link', 'save_contract_note',
-  'bind_workspace_project'
+  'bind_workspace_project', 'create_automation', 'update_automation', 'set_automation_enabled', 'delete_automation'
 ] as const;
 
 export type AppCommandName = (typeof APP_COMMAND_NAMES)[number];
@@ -52,7 +53,6 @@ export type AppCommand =
   | { name: 'remove_link'; input: { linkId: string } }
   | { name: 'save_note'; input: { taskId: string; body: string } }
   | { name: 'resolve_legacy_misc_deadline'; input: LegacyMiscDeadlineActionRequest }
-  | { name: 'confirm_legacy_draft'; input: { draftId: string } }
   | { name: 'create_procurement_project'; input: ProcurementProjectCreateRequest }
   | { name: 'apply_procurement_plan'; input: ProcurementPlanApplyRequest }
   | { name: 'create_contract'; input: ContractCreateRequest }
@@ -67,7 +67,11 @@ export type AppCommand =
   | { name: 'add_contract_link'; input: { contractId: string; link: ContractLinkInput } }
   | { name: 'remove_contract_link'; input: { linkId: string } }
   | { name: 'save_contract_note'; input: { contractId: string; body: string } }
-  | { name: 'bind_workspace_project'; input: WorkspaceProjectBindingRequest };
+  | { name: 'bind_workspace_project'; input: WorkspaceProjectBindingRequest }
+  | { name: 'create_automation'; input: AutomationCreateRequest }
+  | { name: 'update_automation'; input: AutomationUpdateRequest }
+  | { name: 'set_automation_enabled'; input: AutomationEnabledRequest }
+  | { name: 'delete_automation'; input: { automationId: string } };
 
 export interface AppCommandResult {
   command: AppCommandName;
@@ -232,7 +236,6 @@ function validateInput(name: AppCommandName, value: unknown): void {
       exact(input, ['taskId', 'action', 'expectedDeadlineUtc']); string(input, 'taskId'); string(input, 'expectedDeadlineUtc');
       if (input.action !== 'convert' && input.action !== 'clear') throw new Error('旧截止时间操作无效');
       break;
-    case 'confirm_legacy_draft': taskIdOnly(input, 'draftId'); break;
     case 'create_procurement_project': procurementCreateInput(input); break;
     case 'apply_procurement_plan':
       exact(input, ['taskId', 'templateId', 'templateVersion', 'procurementMethod', 'nodes', 'expectedUpdatedAtUtc']);
@@ -265,6 +268,18 @@ function validateInput(name: AppCommandName, value: unknown): void {
     case 'save_contract_note': exact(input, ['contractId', 'body']); string(input, 'contractId'); string(input, 'body'); break;
     case 'bind_workspace_project':
       exact(input, ['directoryId', 'relativeRoot', 'taskId']); string(input, 'directoryId'); string(input, 'relativeRoot'); string(input, 'taskId'); break;
+    case 'create_automation': case 'update_automation': {
+      const required = name === 'update_automation'
+        ? ['automationId', 'name', 'prompt', 'scheduleKind', 'timeZone', 'localTime', 'weekdays', 'runAtUtc', 'expectedUpdatedAtUtc']
+        : ['name', 'prompt', 'scheduleKind', 'timeZone', 'localTime', 'weekdays', 'runAtUtc'];
+      exact(input, required); string(input, 'name'); string(input, 'prompt'); string(input, 'timeZone'); string(input, 'localTime'); nullableString(input, 'runAtUtc');
+      if (name === 'update_automation') { string(input, 'automationId'); string(input, 'expectedUpdatedAtUtc'); }
+      if (!['once', 'daily', 'weekly'].includes(String(input.scheduleKind))) throw new Error('自动化计划类型无效');
+      if (!Array.isArray(input.weekdays) || !input.weekdays.every((day) => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6)) throw new Error('自动化星期无效');
+      break;
+    }
+    case 'set_automation_enabled': exact(input, ['automationId', 'enabled', 'expectedUpdatedAtUtc']); string(input, 'automationId'); string(input, 'expectedUpdatedAtUtc'); if (typeof input.enabled !== 'boolean') throw new Error('enabled 必须是布尔值'); break;
+    case 'delete_automation': taskIdOnly(input, 'automationId'); break;
   }
 }
 

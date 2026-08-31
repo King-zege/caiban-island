@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { IslandLevel, IslandState, IslandTransitionState, UiPreferences } from '../../shared/types';
 import { designTokenCssVariables } from '../../shared/designTokens';
 import { computeShellTransform, isExpanding } from '../../shared/transition';
 import L1Strip from './panels/L1Strip';
 import L2Panel from './panels/L2Panel';
-import L3Panel from './panels/L3Panel';
 import { ToastHost } from './components/ui/ToastHost';
 import { useTaskStore } from './state/useStore';
 import { useWorkspaceStore } from './state/useWorkspaceStore';
 import { useAgentStore } from './state/useAgentStore';
 import { useContractStore } from './state/useContractStore';
+
+const L3Panel = lazy(() => import('./panels/L3Panel'));
 
 const INITIAL_PREFERENCES: UiPreferences = {
   colorScheme: 'dark',
@@ -29,7 +30,7 @@ function radiusFor(level: IslandLevel): string {
 function renderLevel(level: IslandLevel, reducedMotion: boolean, layoutWidth?: number): React.JSX.Element {
   if (level === 'l1') return <L1Strip />;
   if (level === 'l2') return <L2Panel reducedMotion={reducedMotion} />;
-  return <L3Panel layoutWidth={layoutWidth} />;
+  return <Suspense fallback={<div className="panel l3-panel workspace-loading" role="status">正在打开采购工作台…</div>}><L3Panel layoutWidth={layoutWidth} /></Suspense>;
 }
 
 function renderTransitionTarget(level: IslandLevel, selectedTaskName: string): React.JSX.Element {

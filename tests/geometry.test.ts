@@ -41,11 +41,11 @@ describe('computeL2Bounds', () => {
     expect(b.width).toBe(760);
   });
   it('按 L2 内容模式一次计算项目、杂事与混合高度', () => {
-    expect(computeL2Bounds(display, false, 'empty').height).toBe(280);
-    expect(computeL2Bounds(display, false, 'project').height).toBe(280);
-    expect(computeL2Bounds(display, false, 'misc').height).toBe(196);
-    expect(computeL2Bounds(display, false, 'mixed').height).toBe(376);
-    expect(computeL2Bounds(display, true, 'misc').height).toBe(480);
+    expect(computeL2Bounds(display, false, { agent: false, procurement: false, contracts: false, misc: false }).height).toBe(280);
+    expect(computeL2Bounds(display, false, { agent: false, procurement: true, contracts: false, misc: false }).height).toBe(280);
+    expect(computeL2Bounds(display, false, { agent: false, procurement: false, contracts: false, misc: true }).height).toBe(196);
+    expect(computeL2Bounds(display, false, { agent: false, procurement: true, contracts: false, misc: true }).height).toBe(404);
+    expect(computeL2Bounds(display, true, { agent: false, procurement: false, contracts: false, misc: true }).height).toBe(480);
   });
   it('任务栏在顶部时贴工作区顶边', () => {
     const d: DisplayInfo = { x: 0, y: 0, width: 1920, height: 1080, workArea: { x: 0, y: 32, width: 1920, height: 1048 } };

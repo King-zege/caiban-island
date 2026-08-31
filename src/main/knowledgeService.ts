@@ -253,6 +253,14 @@ export class KnowledgeService {
     }
   }
 
+  async resolveAgentOutput(relativePath: string): Promise<{ absolutePath: string; relativePath: string }> {
+    const { root } = await this.primaryRoot();
+    const normalized = normalizeRelative(relativePath);
+    const absolutePath = path.resolve(root, AGENT_DIRECTORY, normalized);
+    if (!inside(path.join(root, AGENT_DIRECTORY), absolutePath)) throw new KnowledgeServiceError('生成物路径越过采办岛 Agent 目录');
+    return { absolutePath, relativePath: `${AGENT_DIRECTORY}/${normalized}` };
+  }
+
   async refreshWorkspaceIndex(signal?: AbortSignal): Promise<KnowledgeScanSummary> {
     if (this.activeScan) return this.activeScan.promise;
     const controller = new AbortController();

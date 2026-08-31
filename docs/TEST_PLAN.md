@@ -27,10 +27,11 @@ npm run package
 ## 2. 自动化覆盖
 
 - 任务：字段校验、项目/杂事约束、紧急度与稳定排序、进度、名称/时间旧值冲突。
-- SQLite：CRUD、WAL、外键级联、v1–v9 迁移、双名称回填、旧草稿转提案、失败回滚与重复启动幂等。
+- SQLite：CRUD、WAL、外键级联、v1–v12 迁移、双名称回填、旧草稿转提案及旧表删除、失败回滚与重复启动幂等。
 - 合同：一项目多合同/独立合同、整数最小货币单位、状态机、稳定动作排序、付款—开票关联、并发冲突与归档恢复。
 - 提醒：项目提前量、节点/合同动作/杂事精确时间、原子领取、时间修改、生命周期取消/恢复、睡眠漏发合并。
 - 知识库：v9→v10/幂等迁移、合成 PDF/DOCX/XLSX/PPTX/文本定位、增量修改与删除、无文本/旧格式降级、取消、FTS、项目绑定、符号链接/路径逃逸及注入/凭据/绝对路径脱敏。
+- 自动化：v11、一次性/每日/每周、IANA 时区与 DST、睡眠/启动补跑、防重、交互 run 优先、三档权限、跨重启审批、总暂停、确定性清单、模型结构校验、固定 HTML 转义、PDF 原子写入和无模型降级。
 - 归档/导出：完成/取消、Markdown/JSON 往返、恢复、同名保护、CSV/飞书字段映射。
 - 安全内容：Markdown raw HTML/script/iframe 拒绝；外链与文件目标确认。
 - AppCommand：完整 schema、坏枚举、缺失/多余字段、风险、预期旧值、摘要与撤销元数据。
@@ -39,6 +40,7 @@ npm run package
 - Pi/DeepSeek：文本、工具调用、空响应、异常终止、401、429、5xx、断流、超时、取消、12 轮上限；逐工具验证顶层 object schema，并在 DeepSeek 最终 HTTP payload 层断言 `execute_app_command`；自动化不得使用真实 Key。
 - 会话/记忆：事件序号与快照补偿、早到/丢失/重载、可见消息持久化、FTS5、记忆容量/证据/安全扫描。
 - Renderer：L2 默认卡片、采购/合同/杂事三轨、L3 合同六分区、双名称与跨域搜索、L2/L3 Agent 功能一致、审批差异卡、错误重试、会话管理、通知导航、键盘与焦点恢复。
+- 构建拆包：L3 外壳、归档、设置、记忆和领域编辑器保持独立异步 chunk；首屏 renderer JS 以 P22 的约 1.20 MB 为基线至少降低 30%。
 - 窗口：L1 可见区、点击穿透、过渡阶段、旧 transition id、单次 resize、composited/software/direct、虚拟卡片 ≤7。
 
 ## 3. Agent 隔离端到端
@@ -68,6 +70,8 @@ npm run package
 - 冷启动目标 <2s，常驻内存目标 <250MB；100 个活跃任务滚动与排序无明显卡顿。
 - 每次层级切换最多一次 resize；首个视觉帧 ≤50ms；composited 视觉过渡 200±40ms。
 - 100 任务 animating 阶段无 >50ms 帧，>20ms 帧比例 <5%，无 >50ms Long Task；L2 DOM ≤700，实际 TaskCard ≤7。
+- P27 生产构建首屏 renderer JS 为 759 KB（相对约 1.20 MB 基线降低约 36%）；后续不得无说明回升至 840 KB 以上。
+- P28 在 Windows 150% DPI 的 100 项合成夹具上通过 production transition `--assert`：每次切换一次 resize，L2 DOM 429、实际卡片 7；L2 三轨、L3 与高对比度截图人工核对无重叠或越界。
 - 使用 `npm run benchmark:transitions -- <CDP端口> --assert`；Electron 必须连接系统临时目录中的 100 条合成任务，推荐使用生产构建而非 dev server。
 
 ## 6. 安全与打包
@@ -76,3 +80,4 @@ npm run package
 - 日志只含命令/工具名、阶段、耗时、权限决策与错误类别。
 - 包内必须含 Pi ESM 运行依赖、DeepSeek lazy provider、`caiban-cli.mjs` 与第三方声明；不得含本应用旧 MCP/LLM/stdio 文件或 Pi CJS `require`。
 - portable/zip 时间戳与哈希属于发布产物记录，不写入长期规范。SmartScreen 行为应与 README 说明一致。
+- 发布前执行 `npm audit --omit=dev`、`git diff --check` 与凭据/私人路径扫描；任何高危依赖、未解释生成物或真实数据都会阻断发布。

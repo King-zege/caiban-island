@@ -11,7 +11,6 @@ import { LocalApiTokenVault } from '../src/main/localApiTokenVault';
 import { startLocalCommandServer, type LocalCommandRuntime } from '../src/main/localCommandServer';
 import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 import type { AgentApprovalRequest } from '../src/shared/agentContracts';
-import type { TaskDraftPayload } from '../src/shared/draftContracts';
 
 const dirs: string[] = [];
 const runtimes: LocalCommandRuntime[] = [];
@@ -60,7 +59,7 @@ describe('P21 AppCommand 与三档权限', () => {
       expect(definition.expectedOldValueFields.every((field) => definition.inputFields.includes(field))).toBe(true);
     }
     expect(APP_COMMAND_REGISTRY.get('set_node_title')?.expectedOldValueFields).toEqual(['expectedTitle']);
-    expect(APP_COMMAND_REGISTRY.get('confirm_legacy_draft')?.risk).toBe('high');
+    expect(APP_COMMAND_REGISTRY.get('delete_automation')?.risk).toBe('high');
   });
 
   it('确认模式、低风险自动写入和 Bypass 分别执行正确审批规则并跨实例保持', async () => {
@@ -129,19 +128,16 @@ describe('P21 授权目录与本地 CLI', () => {
 });
 
 describe('P21 migration v7', () => {
-  it('清除旧通道凭据但保留任务、会话和遗留 pending 草稿，且幂等', () => {
+  it('清除旧通道凭据但保留任务和会话，且幂等', () => {
     const f = fresh(); const task = f.app.createTask({ kind: 'misc', name: '保留任务', note: '', remindAtUtc: null, tzId: 'Asia/Shanghai' });
     f.app.settings.set('mcp_token_encrypted', 'legacy-secret'); f.app.settings.set('api_key_enc', 'legacy-key');
     f.db.exec("INSERT INTO agent_sessions(id,title,model,summary,created_at,updated_at,input_tokens,output_tokens) VALUES('legacy-session','旧会话','deepseek-v4-flash','','2026-01-01','2026-01-01',0,0)");
-    const payload: TaskDraftPayload = { type: 'task', taskInput: { kind: 'misc', name: '旧草稿', note: '', remindAtUtc: null, tzId: 'Asia/Shanghai' }, nodes: [], warnings: [] };
-    f.db.prepare("INSERT INTO drafts(id,source,session_id,payload,state,created_at) VALUES('legacy-draft','mcp',NULL,?,'pending','2026-01-01')").run(JSON.stringify(payload));
     f.db.exec('DELETE FROM schema_migrations WHERE version = 7'); f.db.close();
     const upgraded = openDatabase(f.dbPath); migrate(upgraded);
     expect(upgraded.prepare("SELECT value FROM settings WHERE key IN ('mcp_token_encrypted','api_key_enc')").all()).toEqual([]);
     expect(upgraded.prepare('SELECT name FROM tasks WHERE id = ?').get(task.id)).toEqual({ name: '保留任务' });
-    expect(upgraded.prepare("SELECT state FROM drafts WHERE id='legacy-draft'").get()).toEqual({ state: 'pending' });
     expect(upgraded.prepare("SELECT title FROM agent_sessions WHERE id='legacy-session'").get()).toEqual({ title: '旧会话' });
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 10 });
+    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 12 });
     upgraded.close();
   });
 });

@@ -20,17 +20,19 @@ Windows 10/11 桌面应用。
 
 ## Operating Context
 
-- 采购项目：名称、说明、紧急度、deadline、节点、提醒、资料和备注。
+- 采购项目：正式全名、卡片简称、采购方式、版本化流程、deadline、节点、提醒、资料和备注。
+- 合同：正式全名、简称、供应商、合同号、精确金额、生命周期、付款/开票/交付/验收等履约动作和提醒。
 - 杂事：名称、一次精确提醒、资料和备注；无紧急度、deadline 或节点。
 - L2 默认任务卡片，可切换 Agent；L2/L3 共用同一 Agent 会话与权限状态。
 - 正式数据以本地 SQLite 为准；归档生成可读快照；飞书只做单向导出。
-- Agent 通过 AppCommand、三档权限和授权目录操作应用；无任意 shell、网络或磁盘权限。
+- Agent 通过 AppCommand、三档权限和授权目录操作应用；可检索主工作目录并运行结构化自动化，但无任意 shell、网络或未授权磁盘权限。
+- 默认每日 09:00 heartbeat 生成采购、合同和杂事清单会话及固定模板 PDF；无模型时确定性降级。
 
 ## Capabilities and Constraints
 
 - renderer 只经 preload IPC 使用 main 能力；本地 SQLite 是正式数据源。
-- Agent 无任意 shell、网络或磁盘权限；正式操作受 AppCommand 与三档权限约束。
-- 当前模型不包含供应商、金额、审批流或飞书双向同步。
+- Agent 无任意 shell、额外网络或未授权磁盘权限；正式操作受 AppCommand 与三档权限约束。
+- 当前不包含多人审批、供应商门户、OCR、飞书双向同步或模型权重训练。
 
 ## Brand Commitments
 

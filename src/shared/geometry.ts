@@ -1,4 +1,4 @@
-import type { DisplayInfo, L2ContentMode, Rect } from './types';
+import type { DisplayInfo, L2TrackDescriptor, Rect } from './types';
 
 export const ISLAND = {
   L1_WIDTH: 96,
@@ -34,22 +34,17 @@ export function computeL1Bounds(display: DisplayInfo, nativeHeight: number = ISL
   };
 }
 
-export function computeL2Bounds(display: DisplayInfo, detail = false, contentMode: L2ContentMode = 'project'): Rect {
+const DEFAULT_L2_TRACKS: L2TrackDescriptor = { agent: false, procurement: true, contracts: false, misc: false };
+
+export function computeL2Bounds(display: DisplayInfo, detail = false, tracks: L2TrackDescriptor = DEFAULT_L2_TRACKS): Rect {
   let w = Math.min(ISLAND.L2_WIDTH, Math.floor(display.width * ISLAND.L2_MAX_WIDTH_RATIO));
   w = Math.max(Math.min(ISLAND.L2_MIN_WIDTH, display.width), w);
   if (w > display.width) w = display.width;
-  const baseHeight = contentMode === 'agent'
-    ? ISLAND.L2_HEIGHT_DETAIL
-    : contentMode === 'triple'
-      ? ISLAND.L2_HEIGHT_TRIPLE
-    : contentMode === 'misc'
-    ? ISLAND.L2_HEIGHT_MISC
-    : contentMode === 'contract'
-      ? ISLAND.L2_HEIGHT_CONTRACT
-    : contentMode === 'mixed'
-      ? ISLAND.L2_HEIGHT_MIXED
-      : ISLAND.L2_HEIGHT;
-  const h = detail || contentMode === 'agent'
+  const activeTracks = Number(tracks.procurement) + Number(tracks.contracts) + Number(tracks.misc);
+  const baseHeight = activeTracks === 0
+    ? ISLAND.L2_HEIGHT
+    : Math.min(ISLAND.L2_HEIGHT_TRIPLE, 72 + (tracks.procurement ? 208 : 0) + (tracks.contracts ? 172 : 0) + (tracks.misc ? 124 : 0));
+  const h = detail || tracks.agent
     ? Math.min(ISLAND.L2_HEIGHT_DETAIL, Math.floor(display.height * ISLAND.L2_DETAIL_HEIGHT_RATIO))
     : Math.min(baseHeight, Math.floor(display.height * ISLAND.L2_MAX_HEIGHT_RATIO));
   return {

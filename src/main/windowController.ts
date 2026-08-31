@@ -10,7 +10,7 @@ import type {
   BackdropMode,
   DisplayInfo,
   IslandLevel,
-  L2ContentMode,
+  L2TrackDescriptor,
   IslandState,
   IslandTransitionState,
   Rect,
@@ -30,7 +30,7 @@ export class IslandWindowController {
   backdrop: BackdropMode = 'fallback';
   paused = false;
   private l2Detail = false;
-  private l2ContentMode: L2ContentMode = 'empty';
+  private l2Tracks: L2TrackDescriptor = { agent: false, procurement: false, contracts: false, misc: false };
   private baseRenderMode: RenderMode = 'software';
   private transitionState: IslandTransitionState | null = null;
   private pendingLevel: IslandLevel | null = null;
@@ -274,7 +274,7 @@ export class IslandWindowController {
   boundsFor(level: IslandLevel): Rect {
     const d = this.primaryDisplay();
     if (level === 'l1') return computeL1Bounds(d);
-    if (level === 'l2') return computeL2Bounds(d, this.l2Detail, this.l2ContentMode);
+    if (level === 'l2') return computeL2Bounds(d, this.l2Detail, this.l2Tracks);
     return computeL3Bounds(d);
   }
 
@@ -293,9 +293,9 @@ export class IslandWindowController {
     return this.beginTransition('l2', 'l2-detail', this.boundsFor('l2'));
   }
 
-  setL2ContentMode(value: L2ContentMode): TransitionRequestResult {
-    if (this.l2ContentMode === value) return { accepted: false };
-    this.l2ContentMode = value;
+  setL2ContentMode(value: L2TrackDescriptor): TransitionRequestResult {
+    if (this.l2Tracks.agent === value.agent && this.l2Tracks.procurement === value.procurement && this.l2Tracks.contracts === value.contracts && this.l2Tracks.misc === value.misc) return { accepted: false };
+    this.l2Tracks = { ...value };
     if (this.currentOrTargetLevel() !== 'l2') return { accepted: true };
     if (this.transitionState) {
       if (this.transitionState.to === 'l2') {

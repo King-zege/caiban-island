@@ -60,11 +60,12 @@ afterEach(() => { cleanup(); useWorkspaceStore.getState().undoPending(); useWork
 describe('P24 Renderer 合同轨道与工作区', () => {
   it('L2 按采购项目、合同、杂事显示三条轨道并使用封顶高度模式', async () => {
     const setL2ContentMode = vi.fn(async () => ({ accepted: true })); setApi({ setL2ContentMode });
-    render(<L2Panel reducedMotion />);
+    const { container } = render(<L2Panel reducedMotion />);
     expect(screen.getByRole('region', { name: '采购项目' })).not.toBeNull();
     expect(screen.getByRole('region', { name: '合同' })).not.toBeNull();
     expect(screen.getByRole('region', { name: '杂事' })).not.toBeNull();
-    await waitFor(() => expect(setL2ContentMode).toHaveBeenCalledWith('triple'));
+    expect(container.querySelector('.l2-lanes-triple')).not.toBeNull();
+    await waitFor(() => expect(setL2ContentMode).toHaveBeenCalledWith({ agent: false, procurement: true, contracts: true, misc: true }));
     await userEvent.click(screen.getByRole('button', { name: /终端框采一批，供应商/ }));
     expect(useWorkspaceStore.getState().section).toBe('contracts');
     expect(window.api.setLevel).toHaveBeenCalledWith('l3');

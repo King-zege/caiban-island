@@ -359,7 +359,7 @@ export default function TaskCard({ card, onOpen, onUrgencyChange, onNodeStatus, 
           </button>
           <span className={overdue ? 'deadline-overdue' : 'deadline'}>
             <Clock3 aria-hidden="true" size={14} strokeWidth={1.8} />
-            {overdueDuration ? overdueDuration + ' · ' : ''}{deadline}
+            <span className="deadline-text">{overdueDuration ? overdueDuration + ' · ' : ''}{deadline}</span>
           </span>
         </span>
       </div>

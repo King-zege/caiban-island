@@ -2,6 +2,7 @@ import type { AppCommand, AppCommandName, AppCommandResult } from '../shared/app
 import type { AgentToolRisk } from '../shared/agentContracts';
 import type { AppService } from './appService';
 import type { KnowledgeService } from './knowledgeService';
+import type { AutomationService } from './automationService';
 
 export interface AppCommandDefinition {
   name: AppCommandName;
@@ -49,8 +50,11 @@ const DEFINITIONS: readonly AppCommandDefinition[] = [
   { name: 'remove_link', risk: 'high', summary: '删除任务资料', undoable: false, inputFields: ['linkId'], expectedOldValueFields: [] },
   { name: 'save_note', risk: 'reversible', summary: '修改任务备注', undoable: true, inputFields: ['taskId', 'body'], expectedOldValueFields: [] },
   { name: 'resolve_legacy_misc_deadline', risk: 'reversible', summary: '处理旧杂事截止时间', undoable: true, inputFields: ['taskId', 'action', 'expectedDeadlineUtc'], expectedOldValueFields: ['expectedDeadlineUtc'] },
-  { name: 'confirm_legacy_draft', risk: 'high', summary: '确认遗留草稿', undoable: true, inputFields: ['draftId'], expectedOldValueFields: [] },
-  { name: 'bind_workspace_project', risk: 'reversible', summary: '绑定工作目录与采购项目', undoable: true, inputFields: ['directoryId', 'relativeRoot', 'taskId'], expectedOldValueFields: [] }
+  { name: 'bind_workspace_project', risk: 'reversible', summary: '绑定工作目录与采购项目', undoable: true, inputFields: ['directoryId', 'relativeRoot', 'taskId'], expectedOldValueFields: [] },
+  { name: 'create_automation', risk: 'high', summary: '创建 Agent 自动化', undoable: true, inputFields: ['name', 'scheduleKind', 'timeZone', 'localTime'], expectedOldValueFields: [] },
+  { name: 'update_automation', risk: 'reversible', summary: '修改 Agent 自动化', undoable: true, inputFields: ['automationId', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
+  { name: 'set_automation_enabled', risk: 'reversible', summary: '暂停或启用 Agent 自动化', undoable: true, inputFields: ['automationId', 'enabled', 'expectedUpdatedAtUtc'], expectedOldValueFields: ['expectedUpdatedAtUtc'] },
+  { name: 'delete_automation', risk: 'high', summary: '删除 Agent 自动化', undoable: false, inputFields: ['automationId'], expectedOldValueFields: [] }
 ];
 
 export const APP_COMMAND_REGISTRY = new Map<AppCommandName, AppCommandDefinition>(
@@ -60,7 +64,7 @@ export const APP_COMMAND_REGISTRY = new Map<AppCommandName, AppCommandDefinition
 export class AppCommandError extends Error {}
 
 export class AppCommandService {
-  constructor(private readonly appSvc: AppService, private readonly knowledge?: KnowledgeService) {}
+  constructor(private readonly appSvc: AppService, private readonly knowledge?: KnowledgeService, private readonly automations?: AutomationService) {}
 
   definition(name: AppCommandName): AppCommandDefinition {
     const definition = APP_COMMAND_REGISTRY.get(name);
@@ -109,10 +113,25 @@ export class AppCommandService {
       case 'remove_link': this.appSvc.removeLink(command.input.linkId); data = true; entityId = command.input.linkId; break;
       case 'save_note': this.appSvc.saveNote(command.input.taskId, command.input.body); data = true; entityId = command.input.taskId; break;
       case 'resolve_legacy_misc_deadline': { const value = this.appSvc.resolveLegacyMiscDeadline(command.input); data = value; entityId = value.id; break; }
-      case 'confirm_legacy_draft': { const value = this.appSvc.confirmDraft(command.input.draftId); data = value; entityId = value.taskId; break; }
       case 'bind_workspace_project': {
         if (!this.knowledge) throw new AppCommandError('知识库服务未启用');
         const value = this.knowledge.bindProject(command.input); data = value; entityId = value.id; break;
+      }
+      case 'create_automation': {
+        if (!this.automations) throw new AppCommandError('自动化服务未启用');
+        const value = this.automations.create(command.input); data = value; entityId = value.id; break;
+      }
+      case 'update_automation': {
+        if (!this.automations) throw new AppCommandError('自动化服务未启用');
+        const value = this.automations.update(command.input); data = value; entityId = value.id; break;
+      }
+      case 'set_automation_enabled': {
+        if (!this.automations) throw new AppCommandError('自动化服务未启用');
+        const value = this.automations.setEnabled(command.input); data = value; entityId = value.id; break;
+      }
+      case 'delete_automation': {
+        if (!this.automations) throw new AppCommandError('自动化服务未启用');
+        data = this.automations.delete(command.input.automationId); entityId = command.input.automationId; break;
       }
     }
     return { command: command.name, summary: definition.summary + '已完成', entityId, undoable: definition.undoable, data };

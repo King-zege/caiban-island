@@ -126,21 +126,20 @@ try {
   db.prepare('INSERT INTO notes(id, task_id, body, updated_at) VALUES(?, ?, ?, ?)').run(randomUUID(), archivedId, '供应商已按合同完成交付。', archivedAt);
   db.prepare('INSERT INTO change_events(task_id, at_utc, kind, detail) VALUES(?, ?, ?, ?)').run(archivedId, archivedAt, 'task_archived', '{}');
 
-  const draftPayload = {
-    type: 'task',
-    taskInput: {
-      name: '会议室音视频设备采购',
-      description: '替换三间会议室的显示与拾音设备',
-      kind: 'task',
-      urgency: 'high',
-      deadlineUtc: new Date(now.getTime() + 14 * 86400000).toISOString(),
-      tzId: 'Asia/Shanghai'
-    },
-    nodes: nodeTitles.slice(0, 4).map((title) => ({ title, description: '', startUtc: null, endUtc: null })),
+  const proposalPayload = {
+    commands: [{
+      name: 'create_procurement_project',
+      input: {
+        fullName: '会议室音视频设备采购项目', shortName: '会议室设备', description: '替换三间会议室的显示与拾音设备',
+        urgency: 'high', deadlineUtc: new Date(now.getTime() + 14 * 86400000).toISOString(), tzId: 'Asia/Shanghai',
+        procurementMethod: 'inquiry', templateId: null,
+        nodes: nodeTitles.slice(0, 4).map((title) => ({ title, description: '', startUtc: null, endUtc: null, source: 'agent' }))
+      }
+    }],
     warnings: ['建议在询价前再次确认会议室接口规格']
   };
-  db.prepare("INSERT INTO drafts(id, source, payload, state, created_at) VALUES(?, 'api', ?, 'pending', ?)")
-    .run(randomUUID(), JSON.stringify(draftPayload), now.toISOString());
+  db.prepare("INSERT INTO agent_proposals(id, session_id, kind, title, summary, payload, state, created_at, updated_at) VALUES(?, NULL, 'command_batch', '会议室设备采购方案', '合成视觉验收提案', ?, 'pending', ?, ?)")
+    .run(randomUUID(), JSON.stringify(proposalPayload), now.toISOString(), now.toISOString());
   db.exec('COMMIT');
 } catch (error) {
   db.exec('ROLLBACK');
