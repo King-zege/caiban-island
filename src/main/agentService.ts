@@ -49,6 +49,7 @@ interface ActiveRun {
   phase: AgentRunPhase;
   lastActivityAt: string;
   partialText: string;
+  partialThinking: string;
   activeTool: AgentRunSnapshot['activeTool'];
   error: AgentRunSnapshot['error'];
 }
@@ -62,7 +63,7 @@ export class AgentService {
   private sequence = 0;
   private snapshot: AgentRunSnapshot = {
     sessionId: null, state: 'idle', startedAt: null, sequence: 0, phase: 'idle', lastActivityAt: null,
-    partialText: '', activeTool: null, pendingApproval: null, error: null
+    partialText: '', partialThinking: '', activeTool: null, pendingApproval: null, error: null
   };
   private readonly releaseApprovalListener: (() => void) | null;
 
@@ -182,6 +183,7 @@ export class AgentService {
       phase: 'connecting',
       lastActivityAt: new Date().toISOString(),
       partialText: '',
+      partialThinking: '',
       activeTool: null,
       error: null,
       timer: setTimeout(() => {
@@ -193,7 +195,7 @@ export class AgentService {
     this.active = active;
     this.snapshot = {
       sessionId: session.id, state: 'running', startedAt: active.startedAt, sequence: this.sequence,
-      phase: 'connecting', lastActivityAt: active.lastActivityAt, partialText: '', activeTool: null,
+      phase: 'connecting', lastActivityAt: active.lastActivityAt, partialText: '', partialThinking: '', activeTool: null,
       pendingApproval: null, error: null
     };
     this.emitEvent({ type: 'state', sessionId: session.id, state: 'running', phase: 'connecting' });
@@ -248,6 +250,12 @@ export class AgentService {
   }
 
   private handleRunnerEvent(sessionId: string, event: PiAdapterEvent): void {
+    if (event.type === 'thinking_delta') {
+      if (this.active?.sessionId === sessionId) this.active.partialThinking += event.delta;
+      this.snapshot.partialThinking += event.delta;
+      this.emitEvent({ type: 'thinking_delta', sessionId, delta: event.delta });
+      return;
+    }
     if (event.type === 'text_delta') {
       this.updatePhase('streaming');
       if (this.active?.sessionId === sessionId) this.active.partialText += event.delta;
@@ -258,8 +266,12 @@ export class AgentService {
     if (event.type === 'assistant_message') {
       const message = this.sessions.append(sessionId, 'assistant', event.text);
       this.sessions.addUsage(sessionId, event.inputTokens, event.outputTokens);
-      if (this.active?.sessionId === sessionId) this.active.partialText = '';
+      if (this.active?.sessionId === sessionId) {
+        this.active.partialText = '';
+        this.active.partialThinking = '';
+      }
       this.snapshot.partialText = '';
+      this.snapshot.partialThinking = '';
       this.emitEvent({ type: 'message', sessionId, message });
       return;
     }

@@ -8,6 +8,7 @@ import type { BeforeToolCallResult } from '@earendil-works/pi-agent-core';
 
 export type PiAdapterEvent =
   | { type: 'text_delta'; delta: string }
+  | { type: 'thinking_delta'; delta: string }
   | { type: 'assistant_message'; text: string; inputTokens: number; outputTokens: number }
   | { type: 'tool_start'; toolCallId: string; toolName: string }
   | { type: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; errorMessage?: string; proposalId?: string; memoryProposalId?: string };
@@ -55,6 +56,11 @@ export function visibleDeltaFromPiEvent(event: AgentEvent): string | null {
   return event.assistantMessageEvent.type === 'text_delta' ? event.assistantMessageEvent.delta : null;
 }
 
+export function thinkingDeltaFromPiEvent(event: AgentEvent): string | null {
+  if (event.type !== 'message_update') return null;
+  return event.assistantMessageEvent.type === 'thinking_delta' ? event.assistantMessageEvent.delta : null;
+}
+
 function visibleAssistantText(message: AgentMessage): string {
   if (message.role !== 'assistant') return '';
   return message.content
@@ -93,7 +99,7 @@ export class PiAgentAdapter implements PiAgentRunner {
       initialState: {
         systemPrompt: options.systemPrompt,
         model: runtime.model,
-        thinkingLevel: 'off',
+        thinkingLevel: 'high',
         tools: options.tools,
         messages: historyToPi(options.history)
       },
@@ -101,9 +107,9 @@ export class PiAgentAdapter implements PiAgentRunner {
         ...streamOptions,
         apiKey: options.apiKey,
         signal: streamOptions?.signal,
-        timeoutMs: 60000,
-        maxRetries: 1,
-        maxRetryDelayMs: 60000
+        timeoutMs: 120000,
+        maxRetries: 2,
+        maxRetryDelayMs: 15000
       }),
       getApiKey: () => options.apiKey,
       sessionId: options.sessionId,
@@ -127,6 +133,11 @@ export class PiAgentAdapter implements PiAgentRunner {
       if (delta !== null) {
         if (delta) receivedVisibleOutput = true;
         await options.onEvent({ type: 'text_delta', delta });
+        return;
+      }
+      const thinkingDelta = thinkingDeltaFromPiEvent(event);
+      if (thinkingDelta !== null) {
+        await options.onEvent({ type: 'thinking_delta', delta: thinkingDelta });
         return;
       }
       if (event.type === 'message_end' && event.message.role === 'assistant') {

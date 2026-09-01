@@ -48,10 +48,10 @@ P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、pa
 
 ## 4. 不可破坏的运行契约
 
-- 全局一个 run；provider 请求 60 秒超时，run 最长 15 分钟，最多 12 轮；取消信号贯穿 provider、审批和文件 I/O。
+- 全局一个 run；provider 请求 120 秒超时并有限重试，run 最长 15 分钟，最多 12 轮；取消信号贯穿 provider、审批和文件 I/O。
 - renderer 先订阅事件再 bootstrap；sequence 出现缺口及发送返回、终态、层级切换、重载/重开时必须请求快照。
-- 快照含 phase、lastActivityAt、partialText、activeTool、pendingApproval 和脱敏 error；assistant 消息必须先落库再广播 completed。
-- 可持久化内容只包括用户/assistant 可见文本、脱敏工具状态、模型、摘要与使用量；reasoning 和原始工具正文禁止进入 IPC/SQLite/导出。
+- 快照含 phase、lastActivityAt、partialText、仅当前运行可见的 partialThinking、activeTool、pendingApproval 和脱敏 error；assistant 消息必须先落库再广播 completed。
+- 可持久化内容只包括用户/assistant 可见文本、脱敏工具状态、模型、摘要与使用量；思考增量允许通过当前运行 IPC 临时展示，但禁止进入 SQLite、日志、搜索、记忆和导出，原始工具正文同样禁止持久化。
 - AppCommand 定义 schema、风险、预期旧值、摘要和撤销能力。未知工具 fail-closed；批准后继续原工具循环，拒绝/取消作为工具结果返回。
 - Bypass 仍不能突破 AppCommand、授权目录、safeStorage、回环和无任意 shell/网络边界。
 

@@ -18,6 +18,7 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
   const detail = useAgentStore((state) => state.detail);
   const runState = useAgentStore((state) => state.runState);
   const openSession = useAgentStore((state) => state.openSession);
+  const refreshSessions = useAgentStore((state) => state.refreshSessions);
   const deleteCurrentSession = useAgentStore((state) => state.deleteCurrentSession);
   const clearSessions = useAgentStore((state) => state.clearSessions);
   const permissions = useAgentStore((state) => state.permissions);
@@ -46,9 +47,27 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
   };
 
   useEffect(() => {
+    if (compact) return;
     void refreshKnowledge(); void refreshAutomations();
     return typeof window.api.onAutomationEvent === 'function' ? window.api.onAutomationEvent(() => void refreshAutomations()) : undefined;
-  }, []);
+  }, [compact]);
+
+  useEffect(() => {
+    if (compact) return;
+    let cancelled = false;
+    const refreshCurrentConversation = async () => {
+      await refreshSessions();
+      if (cancelled) return;
+      const state = useAgentStore.getState();
+      const currentId = state.detail?.session.id;
+      const targetId = currentId && state.sessions.some((session) => session.id === currentId)
+        ? currentId
+        : state.sessions[0]?.id;
+      if (targetId) await state.openSession(targetId);
+    };
+    void refreshCurrentConversation();
+    return () => { cancelled = true; };
+  }, [compact, refreshSessions]);
 
   const chooseWorkspace = async () => {
     setKnowledgeBusy(true);
@@ -97,6 +116,10 @@ export default function AgentPanel({ compact = false, onHide, onTaskConfirmed }:
     const error = await setPermissionMode(mode);
     if (!error) notify('Agent 权限模式已更新', 'success');
   };
+
+  if (compact) {
+    return <div className="agent-panel compact"><div className="agent-layout"><AgentConversation compact onTaskConfirmed={onTaskConfirmed} /></div></div>;
+  }
 
   return (
     <div className={'agent-panel' + (compact ? ' compact' : '')}>

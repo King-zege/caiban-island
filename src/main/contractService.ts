@@ -19,7 +19,7 @@ import type {
   ContractUpdateRequest
 } from '../shared/contractContracts';
 import { CONTRACT_ACTION_STATUSES, CONTRACT_ACTION_TYPES, CONTRACT_STATUSES } from '../shared/contractContracts';
-import { validateFormalName, validateShortName } from '../shared/validation';
+import { deriveShortName, validateFormalName, validateShortName } from '../shared/validation';
 
 export class ContractError extends Error {}
 
@@ -58,16 +58,27 @@ function validateAmount(value: number | null): void {
   if (value !== null && (!Number.isSafeInteger(value) || value < 0)) throw new ContractError('金额必须使用非负整数最小货币单位');
 }
 
-function validateFields(input: Omit<ContractCreateRequest, 'status'>): void {
-  const full = validateFormalName(input.fullName); const short = validateShortName(input.shortName);
+function normalizedNames(input: Pick<ContractCreateRequest, 'fullName' | 'shortName'>): { fullName: string; shortName: string } {
+  const requestedFullName = input.fullName.trim();
+  const requestedShortName = input.shortName.trim();
+  if (!requestedFullName && !requestedShortName) throw new ContractError('请至少填写合同正式全名或卡片简称');
+  const fullName = requestedFullName || requestedShortName;
+  const shortName = requestedShortName || deriveShortName(fullName).shortName;
+  return { fullName, shortName };
+}
+
+function validateFields(input: Omit<ContractCreateRequest, 'status'>): { fullName: string; shortName: string } {
+  const names = normalizedNames(input);
+  const full = validateFormalName(names.fullName); const short = validateShortName(names.shortName);
   if (!full.ok || !short.ok) throw new ContractError([...(!full.ok ? full.errors : []), ...(!short.ok ? short.errors : [])].join('；'));
   if (input.contractNo.trim().length > 100) throw new ContractError('合同号不能超过 100 个字符');
-  if (!input.supplierName.trim() || input.supplierName.trim().length > 300) throw new ContractError('供应商名称必须为 1–300 个字符');
+  if (input.supplierName.trim().length > 300) throw new ContractError('供应商名称不能超过 300 个字符');
   validateAmount(input.amountMinor);
   if (!/^[A-Z]{3}$/.test(input.currency)) throw new ContractError('币种必须是三位大写代码');
   if (![input.signedOn, input.effectiveOn, input.expiresOn].every(validDate)) throw new ContractError('合同日期格式无效');
   if (input.effectiveOn && input.expiresOn && input.effectiveOn > input.expiresOn) throw new ContractError('合同到期日不能早于生效日');
   if (!input.tzId) throw new ContractError('缺少时区信息');
+  return names;
 }
 
 function validateCreate(input: ContractCreateRequest): void {
@@ -113,18 +124,19 @@ export class ContractService {
 
   create(input: ContractCreateRequest): Contract {
     validateCreate(input);
+    const names = normalizedNames(input);
     this.assertProject(input.procurementProjectId);
     const now = new Date().toISOString(); const id = randomUUID();
     this.db.prepare(
       `INSERT INTO contracts(id, procurement_project_id, full_name, short_name, contract_no, supplier_name, amount_minor, currency, signed_on, effective_on, expires_on, tz_id, status, archived_from_status, created_at, updated_at)
        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`
-    ).run(id, input.procurementProjectId, input.fullName.trim(), input.shortName.trim(), input.contractNo.trim(), input.supplierName.trim(), input.amountMinor, input.currency, input.signedOn, input.effectiveOn, input.expiresOn, input.tzId, input.status, now, now);
+    ).run(id, input.procurementProjectId, names.fullName, names.shortName, input.contractNo.trim(), input.supplierName.trim(), input.amountMinor, input.currency, input.signedOn, input.effectiveOn, input.expiresOn, input.tzId, input.status, now, now);
     this.log(id, 'contract_created', { status: input.status, projectLinked: Boolean(input.procurementProjectId) });
     return this.get(id) as Contract;
   }
 
   update(request: ContractUpdateRequest): Contract {
-    validateFields(request); this.assertProject(request.procurementProjectId);
+    const names = validateFields(request); this.assertProject(request.procurementProjectId);
     const existing = this.get(request.contractId);
     if (!existing || existing.status === 'archived') throw new ContractError('合同不存在或不可编辑');
     if (existing.updatedAtUtc !== request.expectedUpdatedAtUtc) throw new ContractError('合同已变化，请刷新后重试');
@@ -132,7 +144,7 @@ export class ContractService {
     const result = this.db.prepare(
       `UPDATE contracts SET procurement_project_id=?, full_name=?, short_name=?, contract_no=?, supplier_name=?, amount_minor=?, currency=?, signed_on=?, effective_on=?, expires_on=?, tz_id=?, updated_at=?
        WHERE id=? AND updated_at=? AND status<>'archived'`
-    ).run(request.procurementProjectId, request.fullName.trim(), request.shortName.trim(), request.contractNo.trim(), request.supplierName.trim(), request.amountMinor, request.currency, request.signedOn, request.effectiveOn, request.expiresOn, request.tzId, updatedAt, request.contractId, request.expectedUpdatedAtUtc);
+    ).run(request.procurementProjectId, names.fullName, names.shortName, request.contractNo.trim(), request.supplierName.trim(), request.amountMinor, request.currency, request.signedOn, request.effectiveOn, request.expiresOn, request.tzId, updatedAt, request.contractId, request.expectedUpdatedAtUtc);
     if (result.changes !== 1) throw new ContractError('合同已变化，请刷新后重试');
     this.log(request.contractId, 'contract_updated', { projectLinked: Boolean(request.procurementProjectId) });
     return this.get(request.contractId) as Contract;

@@ -26,6 +26,8 @@ interface AgentStoreState {
   runPhase: AgentRunPhase;
   runningSessionId: string | null;
   streaming: string;
+  streamingThinking: string;
+  thinkingByMessageId: Record<string, string>;
   activeToolName: string | null;
   error: string | null;
   errorCategory: string | null;
@@ -66,6 +68,7 @@ function snapshotState(snapshot: AgentRunSnapshot): Partial<AgentStoreState> {
     runPhase: snapshot.phase,
     runningSessionId: RUNNING_STATES.includes(snapshot.state) ? snapshot.sessionId : null,
     streaming: snapshot.partialText,
+    streamingThinking: snapshot.partialThinking,
     activeToolName: snapshot.activeTool?.toolName ?? null,
     error: snapshot.error?.message ?? null,
     errorCategory: snapshot.error?.category ?? null,
@@ -75,9 +78,46 @@ function snapshotState(snapshot: AgentRunSnapshot): Partial<AgentStoreState> {
   };
 }
 
-export const useAgentStore = create<AgentStoreState>((set, get) => ({
+export const useAgentStore = create<AgentStoreState>((set, get) => {
+  let queuedSessionId: string | null = null;
+  let queuedText = '';
+  let queuedThinking = '';
+  let deltaFrame: number | null = null;
+
+  const flushQueuedDeltas = (): void => {
+    if (deltaFrame !== null) cancelAnimationFrame(deltaFrame);
+    deltaFrame = null;
+    const sessionId = queuedSessionId;
+    const text = queuedText;
+    const thinking = queuedThinking;
+    queuedSessionId = null;
+    queuedText = '';
+    queuedThinking = '';
+    if (!sessionId || (!text && !thinking)) return;
+    set((state) => state.detail?.session.id === sessionId ? {
+      streaming: state.streaming + text,
+      streamingThinking: state.streamingThinking + thinking
+    } : {});
+  };
+
+  const queueDelta = (sessionId: string, kind: 'text' | 'thinking', delta: string): void => {
+    if (queuedSessionId && queuedSessionId !== sessionId) flushQueuedDeltas();
+    queuedSessionId = sessionId;
+    if (kind === 'text') queuedText += delta; else queuedThinking += delta;
+    if (deltaFrame === null) deltaFrame = requestAnimationFrame(flushQueuedDeltas);
+  };
+
+  const clearQueuedDeltas = (): void => {
+    if (deltaFrame !== null) cancelAnimationFrame(deltaFrame);
+    deltaFrame = null;
+    queuedSessionId = null;
+    queuedText = '';
+    queuedThinking = '';
+  };
+
+  return ({
   sessions: [], detail: null, runState: 'idle', runPhase: 'idle', runningSessionId: null,
-  streaming: '', activeToolName: null, error: null, errorCategory: null, lastSequence: 0,
+  streaming: '', streamingThinking: '', thinkingByMessageId: {}, activeToolName: null, error: null, errorCategory: null, lastSequence: 0,
   lastActivityAt: null, pendingApproval: null, permissions: EMPTY_PERMISSIONS,
   proposals: [], memoryProposals: [], attention: null, bootstrapped: false,
 
@@ -100,6 +140,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const result = await window.api.getAgentRunSnapshot();
     if (!result.ok) { set({ error: result.error }); return; }
     if (result.data.sequence < get().lastSequence) return;
+    clearQueuedDeltas();
     set(snapshotState(result.data));
   },
 
@@ -153,7 +194,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
   newConversation: () => {
     if (RUNNING_STATES.includes(get().runState)) return;
-    set({ detail: null, streaming: '', activeToolName: null, error: null, errorCategory: null, proposals: [], memoryProposals: [], attention: null, runState: 'idle', runPhase: 'idle' });
+    clearQueuedDeltas();
+    set({ detail: null, streaming: '', streamingThinking: '', activeToolName: null, error: null, errorCategory: null, proposals: [], memoryProposals: [], attention: null, runState: 'idle', runPhase: 'idle' });
   },
 
   send: async (rawContent) => {
@@ -161,7 +203,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!content) return '请输入要处理的内容';
     if (RUNNING_STATES.includes(get().runState)) return '已有 Agent 任务正在运行';
     const current = get().detail;
-    set({ error: null, errorCategory: null, streaming: '', activeToolName: null, runState: 'running', runPhase: 'connecting', runningSessionId: current?.session.id ?? null });
+    clearQueuedDeltas();
+    set({ error: null, errorCategory: null, streaming: '', streamingThinking: '', activeToolName: null, runState: 'running', runPhase: 'connecting', runningSessionId: current?.session.id ?? null });
     const result = current
       ? await window.api.agentSend({ sessionId: current.session.id, input: content })
       : await window.api.agentStart({ input: content });
@@ -193,7 +236,11 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     }
     if (event.type === 'text_delta') {
       set({ runPhase: 'streaming' });
-      if (get().detail?.session.id === event.sessionId) set((state) => ({ streaming: state.streaming + event.delta }));
+      queueDelta(event.sessionId, 'text', event.delta);
+      return;
+    }
+    if (event.type === 'thinking_delta') {
+      queueDelta(event.sessionId, 'thinking', event.delta);
       return;
     }
     if (event.type === 'tool_start') {
@@ -204,9 +251,14 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (event.type === 'approval_required') { set({ pendingApproval: event.request, runPhase: 'awaiting_approval' }); return; }
     if (event.type === 'approval_resolved') { set({ pendingApproval: null, runPhase: event.decision === 'approve' ? 'applying' : 'tool' }); return; }
     if (event.type === 'message') {
+      flushQueuedDeltas();
       set((state) => state.detail?.session.id === event.sessionId ? {
         detail: { ...state.detail, messages: state.detail.messages.some((message) => message.id === event.message.id) ? state.detail.messages : [...state.detail.messages, event.message] },
-        streaming: event.message.role === 'assistant' ? '' : state.streaming
+        streaming: event.message.role === 'assistant' ? '' : state.streaming,
+        streamingThinking: event.message.role === 'assistant' ? '' : state.streamingThinking,
+        thinkingByMessageId: event.message.role === 'assistant' && state.streamingThinking.trim()
+          ? { ...state.thinkingByMessageId, [event.message.id]: state.streamingThinking.trim() }
+          : state.thinkingByMessageId
       } : {});
       return;
     }
@@ -275,6 +327,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     set({ sessions: [], detail: null, proposals: [], memoryProposals: [], attention: null });
     return result.data;
   }
-}));
+  });
+});
 
 export function isAgentRunning(state: AgentRunState): boolean { return RUNNING_STATES.includes(state); }

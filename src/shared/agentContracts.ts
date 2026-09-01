@@ -58,6 +58,7 @@ export interface AgentRunSnapshot {
   phase: AgentRunPhase;
   lastActivityAt: string | null;
   partialText: string;
+  partialThinking: string;
   activeTool: { toolCallId: string; toolName: string } | null;
   pendingApproval: AgentApprovalRequest | null;
   error: { message: string; retryable: boolean; category: string } | null;
@@ -75,6 +76,7 @@ type SequencedAgentEvent = { sequence: number; at: string };
 export type AgentRunEvent = SequencedAgentEvent & (
   | { type: 'state'; sessionId: string; state: AgentRunState; phase: AgentRunPhase }
   | { type: 'text_delta'; sessionId: string; delta: string }
+  | { type: 'thinking_delta'; sessionId: string; delta: string }
   | { type: 'tool_start'; sessionId: string; toolCallId: string; toolName: string }
   | { type: 'tool_end'; sessionId: string; toolCallId: string; toolName: string; isError: boolean; proposalId?: string; memoryProposalId?: string }
   | { type: 'approval_required'; sessionId: string; request: AgentApprovalRequest }

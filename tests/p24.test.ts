@@ -33,6 +33,14 @@ describe('P24 合同台账与履约生命周期', () => {
     expect(() => app.createContract({ ...base, procurementProjectId: null, amountMinor: 1.25 })).toThrow('整数最小货币单位');
   });
 
+  it('合同信息不完整时可先创建草拟卡片，并自动补齐另一种名称', () => {
+    const { app } = fresh();
+    const contract = app.createContract({ ...base, procurementProjectId: null, fullName: '尚待补充供应商的框架合同', shortName: '', supplierName: '', contractNo: '', amountMinor: null, signedOn: null, effectiveOn: null, expiresOn: null, status: 'draft' });
+    expect(contract).toMatchObject({ fullName: '尚待补充供应商的框架合同', shortName: '尚待补充供应商的框架合同', supplierName: '', status: 'draft' });
+    expect(app.contracts.listCards()[0].contract.id).toBe(contract.id);
+    expect(() => app.createContract({ ...base, procurementProjectId: null, fullName: '', shortName: '', supplierName: '', status: 'draft' })).toThrow('至少填写');
+  });
+
   it('付款、开票关联及状态提醒遵循合同边界', () => {
     const { app } = fresh();
     const contract = app.createContract({ ...base, procurementProjectId: null });

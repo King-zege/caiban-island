@@ -320,7 +320,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
                   <div className="workspace-task-title">
                     <span className="eyebrow">当前合同</span>
                     <div><h1 tabIndex={-1} data-transition-focus="l3">{currentContract?.contract.fullName ?? contractDetail?.contract.fullName ?? '合同台账'}</h1></div>
-                    <p>{currentContract?.contract.contractNo || contractDetail?.contract.contractNo || '未编号'} · {currentContract?.contract.supplierName ?? contractDetail?.contract.supplierName}</p>
+                    <p>{currentContract?.contract.contractNo || contractDetail?.contract.contractNo || '未编号'} · {currentContract?.contract.supplierName || contractDetail?.contract.supplierName || '供应商待补充'}</p>
                   </div>
                   {(currentContract?.contract ?? contractDetail?.contract) && <span className={'workspace-urgency contract-status status-' + (currentContract?.contract.status ?? contractDetail?.contract.status)}>
                     {CONTRACT_STATUS_LABELS[currentContract?.contract.status ?? contractDetail!.contract.status]}
@@ -357,7 +357,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
               </>
             )
           )}
-          {section === 'agent' && <div className="workspace-scroll standalone-section"><AgentPanel /></div>}
+          {section === 'agent' && <div className="workspace-scroll standalone-section agent-standalone"><AgentPanel /></div>}
           {section === 'memory' && <div className="workspace-scroll standalone-section"><Deferred><MemoryPanel /></Deferred></div>}
           {section === 'archive' && <div className="workspace-scroll standalone-section"><Deferred><ArchiveView /></Deferred></div>}
           {section === 'settings' && <div className="workspace-scroll standalone-section"><Deferred><SettingsView /></Deferred></div>}

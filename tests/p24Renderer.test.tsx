@@ -89,13 +89,21 @@ describe('P24 Renderer 合同轨道与工作区', () => {
   it('新建合同同时提交正式全名、简称、精确金额和采购项目关联', async () => {
     const createContract = vi.fn(async (_input: ContractCreateRequest) => ({ ok: true as const, data: CONTRACT_CARD.contract })); setApi({ createContract });
     render(<NewContractForm projects={[PROJECT]} onClose={() => undefined} />);
-    await userEvent.type(screen.getByRole('textbox', { name: '合同正式全名' }), '总部办公终端框架合同');
+    await userEvent.type(screen.getByRole('textbox', { name: /^合同正式全名/ }), '总部办公终端框架合同');
     await userEvent.type(screen.getByRole('textbox', { name: /合同卡片简称/ }), '终端框采');
-    await userEvent.type(screen.getByRole('textbox', { name: '供应商' }), '合成科技');
+    await userEvent.type(screen.getByRole('textbox', { name: /^供应商/ }), '合成科技');
     await userEvent.type(screen.getByRole('textbox', { name: '合同金额（CNY）' }), '123456.78');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '关联采购项目' }), PROJECT.task.id);
     await userEvent.click(screen.getByRole('button', { name: '创建合同' }));
     const input = createContract.mock.calls[0]?.[0];
     expect(input).toMatchObject({ fullName: '总部办公终端框架合同', shortName: '终端框采', supplierName: '合成科技', procurementProjectId: PROJECT.task.id, amountMinor: 12345678, currency: 'CNY' });
+  });
+
+  it('新建合同只填写一种名称也可先生成草拟卡片', async () => {
+    const createContract = vi.fn(async (_input: ContractCreateRequest) => ({ ok: true as const, data: CONTRACT_CARD.contract })); setApi({ createContract });
+    render(<NewContractForm projects={[]} onClose={() => undefined} />);
+    await userEvent.type(screen.getByRole('textbox', { name: /合同正式全名/ }), '待补充合同信息');
+    await userEvent.click(screen.getByRole('button', { name: '创建合同' }));
+    expect(createContract.mock.calls[0]?.[0]).toMatchObject({ fullName: '待补充合同信息', shortName: '', supplierName: '', status: 'draft' });
   });
 });

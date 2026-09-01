@@ -1,5 +1,5 @@
-import { Check, ChevronDown, EyeOff, MessageSquarePlus, Send, Sparkles, Square, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Check, EyeOff, MessageSquarePlus, Send, Sparkles, Square, X } from 'lucide-react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AgentMessageDto, AgentProposal, MemoryProposal } from '../../../shared/types';
 import { isAgentRunning, useAgentStore } from '../state/useAgentStore';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
@@ -28,18 +28,18 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export default function AgentConversation({ compact = false, onHide, onTaskConfirmed }: AgentConversationProps): React.JSX.Element {
-  const sessions = useAgentStore((state) => state.sessions);
   const detail = useAgentStore((state) => state.detail);
   const runState = useAgentStore((state) => state.runState);
   const runPhase = useAgentStore((state) => state.runPhase);
   const streaming = useAgentStore((state) => state.streaming);
+  const streamingThinking = useAgentStore((state) => state.streamingThinking);
+  const thinkingByMessageId = useAgentStore((state) => state.thinkingByMessageId);
   const activeToolName = useAgentStore((state) => state.activeToolName);
   const error = useAgentStore((state) => state.error);
   const proposals = useAgentStore((state) => state.proposals);
   const memoryProposals = useAgentStore((state) => state.memoryProposals);
   const attention = useAgentStore((state) => state.attention);
   const pendingApproval = useAgentStore((state) => state.pendingApproval);
-  const openSession = useAgentStore((state) => state.openSession);
   const newConversation = useAgentStore((state) => state.newConversation);
   const send = useAgentStore((state) => state.send);
   const cancel = useAgentStore((state) => state.cancel);
@@ -53,6 +53,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   const [busyId, setBusyId] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [firstPacketSlow, setFirstPacketSlow] = useState(false);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   const running = isAgentRunning(runState);
   const visibleProposals = useMemo(() => proposals.filter((proposal) => proposal.state === 'pending'), [proposals]);
@@ -74,6 +75,14 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
     });
     return () => cancelAnimationFrame(frame);
   }, [attention?.proposalId, attention?.memoryProposalId, visibleProposals.length, memoryProposals.length]);
+
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const viewport = messagesRef.current;
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [detail?.session.id, detail?.messages.length, streaming, streamingThinking, runPhase, pendingApproval?.id, visibleProposals.length, memoryProposals.length]);
 
   const submit = async (value = input) => {
     const content = value.trim();
@@ -120,29 +129,26 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
 
   return (
     <section className={'agent-conversation' + (compact ? ' compact' : '')} aria-label="Agent 对话" aria-busy={running}>
-      <div className="agent-toolbar">
+      {!compact && <div className="agent-toolbar">
         <div className="agent-session-picker">
-          {compact && sessions.length > 0 ? (
-            <label>
-              <span className="sr-only">最近会话</span>
-              <select value={detail?.session.id ?? ''} onChange={(event) => void openSession(event.target.value)}>
-                {!detail && <option value="">新对话</option>}
-                {sessions.map((session) => <option key={session.id} value={session.id}>{session.title}</option>)}
-              </select>
-              <ChevronDown aria-hidden="true" size={14} />
-            </label>
-          ) : <span>{detail?.session.model ?? 'Pi Agent'} · {runPhase === 'awaiting_approval' ? '等待确认' : running ? '正在工作' : '本地保存'}</span>}
+          <span>{detail?.session.model ?? 'Pi Agent'} · {runPhase === 'awaiting_approval' ? '等待确认' : running ? '正在工作' : '本地保存'}</span>
         </div>
         <div>
           <Button icon={MessageSquarePlus} variant="ghost" disabled={running} onClick={newConversation}>新对话</Button>
           {onHide && <Button icon={EyeOff} variant="ghost" onClick={onHide}>{running ? '隐藏并继续' : '收起'}</Button>}
         </div>
-      </div>
+      </div>}
 
-      <div className="agent-messages" aria-live="polite" aria-relevant="additions text">
+      <div ref={messagesRef} className="agent-messages" aria-live="polite" aria-relevant="additions text">
         {!detail && !running ? (
           <EmptyState icon={Sparkles} title="说说你现在要完成什么" description="Agent 可按当前权限操作任务，也能整理你明确授权的目录。" />
-        ) : detail?.messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+        ) : detail?.messages.map((message) => <MessageBubble key={message.id} message={message} thinking={thinkingByMessageId[message.id]} />)}
+        {streamingThinking && (
+          <details className="agent-thinking" open={!streaming}>
+            <summary>{streaming ? '思考过程' : '思考中'}</summary>
+            <p>{streamingThinking}</p>
+          </details>
+        )}
         {streaming && <div className="agent-message assistant streaming"><span>Agent</span><p>{streaming}</p></div>}
         {running && !streaming && <p className="agent-working" role="status">{runPhase === 'awaiting_approval' ? '等待你确认后继续当前操作' : activeToolName ? TOOL_LABELS[activeToolName] ?? '正在使用受限工具' : runPhase === 'connecting' ? firstPacketSlow ? '连接响应较慢，仍在等待 DeepSeek；超时后可重试' : '正在连接 DeepSeek' : runPhase === 'applying' ? '正在应用操作结果' : 'Agent 正在处理，可隐藏到后台继续'}</p>}
 
@@ -198,9 +204,9 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
   );
 }
 
-function MessageBubble({ message }: { message: AgentMessageDto }): React.JSX.Element {
+function MessageBubble({ message, thinking }: { message: AgentMessageDto; thinking?: string }): React.JSX.Element {
   const label = message.role === 'user' ? '你' : message.role === 'assistant' ? 'Agent' : '工具状态';
-  return <div className={'agent-message ' + message.role}><span>{label}{message.toolName ? ' · ' + message.toolName : ''}</span><p>{message.content}</p></div>;
+  return <Fragment>{thinking && <details className="agent-thinking"><summary>思考过程</summary><p>{thinking}</p></details>}<div className={'agent-message ' + message.role}><span>{label}{message.toolName ? ' · ' + message.toolName : ''}</span><p>{message.content}</p></div></Fragment>;
 }
 
 function ProposalCard({ proposal, busy, onConfirm, onDiscard }: { proposal: AgentProposal; busy: boolean; onConfirm: () => void; onDiscard: () => void }): React.JSX.Element {

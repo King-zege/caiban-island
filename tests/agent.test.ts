@@ -14,7 +14,7 @@ import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
 import { MemoryService } from '../src/main/memoryService';
 import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 import type { PiAdapterEvent, PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
-import { PiAgentAdapter, visibleDeltaFromPiEvent } from '../src/main/piAgentAdapter';
+import { PiAgentAdapter, thinkingDeltaFromPiEvent, visibleDeltaFromPiEvent } from '../src/main/piAgentAdapter';
 import type { AgentRunEvent } from '../src/shared/agentContracts';
 
 const dirs: string[] = [];
@@ -38,6 +38,7 @@ class CompletingRunner implements PiAgentRunner {
   constructor(private readonly result: PiRunResult = 'completed') {}
   async run(options: PiRunOptions): Promise<PiRunResult> {
     this.lastOptions = options;
+    await options.onEvent({ type: 'thinking_delta', delta: '临时分析过程' });
     await options.onEvent({ type: 'text_delta', delta: '已完成' });
     await options.onEvent({ type: 'tool_start', toolCallId: 'tool-1', toolName: 'list_active_tasks' });
     await options.onEvent({ type: 'tool_end', toolCallId: 'tool-1', toolName: 'list_active_tasks', isError: false });
@@ -77,8 +78,10 @@ describe('Agent 会话、事件与 DeepSeek 配置', () => {
     const service = new AgentService(f.app, f.sessions, f.deepSeek, (event) => events.push(event), runner, f.memories);
     const started = service.start({ input: '看看当前任务' }); await service.waitForIdle();
     expect(events.map((event) => event.sequence)).toEqual(events.map((_, index) => index + 1));
+    expect(events.some((event) => event.type === 'thinking_delta')).toBe(true);
     expect(f.sessions.get(started.session.id).messages.map((message) => message.role)).toEqual(['user', 'tool', 'assistant']);
-    expect(service.runSnapshot()).toMatchObject({ sessionId: started.session.id, state: 'completed', phase: 'completed', partialText: '', activeTool: null });
+    expect(JSON.stringify(f.sessions.get(started.session.id))).not.toContain('临时分析过程');
+    expect(service.runSnapshot()).toMatchObject({ sessionId: started.session.id, state: 'completed', phase: 'completed', partialText: '', partialThinking: '', activeTool: null });
     expect(runner.lastOptions?.tools.map((tool) => tool.name)).toContain('execute_app_command');
     expect(runner.lastOptions?.systemPrompt).toContain('每轮只执行最新一条用户消息');
   });
@@ -108,10 +111,11 @@ describe('Pi 生产事件协议', () => {
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
     stopReason: 'stop' as const, timestamp: Date.now()
   };
-  it('只映射 text_delta，thinking_delta 永不展示', () => {
+  it('将正文与临时思考流分离映射', () => {
     const textEvent: AgentEvent = { type: 'message_update', message: assistant, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: '可见', partial: assistant } };
     const thinkingEvent: AgentEvent = { type: 'message_update', message: assistant, assistantMessageEvent: { type: 'thinking_delta', contentIndex: 0, delta: '内部推理', partial: assistant } };
     expect(visibleDeltaFromPiEvent(textEvent)).toBe('可见'); expect(visibleDeltaFromPiEvent(thinkingEvent)).toBeNull();
+    expect(thinkingDeltaFromPiEvent(textEvent)).toBeNull(); expect(thinkingDeltaFromPiEvent(thinkingEvent)).toBe('内部推理');
   });
 
   it('faux provider 完成真实工具循环并原生创建杂事', async () => {

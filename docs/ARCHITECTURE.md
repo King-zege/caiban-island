@@ -51,8 +51,8 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 
 `AgentWorkspace → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件工具`
 
-- L2/L3 渲染同一 Agent store 和组件；组件卸载不取消 run。
-- main 为事件分配单调 sequence，并保存 phase、partialText、activeTool、pendingApproval 与脱敏 error 快照。assistant 消息先落库再广播完成。
+- L2/L3 渲染同一 Agent store 和消息组件；L2 不挂载权限、目录、自动化或会话管理 UI，组件卸载不取消 run。
+- main 为事件分配单调 sequence，并保存 phase、partialText、仅当前运行可见的 partialThinking、activeTool、pendingApproval 与脱敏 error 快照。renderer 将正文/思考增量按动画帧合并，assistant 消息先落库再广播完成；思考流不落库。
 - `beforeToolCall` 根据 AppCommand 风险与权限模式执行、等待批准或阻断。未知工具 fail-closed 为高风险。
 - 只读工具包括项目、合同、归档、会话搜索、授权目录读取，以及工作目录树/检索/来源片段/派生索引刷新；正式数据工具统一调用 AppCommand。
 - DeepSeek function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足 provider 约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
@@ -89,7 +89,7 @@ IPC 分组而非逐项复制：
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
 - `settings/feishu/system`：设置、单向同步/导出和安全打开外部目标。
 
-所有业务调用返回 `{ ok, data }` 或 `{ ok: false, error }`；入参与出参在 shared 定义。`agent:event` 只传用户可见文本和脱敏状态，不传 reasoning 或工具原始正文。
+所有业务调用返回 `{ ok, data }` 或 `{ ok: false, error }`；入参与出参在 shared 定义。`agent:event` 只传用户可见正文、当前运行的临时思考增量和脱敏状态，不传工具原始正文；思考增量不得进入 SQLite、日志、搜索、记忆或导出。
 
 本地命令服务器使用 Node `http`，绑定 `127.0.0.1` 随机端口，校验 safeStorage 随机令牌、JSON Content-Type、128KB 上限和完整 AppCommand schema。`scripts/caiban-cli.mjs` 只提交一个注册命令，不接受 shell 或任意网络转发。
 
