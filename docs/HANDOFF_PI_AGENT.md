@@ -4,7 +4,7 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；版本：`v0.3.0`；P0–P28 已完成。
+- 分支：`main`；版本：`v0.3.0`；P0–P28 已完成。正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.3.0>（发布标签指向 `e0ade4b`）。
 - 最近已验收节点：P26 Agent 自动化与每日清单、P27 性能与遗留实现清理、P28 Windows/安全/打包发布硬化。
 - 数据库迁移：v1–v12。
 - Pi：`@earendil-works/pi-agent-core@0.81.1`、`@earendil-works/pi-ai@0.81.1`，精确锁定，MIT。
@@ -13,7 +13,7 @@
 
 P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 renderer JS 为 759 KB，相比 P22 前约 1.20 MB 降低约 36%。P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
 
-P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、package 与 `npm audit --omit=dev`（0 漏洞）；Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 已核对。发布产物为 `Caiban-Island-0.3.0-Windows-x64.exe` 与同名 ZIP。
+当前 v0.3.0 维护基线通过 typecheck、43 个测试文件/232 项测试、build 和 package；P28 的 `npm audit --omit=dev`（0 漏洞）、Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 验收仍有效。发布产物为 `Caiban-Island-0.3.0-Windows-x64.exe` 与同名 ZIP。
 
 ### v0.2.1 维护修复
 
@@ -21,11 +21,19 @@ P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、pa
 - TypeBox provider 转换会按联合分支尝试转换值；可空 UTC schema 现将 `null` 分支置前，确保“无提醒”不会变为空字符串。
 - system prompt 明确每轮只执行最新用户消息，避免修复后重放历史失败请求；Alt+F4 仅收起到 L1，真正退出才销毁窗口，轮询也会在窗口销毁后停止。
 
+### v0.3.0 最终维护修复
+
+- L2 Agent 是纯对话视图，只保留消息、临时思考/工具/审批状态和输入区；权限、目录、自动化、会话切换/新建、导出与删除只在 L3。
+- L2/L3 共享 Agent store 与消息组件，不共享完整管理外壳。L3 每次进入都会从 SQLite 刷新当前会话；当前会话已删除时回退到最新会话。
+- 消息视口在首次进入、重新进入和流式增长时自动定位最新内容；L2/L3 输入区固定可见，消息与会话列表各自滚动。
+- DeepSeek 原生思考流仅在当前运行临时展示，正文开始后折叠为“思考过程”；不进入 SQLite、日志、搜索、记忆或导出。provider 请求超时为 120 秒并有限重试。
+- 草拟合同允许信息不完整时先建卡：正式全名与简称至少填写一项，另一项由 main 规范化派生；供应商、合同号、金额和日期均可稍后补充。
+
 ## 2. 当前用户体验
 
-- L2 默认展示采购项目、合同、杂事三轨卡片，可切换 Agent；L3 使用同一个 AgentWorkspace，不存在第二套会话或“AI 草稿”页面。
-- 从 L2 Agent 展开到 L3 保持会话；从 L3 返回一律回到 L2 任务卡片。
-- 两层均有会话切换、新会话、导出、删除、权限、工具进度、错误重试和待确认操作。
+- L2 默认展示采购项目、合同、杂事三轨卡片，可切换纯 Agent 对话；L3 使用同一个 Agent store 与消息组件，不存在第二套会话或“AI 草稿”页面。
+- 从 L2 Agent 展开到 L3 保持并刷新当前会话，自动定位最新内容；从 L3 返回一律回到 L2 任务卡片。
+- L2 保留输入、工具进度、错误重试和待确认操作；会话切换/新建、导出、删除、权限、目录和自动化管理只在 L3。
 - 收起、切换和 renderer 重载不取消 run；不可见时用不含正文的系统通知恢复目标会话。
 - 通用 AgentProposal 与记忆提案在 Agent 对话内审核；确认记忆只在新建或重新载入会话时进入上下文。
 
@@ -44,7 +52,7 @@ P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、pa
 
 固定数据流：
 
-`L2/L3 AgentWorkspace → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件 → AppService`
+`L2/L3 Agent store + AgentConversation → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件 → AppService`
 
 ## 4. 不可破坏的运行契约
 
@@ -67,7 +75,7 @@ P28 最终门禁通过 typecheck、43 个测试文件/229 项测试、build、pa
 
 - 自动化只使用 faux/mock provider、隔离 SQLite 和合成文件，不读取真实 Key、任务或私人目录。
 - Agent 变更至少覆盖：正常文本、工具循环、空响应、错误/断流/超时、取消、序号缺口、重载、三档权限、路径越界和 AppCommand schema。
-- 端到端必须验证生成、修改、删除卡片和整理授权文件；L2/L3 会话连续且未授权目录不变。
+- 端到端必须验证生成、修改、删除卡片和整理授权文件；L2/L3 会话连续、重新进入 L3 可读取最新消息并保留可滚动输入区，且未授权目录不变。
 - 完成前执行 `npm run typecheck`、`npm test`、`npm run build`、`npm run package`，并按 `TEST_PLAN.md` 做 Windows/安全验收。
 
 ## 7. 后续方向
