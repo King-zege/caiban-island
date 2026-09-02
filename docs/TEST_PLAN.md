@@ -1,6 +1,6 @@
 # 采办岛当前测试计划
 
-历史 P0–P21 的逐节点记录不再常驻本文；当前完成标准以受影响测试、全量门禁和下列矩阵为准。
+历史验收记录由 Git 保存；本文只维护当前完成标准、覆盖矩阵与发布门禁。
 
 ## 1. 变更 → 验证范围
 
@@ -70,8 +70,8 @@ npm run package
 - 冷启动目标 <2s，常驻内存目标 <250MB；100 个活跃任务滚动与排序无明显卡顿。
 - 每次层级切换最多一次 resize；首个视觉帧 ≤50ms；composited 视觉过渡 200±40ms。
 - 100 任务 animating 阶段无 >50ms 帧，>20ms 帧比例 <5%，无 >50ms Long Task；L2 DOM ≤700，实际 TaskCard ≤7。
-- P27 生产构建首屏 renderer JS 为 759 KB（相对约 1.20 MB 基线降低约 36%）；后续不得无说明回升至 840 KB 以上。
-- P28 在 Windows 150% DPI 的 100 项合成夹具上通过 production transition `--assert`：每次切换一次 resize，L2 DOM 429、实际卡片 7；L2 三轨、L3 与高对比度截图人工核对无重叠或越界。
+- v0.4.0 生产构建首屏 renderer JS 为 772.48 KB；后续不得无说明回升至 840 KB 以上。
+- Windows 150% DPI 的 100 项合成夹具必须通过 production transition `--assert`：每次切换一次 resize、实际卡片 ≤7；L2 三轨、L3 与高对比度截图无重叠或越界。
 - 使用 `npm run benchmark:transitions -- <CDP端口> --assert`；Electron 必须连接系统临时目录中的 100 条合成任务，推荐使用生产构建而非 dev server。
 
 ## 6. 安全与打包

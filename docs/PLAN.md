@@ -12,7 +12,7 @@ P0–P29 已完成。历史演进压缩如下：
 | P16–P19 | 节点提醒、紧急度、L2 编辑、项目/杂事分层 |
 | P20–P21 | L2/L3 统一 AgentWorkspace、三档权限、AppCommand、授权文件、可靠通信与旧通道移除 |
 | P22–P23 | 双名称、通用提案、唯一命令 schema、版本化采购流程模板与 Agent 原子规划 |
-| P24 | 合同台账、履约动作、统一提醒、L2 合同轨道与 L3 合同工作区 |
+| P24 | 合同台账、合同节点、统一提醒、L2 合同轨道与 L3 合同工作区 |
 | P25 | 主工作目录、增量 Office/PDF/文本提取、来源定位、FTS5 与不可信正文防护 |
 | P26 | 一次性/每日/每周自动化、09:00 heartbeat、持久队列/审批、结构化清单与 PDF 降级 |
 | P27 | 动态轨道描述、L3/编辑器按需加载、CSS 分层、遗留草稿删除与 renderer 首屏包降低 36% |
@@ -26,9 +26,9 @@ P0–P29 已完成。历史演进压缩如下：
 - Electron + TypeScript + React + Zustand；SQLite 由 main 独占。
 - 同一个窗口承载 L1/L2/L3；L2 默认任务卡片，Agent 按需切换。
 - 项目和杂事是不同模型；节点开始时间与杂事时间是精确提醒。
-- 合同是独立领域，可关联采购项目或单独录入；金额使用整数最小货币单位，生命周期与履约动作分离。
-- Pi Agent + DeepSeek 是唯一模型通道；正式写入统一经 AppCommand/AppService。
-- Agent 权限为每次确认、低风险自动写入、Bypass；无任意 shell、网络或未授权文件访问。
+- 合同是独立领域，可关联采购项目或单独录入；金额使用整数最小货币单位，生命周期与合同节点分离。
+- Pi Agent 是唯一 Agent 运行时，可使用 DeepSeek、GLM 或企业 OpenAI-compatible Provider；正式写入统一经 AppCommand/AppService。
+- Agent 权限为每次确认、低风险自动写入、Bypass；无任意 shell、额外网络工具或未授权文件访问。
 - 本地回环 API + `caiban-cli` 只调用注册命令；飞书仅单向导出。
 - SQLite + Markdown/JSON 快照是正式本地存储；portable EXE 是推荐分发物。
 - 每个新节点先同步规范和测试，通过门禁后按 `P{n}: ... — 测试与验收通过` 独立提交。

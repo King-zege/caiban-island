@@ -59,7 +59,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - 所有 Provider 的 function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足兼容端点约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
 - `AgentProviderConfigService` 保留旧 DeepSeek 配置键以无迁移兼容既有用户；GLM 与企业网关使用独立模型、Base URL 和密钥键。企业 URL 由 main 规范化，拒绝远程 HTTP、URL 凭据、query/hash，并自动去除末尾 `/chat/completions`。renderer 只接收是否配置，不接收密钥。
 - 授权文件只接受目录 ID 与相对路径；main 拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权目标。
-- 无任意 shell 或 Agent 可调用的任意 URL/额外网络工具；只有用户在设置中保存并启用的模型 Base URL 可由 main 调用。Qoder MCP、旧 LLM 和 stdio 服务已删除；遗留 pending 草稿在 migration v8 转换为通用 AgentProposal。
+- 无任意 shell 或 Agent 可调用的任意 URL/额外网络工具；只有用户在设置中保存并启用的模型 Base URL 可由 main 调用。
 
 ## 5. 数据与迁移
 
@@ -75,7 +75,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - `knowledge_scans`、`knowledge_sources`、`knowledge_chunks`/FTS5 与 `workspace_project_bindings`；数据库只保存相对路径和本机派生正文，不记录工作目录绝对路径。
 - `agent_automations`、`automation_runs`；计划触发时间唯一，运行状态跨重启保持 queued/running/waiting_approval/succeeded/failed/skipped。
 
-当前 migration 为 v1–v12：v8 增加双名称、采购判别类型、模板字段与通用提案；v9 增加采购节点来源/采购方式及完整合同域；v10 增加工作目录扫描、来源、分块 FTS5 与项目绑定；v11 增加 Agent 自动化与持久运行；v12 将遗留 pending 草稿转换为通用提案并删除旧草稿表。新增 schema 必须追加版本迁移并测试升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
+当前 schema 版本为 v12，覆盖双名称/通用提案、采购流程与合同域、知识索引、Agent 自动化和旧草稿清理。新增 schema 必须追加版本迁移并测试旧库升级、失败回滚和幂等，禁止启动时执行未版本化 DDL。
 
 时间以 ISO8601 UTC 保存，按 `tz_id` 显示；ID 为 GUID；排序必须包含稳定 tie-breaker。外键级联处理依附实体，跨服务副作用由 AppService 事务编排。
 
@@ -116,7 +116,7 @@ IPC 分组而非逐项复制：
 - 各 Provider API Key、PersonalBaseToken、本地命令令牌只以 safeStorage 密文落盘；renderer 只取得配置状态，日志、SQLite 明文、快照、备份、导出和测试夹具不得包含它们。
 - Markdown 不启用 raw HTML；外链/文件由 main 验证并在 renderer 展示真实目标后确认。
 - 测试变量 `CAIBAN_TEST_*` 只在未打包且数据目录位于系统临时目录时生效；生产包拒绝覆盖用户数据目录。
-- electron-builder 生成 portable EXE、win-unpacked 和本地验收 zip；GitHub Release 只提供推荐 EXE。无代码签名，SmartScreen 提示属预期。
+- electron-builder 生成 portable EXE、win-unpacked 和 ZIP；GitHub Release 提供 EXE 与 ZIP。无商业代码签名，SmartScreen 提示属预期。
 - 许可证随 `resources/THIRD_PARTY_NOTICES.md` 分发；新增依赖必须记录用途、许可证和维护状态。
 
 ## 10. 目录索引
@@ -126,7 +126,7 @@ src/main       主进程、服务、数据库、Agent、Windows 集成
 src/preload    contextBridge 白名单
 src/renderer   React 组件、panels、Zustand state、样式
 src/shared     类型、schema、业务纯函数、设计 token
-tests          单元、集成、renderer 与 P21 隔离验收
+tests          单元、集成、renderer 与隔离 Agent 验收
 scripts        CLI、视觉夹具、截图和性能基准
 docs           当前规范与交接
 ```

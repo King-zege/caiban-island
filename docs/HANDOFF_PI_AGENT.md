@@ -1,92 +1,61 @@
 # Agent 维护交接
 
-本文件只保存接手 Agent 工作所需的当前状态。正式行为、架构、安全和验收分别以 `SPEC.md`、`ARCHITECTURE.md`、根目录 `AGENTS.md` 与 `TEST_PLAN.md` 为准。
+本文件只保存接手当前代码所需的信息。产品、架构、安全与验收分别以 `SPEC.md`、`ARCHITECTURE.md`、根目录 `AGENTS.md` 与 `TEST_PLAN.md` 为准；历史修复与发布说明查 Git 和 GitHub Release。
 
 ## 1. 当前基线
 
-- 分支：`main`；版本：`v0.4.0`；P0–P29 已完成。正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>。
-- 最近已验收节点：P27 性能与遗留实现清理、P28 Windows/安全/打包发布硬化、P29 多 Provider、Agent 连续对话与合同资料/节点增强。
-- 数据库迁移：v1–v12。
-- Pi：`@earendil-works/pi-agent-core@0.81.1`、`@earendil-works/pi-ai@0.81.1`，精确锁定，MIT。
-- 模型 Provider：DeepSeek 官方（Flash/Pro）、智谱 GLM 官方开放平台/Coding Plan，以及企业 OpenAI Chat Completions 兼容网关；企业模型 ID 自由填写。各 Provider 的 Key 独立经 safeStorage 保存。
-- Qoder MCP、旧内置 LLM、stdio 桥和专用 DraftService 已删除；遗留 pending 草稿已转换为通用 AgentProposal。
+- 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v12。
+- 正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>，标签指向 `35ead4e`。
+- 发布门禁：typecheck、43 个测试文件/241 项测试、build、package 均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。
+- Pi 包精确锁定为 `@earendil-works/pi-agent-core@0.81.1` 与 `@earendil-works/pi-ai@0.81.1`，MIT。
+- Provider：DeepSeek 官方、智谱 GLM 官方开放平台/Coding Plan、企业 OpenAI Chat Completions 兼容网关。各 Provider 的 Key 独立经 safeStorage 保存。
 
-P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 renderer JS 为 759 KB，相比 P22 前约 1.20 MB 降低约 36%。P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
+## 2. 当前产品事实
 
-当前 v0.4.0 维护基线通过 typecheck、43 个测试文件/241 项测试、build 和 package；P28 的 `npm audit --omit=dev`（0 漏洞）、Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 验收仍有效。发布产物为 `Caiban-Island-0.4.0-Windows-x64.exe` 与同名 ZIP。
+- L2 默认展示采购项目、合同、杂事三轨；Agent 模式只保留对话、临时思考/工具/审批状态与输入。权限、目录、自动化和会话管理只在 L3。
+- L2/L3 共用 Agent store 与消息组件。进入或重新进入时定位最新消息；流式正文自动跟底。思考流只在当前 run 临时显示，正文开始后折叠，不落库、不进日志/搜索/记忆/导出。
+- 合同允许信息不完整时先建草拟卡；卡片与 L3 显示合同号、供应商、金额、扫描件/附件/链接。合同可有多个节点，每个节点独立提醒。
+- Agent 可检索主工作目录并运行一次性/每日/每周自动化；默认每日 09:00 生成会话和固定模板 PDF，无模型时确定性降级。
+- 所有正式写入统一经过 AppCommand → AppService；飞书只单向同步采购项目。
 
-### v0.2.1 维护修复
+## 3. 关键实现入口
 
-- `execute_app_command` 原先仅输出顶层 `anyOf`，DeepSeek 将其识别为 `type: null` 并返回 400。当前 schema 为顶层 `type: object` + 判别联合 `anyOf`，测试同时覆盖工具定义与 DeepSeek 最终 HTTP payload。
-- TypeBox provider 转换会按联合分支尝试转换值；可空 UTC schema 现将 `null` 分支置前，确保“无提醒”不会变为空字符串。
-- system prompt 明确每轮只执行最新用户消息，避免修复后重放历史失败请求；Alt+F4 仅收起到 L1，真正退出才销毁窗口，轮询也会在窗口销毁后停止。
+| 入口 | 职责 |
+| --- | --- |
+| `src/main/agentService.ts` | 唯一 run、事件、快照、会话编排 |
+| `src/main/agentProviderConfigService.ts` | Provider、URL、模型与加密 Key 配置 |
+| `src/main/piAgentAdapter.ts` | 流式 Provider 协议与工具循环 |
+| `src/main/agentTools.ts` / `agentPermissionService.ts` | 工具 allowlist、风险与三档权限 |
+| `src/main/appCommandService.ts` / `src/shared/appCommandContracts.ts` | 正式命令、schema、差异与并发前置值 |
+| `src/main/contractService.ts` | 合同台账、资料、多节点、逐节点提醒与生命周期 |
+| `src/main/knowledgeService.ts` / `automationService.ts` | 本地知识索引、自动化、每日清单与 PDF |
+| `src/main/authorizedFileService.ts` | 授权目录与路径逃逸防护 |
+| `src/main/agentSessionService.ts` / `memoryService.ts` | 会话、FTS5 与确认记忆 |
+| `src/renderer/src/components/AgentPanel.tsx` / `AgentConversation.tsx` / `state/useAgentStore.ts` | L2/L3 Agent UI 与状态恢复 |
 
-### v0.3.0 最终维护修复
+固定调用链：
 
-- L2 Agent 是纯对话视图，只保留消息、临时思考/工具/审批状态和输入区；权限、目录、自动化、会话切换/新建、导出与删除只在 L3。
-- L2/L3 共享 Agent store 与消息组件，不共享完整管理外壳。L3 每次进入都会从 SQLite 刷新当前会话；当前会话已删除时回退到最新会话。
-- 消息视口在首次进入、重新进入和流式增长时自动定位最新内容；L2/L3 输入区固定可见，消息与会话列表各自滚动。
-- Provider 的结构化思考流仅在当前运行临时展示，正文开始后折叠为“思考过程”；不进入 SQLite、日志、搜索、记忆或导出。provider 请求超时为 120 秒并有限重试。
-- 草拟合同允许信息不完整时先建卡：正式全名与简称至少填写一项，另一项由 main 规范化派生；供应商、合同号、金额和日期均可稍后补充。
+`L2/L3 Agent → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件工具 → AppService`
 
-### v0.4.0 发布增强
+## 4. 不可破坏的契约
 
-- Agent Provider 扩展为 DeepSeek 官方、智谱 GLM 与企业 OpenAI Chat Completions 兼容网关；企业网关可填写自定义 HTTPS Base URL、模型 ID 和独立加密 API Key。
-- L2 Agent 保留输入并专注对话；L2/L3 流式内容自动跟随最新消息，重新进入 L3 时恢复到最新对话。思考流临时低强调展示，正式回答开始后折叠为可展开的“思考过程”。
-- 合同卡突出合同号、供应商、金额、首份扫描件和资料数量；L3 将本机附件与附属链接分组管理，文件只接受本机磁盘绝对路径。
-- 合同支持一次创建多个付款、交付、验收、续签、归档或自定义节点，并为每个节点设置独立提醒；初始资料、节点和提醒在同一事务中保存。
+- 全局只有一个 run；provider 单次请求超时 120 秒并有限重试，run 最长 15 分钟、最多 12 轮；取消信号贯穿 provider、审批和文件 I/O。
+- renderer 先订阅事件再 bootstrap；sequence 缺口、发送返回、终态、层级切换、重载或重开时必须以快照补偿。
+- assistant 消息先落库再广播 completed。快照可含临时 `partialThinking`，但结构化思考和工具原文不得持久化。
+- 所有 Provider 工具参数保持顶层 `type: object`；可空 UTC 保持真正的 `null`。未知工具 fail-closed。
+- Bypass 也不能突破 AppCommand、授权目录、safeStorage、本地回环以及无任意 shell/网络边界。
+- 文件工具只接受授权目录 ID 与相对路径；main 拒绝 `..`、设备/UNC、符号链接/联接逃逸和未授权相邻目录。
+- 企业 Base URL 只允许 HTTPS；本机回环调试可用 HTTP。URL 不得含凭据、query 或 hash，连接测试不得发送业务正文。
 
-## 2. 当前用户体验
+## 5. 修改与验收
 
-- L2 默认展示采购项目、合同、杂事三轨卡片，可切换纯 Agent 对话；L3 使用同一个 Agent store 与消息组件，不存在第二套会话或“AI 草稿”页面。
-- 从 L2 Agent 展开到 L3 保持并刷新当前会话，自动定位最新内容；从 L3 返回一律回到 L2 任务卡片。
-- L2 保留输入、工具进度、错误重试和待确认操作；会话切换/新建、导出、删除、权限、目录和自动化管理只在 L3。
-- 收起、切换和 renderer 重载不取消 run；不可见时用不含正文的系统通知恢复目标会话。
-- 通用 AgentProposal 与记忆提案在 Agent 对话内审核；确认记忆只在新建或重新载入会话时进入上下文。
+- 测试只使用 faux/mock provider、隔离 SQLite、合成 Key 和系统临时目录，不读取真实任务、凭据或私人文件。
+- Agent 变更覆盖文本、工具循环、思考分流、空响应、认证/限流/5xx、断流、超时、取消、序号补偿、重载与三档权限。
+- 合同变更覆盖不完整草拟卡、金额精度、资料路径、多节点/提醒、状态机、事务回滚和并发冲突。
+- 完成前执行 `npm run typecheck`、`npm test`、`npm run build`；发布相关改动再执行 `npm run package`，并按 `TEST_PLAN.md` 做安全与 Windows 验收。
 
-## 3. 实现入口
+## 6. 接手顺序与后续方向
 
-- `src/main/agentService.ts`：唯一 run、事件、快照、会话编排。
-- `src/main/agentProviderConfigService.ts`：Provider、URL、模型和加密 Key 配置；`src/main/piAgentAdapter.ts`：Pi/Provider 协议、流式文本和工具循环。
-- `src/main/agentTools.ts`：工具 allowlist。
-- `src/main/agentPermissionService.ts`：三档权限与审批。
-- `src/main/contractService.ts`：合同台账、多合同节点、逐节点提醒、扫描件/附件/附属链接与生命周期。
-- `src/main/knowledgeService.ts`、`automationService.ts`：本地知识索引、持久化自动化、每日清单与固定模板 PDF。
-- `src/main/appCommandService.ts`、`src/shared/appCommandContracts.ts`：统一正式命令。
-- `src/main/authorizedFileService.ts`：授权目录文件边界。
-- `src/main/agentSessionService.ts`、`src/main/memoryService.ts`：会话、FTS5 与记忆。
-- `src/renderer/src/components/AgentPanel.tsx`、`AgentConversation.tsx`、`state/useAgentStore.ts`：统一 UI 与恢复状态。
+先读 `AGENTS.md`，再按任务读取对应正式文档；开始前检查分支、工作区、最新提交和迁移。未经明确需求不要升级 Pi、放开网络/shell 边界或读取真实凭据。
 
-固定数据流：
-
-`L2/L3 Agent store + AgentConversation → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件 → AppService`
-
-## 4. 不可破坏的运行契约
-
-- 全局一个 run；provider 请求 120 秒超时并有限重试，run 最长 15 分钟，最多 12 轮；取消信号贯穿 provider、审批和文件 I/O。
-- renderer 先订阅事件再 bootstrap；sequence 出现缺口及发送返回、终态、层级切换、重载/重开时必须请求快照。
-- 快照含 phase、lastActivityAt、partialText、仅当前运行可见的 partialThinking、activeTool、pendingApproval 和脱敏 error；assistant 消息必须先落库再广播 completed。
-- 可持久化内容只包括用户/assistant 可见文本、脱敏工具状态、模型、摘要与使用量；思考增量允许通过当前运行 IPC 临时展示，但禁止进入 SQLite、日志、搜索、记忆和导出，原始工具正文同样禁止持久化。
-- AppCommand 定义 schema、风险、预期旧值、摘要和撤销能力。未知工具 fail-closed；批准后继续原工具循环，拒绝/取消作为工具结果返回。
-- Bypass 仍不能突破 AppCommand、授权目录、safeStorage、回环和无任意 shell/网络边界。
-
-## 5. 工具与记忆边界
-
-- 只读：活跃采购/杂事/合同详情、归档案例、历史会话、授权目录列举与文本读取、工作目录树/检索/来源片段/派生索引刷新。
-- 写入：一个统一 `execute_app_command`；授权目录内写入、移动与单文件删除；记忆只形成提案。
-- 文件参数只使用授权目录 ID 和相对路径。main 必须拒绝 `..`、设备/UNC、符号链接/联接逃逸与未授权相邻目录。
-- `search_archived_cases` 和 `search_sessions` 只返回有界、脱敏片段，不返回备注全文、链接目标、文件内容、reasoning 或凭据。
-- 记忆类别为 profile（1,375 字符）与 work（2,200 字符）；确认前执行证据归属、去重、不可见字符、提示注入、凭据和私人路径扫描。
-
-## 6. 修改与验收
-
-- 自动化只使用 faux/mock provider、隔离 SQLite 和合成文件，不读取真实 Key、任务或私人目录。
-- Agent 变更至少覆盖：正常文本、工具循环、空响应、错误/断流/超时、取消、序号缺口、重载、三档权限、路径越界和 AppCommand schema。
-- 端到端必须验证生成、修改、删除卡片和整理授权文件；L2/L3 会话连续、重新进入 L3 可读取最新消息并保留可滚动输入区，且未授权目录不变。
-- 完成前执行 `npm run typecheck`、`npm test`、`npm run build`、`npm run package`，并按 `TEST_PLAN.md` 做 Windows/安全验收。
-
-## 7. 后续方向
-
-P25 由 `KnowledgeService` 实现本地知识库。P26 由 `AutomationService` 实现三档权限控制的持久化计划、每日清单和固定模板 PDF；模型只重排既有条目 ID 并给建议，失败时确定性降级。P27 将遗留 pending 草稿统一迁移至 AgentProposal，并按需加载 L3 与非当前编辑器。后续自动化执行器不得放开任意 shell、原始 cron 或网络。
-
-接手提示：先读根目录 `AGENTS.md`，再按任务只读相关正式文档；检查分支、工作区、最新提交和迁移。未经明确需求不要升级 Pi、扩展网络/shell 权限或读取真实凭据。
+候选增强统一记录在 `PLAN.md`；当前包括 OCR/旧 Office 提取、自定义排序与节点依赖、多显示器/Arm64、附件托管、数据库加密及经重新评估的飞书双向同步。

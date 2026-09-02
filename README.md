@@ -4,19 +4,18 @@ Windows 10/11 顶部常驻的本地采购全流程与合同生命周期工作台
 
 ## 当前状态
 
-`v0.4.0` 已完成，P0–P29 已验收。当前版本包括：
+当前稳定版为 [`v0.4.0`](https://github.com/King-zege/caiban-island/releases/tag/v0.4.0)。核心能力：
 
 - L2 按采购项目、合同、杂事显示三条轨道，可切换至 Agent；L3 继续同一 Agent 会话。
 - 采购项目支持正式全名/简称、版本化流程模板、采购方式、节点、deadline、提醒、资料和备注。
 - 合同支持正式全名/简称、合同号、供应商、精确金额、扫描件绝对路径、附件、附属链接，以及付款/开票/交付/验收等多节点和逐节点提醒；信息不完整时也可先建立草拟卡片。一项目可关联多份合同，也可独立录入。
 - 杂事保持名称、精确提醒、资料和备注的轻量模型。
-- Pi Agent 可连接 DeepSeek 官方、智谱 GLM 或企业 OpenAI Chat Completions 兼容网关，并通过统一 AppCommand 原生查询和操作应用；企业模型 ID 可填写网关实际公布的 GPT、Claude、DeepSeek 等任意标识。支持三档权限、内联审批、后台运行与事件快照恢复。
-- DeepSeek 工具参数保持顶层 object schema；无提醒时间保留为 `null`，避免对话创建卡片时被接口拒绝或产生空字符串时间。
-- Agent 可维护一个本地主工作目录：增量索引 PDF、DOCX、XLSX、PPTX、Markdown、TXT 与 CSV，检索结果带来源定位；旧式 Office、图片、压缩包与无文本 PDF 只索引元数据。Agent 不提供任意 shell、任意网络或未授权路径访问。
+- Pi Agent 可连接 DeepSeek 官方、智谱 GLM 或企业 OpenAI Chat Completions 兼容网关，并通过统一 AppCommand 查询和操作应用；支持三档权限、内联审批、后台运行与事件快照恢复。
+- Agent 可维护一个本地主工作目录：增量索引 PDF、DOCX、XLSX、PPTX、Markdown、TXT 与 CSV，检索结果带来源定位；旧式 Office、图片、压缩包与无文本 PDF 只索引元数据。Agent 不提供任意 shell、额外网络工具或未授权路径访问。
 - 默认每日 09:00 heartbeat 汇总逾期、今日与未来七日工作，生成 Agent 会话及本地 PDF；支持一次性、每日、每周自动化、睡眠/启动补跑、防重、总暂停和跨重启审批。模型不可用时仍生成确定性基础清单。
 - Windows Toast、归档与恢复、Markdown/JSON/CSV 导出；飞书只单向同步采购项目，合同与杂事不外发。
-- L3、归档、设置、记忆及非当前编辑器按需加载；首屏 renderer JS 由约 1.20 MB 降至 759 KB。L2 高度由轨道描述动态计算，样式拆为 shell、领域、合同与 Agent 层。
-- Qoder MCP、STDIO 桥、旧内置 LLM 与专用 DraftService 已移除；遗留待处理草稿在 v12 升级时转换为通用提案。
+- L2 Agent 专注对话，L3 承载权限、目录、自动化与会话管理；两层共享流式消息、思考折叠和恢复状态。
+- L3 与非当前编辑器按需加载，L2 高度按实际轨道动态计算。
 
 ## 运行与构建
 
