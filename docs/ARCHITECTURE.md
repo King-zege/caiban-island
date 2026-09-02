@@ -9,7 +9,7 @@
 | 桌面运行时 | Electron 43、TypeScript strict、electron-vite |
 | UI / 状态 | React 19、Zustand、lucide-react |
 | 数据 | Electron `node:sqlite`，WAL + foreign keys，main 独占 |
-| Agent | `@earendil-works/pi-agent-core` / `pi-ai` 0.81.1，DeepSeek 官方 provider |
+| Agent | `@earendil-works/pi-agent-core` / `pi-ai` 0.81.1；DeepSeek、GLM、企业 OpenAI-compatible provider |
 | Windows 集成 | koffi Acrylic、Toast、托盘、单实例、全屏检测 |
 | 内容 / 同步 | react-markdown、JSZip、PDF.js；飞书 bitable v1；CSV/Markdown 导出 |
 | 测试 / 打包 | Vitest、Testing Library、axe、Electron 截图/基准；electron-builder portable |
@@ -18,7 +18,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 
 ## 2. 进程分层
 
-- **main**：窗口、SQLite、AppService/AppCommand、提醒、归档、Agent、授权文件、DeepSeek、safeStorage、本地命令端点和系统集成。
+- **main**：窗口、SQLite、AppService/AppCommand、提醒、归档、Agent、授权文件、模型 Provider 配置/网络、safeStorage、本地命令端点和系统集成。
 - **preload**：只暴露白名单 IPC，无业务规则。
 - **renderer**：React 组件与 Zustand store；不访问 Node、数据库、文件或网络。
 - **shared**：类型、schema、排序、时间、状态机与设计 token；不依赖 Electron/renderer。
@@ -37,14 +37,15 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `AppService` | 正式业务事务、提醒一致性、变更通知 |
 | `AppCommandService` | 统一命令 schema、风险、预期旧值、摘要和撤销元数据 |
 | `AgentService` | 唯一 run、会话、事件序号、快照、工具与终态 |
-| `PiAgentAdapter` | Pi/DeepSeek 流式协议与工具循环；不含业务写入 |
+| `AgentProviderConfigService` | Provider 选择、URL/模型校验、分 Provider safeStorage 密钥与无业务正文连接测试 |
+| `PiAgentAdapter` | DeepSeek 原生或 OpenAI Chat Completions 兼容流式协议与工具循环；不含业务写入 |
 | `AgentPermissionService` | 三档权限、审批等待、Bypass 和授权目录元数据 |
 | `AuthorizedFileService` | 授权根内文件操作与 realpath/逃逸防护 |
 | `KnowledgeService` | 单一主工作目录、增量扫描、Office/PDF 提取、FTS5、来源定位与不可信正文脱敏 |
 | `AutomationService` | 结构化计划、持久队列/防重/审批、DailyBriefingDocument、模型降级和 PDF 生成编排 |
 | `AgentSessionService` / `MemoryService` | 可见会话、FTS5 召回、确认记忆与提案 |
 | `ReminderService` | 项目、节点、杂事提醒的派生调度与原子领取 |
-| `ContractService` | 合同台账、履约动作、付款—开票关联、资料、备注与生命周期状态机 |
+| `ContractService` | 合同台账、多节点与逐节点提醒、付款—开票关联、扫描件/附件/附属链接、备注与生命周期状态机 |
 | `ArchiveService` / `FeishuService` | 本地快照与恢复；单向飞书 upsert/导出 |
 
 ## 4. Agent 与权限流
@@ -55,9 +56,10 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - main 为事件分配单调 sequence，并保存 phase、partialText、仅当前运行可见的 partialThinking、activeTool、pendingApproval 与脱敏 error 快照。renderer 将正文/思考增量按动画帧合并，assistant 消息先落库再广播完成；思考流不落库。
 - `beforeToolCall` 根据 AppCommand 风险与权限模式执行、等待批准或阻断。未知工具 fail-closed 为高风险。
 - 只读工具包括项目、合同、归档、会话搜索、授权目录读取，以及工作目录树/检索/来源片段/派生索引刷新；正式数据工具统一调用 AppCommand。
-- DeepSeek function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足 provider 约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
+- 所有 Provider 的 function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足兼容端点约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
+- `AgentProviderConfigService` 保留旧 DeepSeek 配置键以无迁移兼容既有用户；GLM 与企业网关使用独立模型、Base URL 和密钥键。企业 URL 由 main 规范化，拒绝远程 HTTP、URL 凭据、query/hash，并自动去除末尾 `/chat/completions`。renderer 只接收是否配置，不接收密钥。
 - 授权文件只接受目录 ID 与相对路径；main 拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权目标。
-- 无任意 shell、任意 URL 或额外网络工具。Qoder MCP、旧 LLM 和 stdio 服务已删除；遗留 pending 草稿在 migration v8 转换为通用 AgentProposal。
+- 无任意 shell 或 Agent 可调用的任意 URL/额外网络工具；只有用户在设置中保存并启用的模型 Base URL 可由 main 调用。Qoder MCP、旧 LLM 和 stdio 服务已删除；遗留 pending 草稿在 migration v8 转换为通用 AgentProposal。
 
 ## 5. 数据与迁移
 
@@ -65,7 +67,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 
 - `tasks`：采购项目/杂事、正式全名、卡片简称、流程模板、状态、时区、deadline/精确提醒和审计时间。
 - `nodes`、`links`、`notes`、`change_events`；节点保存阶段 key 和模板/Agent/自定义来源。
-- `contracts`、`contract_actions`、`contract_action_reminders`、`contract_links`、`contract_notes`、`contract_change_events`。
+- `contracts`、`contract_actions`、`contract_action_reminders`、`contract_links`、`contract_notes`、`contract_change_events`。UI 将 `contract_actions` 呈现为可重复的“合同节点”；`contract_links.kind=file` 只保存经校验的本机磁盘绝对路径，`kind=url` 只接受 http/https。
 - `reminders`、`node_reminders`、`misc_reminders`。
 - `agent_proposals`：持久化待批准命令或命令批次。
 - `agent_sessions`、`agent_messages`、`agent_messages_fts`。
@@ -82,8 +84,8 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 IPC 分组而非逐项复制：
 
 - `procurements/tasks/nodes/links/notes/reminders/misc/archive`：采购与杂事读写，写入经 AppCommand。
-- `contracts/contractActions/contractLinks/contractNotes`：合同台账与履约读写，写入经 AppCommand。
-- `agent/deepseek/memory/proposals`：会话、run、权限、配置、记忆和通用提案。
+- `contracts/contractActions/contractLinks/contractNotes`：合同台账、节点/提醒、扫描件/附件/附属链接与备注读写，写入经 AppCommand；`create_contract` 可在同一事务内创建首批资料、多个节点和提醒。
+- `agent/agentProvider/memory/proposals`：会话、run、权限、多 Provider 配置、记忆和通用提案；`deepseek/*` 仅保留一版旧 renderer 兼容入口。
 - `knowledge`：主目录状态/选择、相对目录树、检索、来源片段、刷新与取消；选择之外不向 renderer 暴露绝对路径。
 - `automations`：列表/运行、总开关和审批；创建、更新、单项启停和删除仍经 AppCommand。
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
@@ -111,7 +113,7 @@ IPC 分组而非逐项复制：
 
 ## 9. 安全、测试与分发
 
-- API Key、PersonalBaseToken、本地命令令牌只以 safeStorage 密文落盘；日志、SQLite 明文、快照、备份、导出和测试夹具不得包含它们。
+- 各 Provider API Key、PersonalBaseToken、本地命令令牌只以 safeStorage 密文落盘；renderer 只取得配置状态，日志、SQLite 明文、快照、备份、导出和测试夹具不得包含它们。
 - Markdown 不启用 raw HTML；外链/文件由 main 验证并在 renderer 展示真实目标后确认。
 - 测试变量 `CAIBAN_TEST_*` 只在未打包且数据目录位于系统临时目录时生效；生产包拒绝覆盖用户数据目录。
 - electron-builder 生成 portable EXE、win-unpacked 和本地验收 zip；GitHub Release 只提供推荐 EXE。无代码签名，SmartScreen 提示属预期。

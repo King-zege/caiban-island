@@ -3,6 +3,7 @@ node_modules/
 out/
 dist/
 release/
+release-*/
 *.log
 .DS_Store
 .playwright-mcp/

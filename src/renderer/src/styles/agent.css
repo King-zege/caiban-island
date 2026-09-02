@@ -99,6 +99,10 @@
 .memory-card-foot > div { display: flex; align-items: center; gap: var(--space-1); }
 .memory-warning { margin: 0; color: var(--danger); font-size: 14px; line-height: 1.5; }
 
+.agent-provider-grid .ui-field { min-width: 0; }
+.agent-provider-grid .ui-field:nth-last-child(2) { grid-column: 1 / -1; }
+.connection-test-note { max-width: 72ch; margin: var(--space-3) 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.55; }
+
 [data-high-contrast='true'] .panel,
 [data-high-contrast='true'] button,
 [data-high-contrast='true'] input,

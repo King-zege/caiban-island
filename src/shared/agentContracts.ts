@@ -1,5 +1,34 @@
 export const DEEPSEEK_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const;
 export type DeepSeekModel = (typeof DEEPSEEK_MODELS)[number];
+export const GLM_MODELS = ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'] as const;
+export type GlmModel = (typeof GLM_MODELS)[number];
+export const AGENT_PROVIDER_IDS = ['deepseek', 'glm', 'enterprise'] as const;
+export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
+export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com' as const;
+export const GLM_BASE_URLS = ['https://open.bigmodel.cn/api/paas/v4', 'https://open.bigmodel.cn/api/coding/paas/v4'] as const;
+
+export interface AgentProviderConfigInput {
+  provider: AgentProviderId;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
+export interface AgentProviderStatus {
+  provider: AgentProviderId;
+  configured: boolean;
+  configuredProviders: AgentProviderId[];
+  baseUrl: string;
+  model: string;
+  profiles: Record<AgentProviderId, { configured: boolean; baseUrl: string; model: string }>;
+}
+
+export interface AgentProviderRuntimeConfig {
+  provider: AgentProviderId;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
 
 export interface AgentRunRequest {
   sessionId?: string;
@@ -88,7 +117,7 @@ export type AgentRunEvent = SequencedAgentEvent & (
 export interface AgentSessionSummary {
   id: string;
   title: string;
-  model: DeepSeekModel;
+  model: string;
   summary: string;
   createdAt: string;
   updatedAt: string;
@@ -112,11 +141,8 @@ export interface AgentSessionDetail {
   messages: AgentMessageDto[];
 }
 
-export interface DeepSeekStatus {
-  configured: boolean;
-  baseUrl: 'https://api.deepseek.com';
-  model: DeepSeekModel;
-}
+/** @deprecated Use AgentProviderStatus. Kept for one renderer/API compatibility cycle. */
+export type DeepSeekStatus = AgentProviderStatus;
 
 export type MemoryCategory = 'profile' | 'work';
 export type MemoryOperation = 'add' | 'replace' | 'remove';

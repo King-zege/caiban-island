@@ -7,7 +7,6 @@ import type {
   AgentMessageRole,
   AgentSessionDetail,
   AgentSessionSummary,
-  DeepSeekModel,
   SessionSearchMatch
 } from '../shared/agentContracts';
 
@@ -34,7 +33,7 @@ interface MessageRow {
 }
 
 function sessionFromRow(row: SessionRow): AgentSessionSummary {
-  return { ...row, model: row.model as DeepSeekModel };
+  return row;
 }
 
 function messageFromRow(row: MessageRow): AgentMessageDto {
@@ -47,7 +46,7 @@ export class AgentSessionService {
     private readonly dataDir: string
   ) {}
 
-  create(model: DeepSeekModel, firstInput: string): AgentSessionSummary {
+  create(model: string, firstInput: string): AgentSessionSummary {
     const now = new Date().toISOString();
     const title = firstInput.trim().replace(/\s+/g, ' ').slice(0, 36) || '新对话';
     const id = randomUUID();
@@ -100,6 +99,12 @@ export class AgentSessionService {
     this.db.prepare(
       'UPDATE agent_sessions SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE id = ?'
     ).run(safeInput, safeOutput, sessionId);
+  }
+
+  setModel(sessionId: string, model: string): void {
+    if (!model.trim()) throw new AgentSessionError('模型 ID 不能为空');
+    const result = this.db.prepare('UPDATE agent_sessions SET model = ? WHERE id = ?').run(model.trim(), sessionId);
+    if (result.changes === 0) throw new AgentSessionError('会话不存在');
   }
 
   delete(id: string): void {

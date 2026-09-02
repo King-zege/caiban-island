@@ -6,13 +6,13 @@ import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
 import type { AgentService } from './agentService';
-import type { DeepSeekConfigService } from './deepSeekConfigService';
+import type { AgentProviderConfigService } from './agentProviderConfigService';
 import type { MemoryService } from './memoryService';
 import type { AgentPermissionService } from './agentPermissionService';
 import type { LocalCommandRuntime } from './localCommandServer';
 import type { AppCommandService } from './appCommandService';
 import type { IslandLevel, L2TrackDescriptor, LegacyMiscDeadlineActionRequest, LinkInput, MiscReminderUpdateRequest, NodeInput, NodeStatus, NodeTimeUpdateRequest, NodeTitleUpdateRequest, TaskCreateRequest, TaskInput, TaskNameUpdateRequest, TaskNamesUpdateRequest, TaskUrgencyUpdateRequest } from '../shared/types';
-import type { AgentApprovalDecision, AgentPermissionMode, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
+import type { AgentApprovalDecision, AgentPermissionMode, AgentProviderConfigInput, AgentRunRequest, DeepSeekModel } from '../shared/agentContracts';
 import type { AgentProposalCreateRequest } from '../shared/agentProposalContracts';
 import { PROCUREMENT_WORKFLOW_TEMPLATES } from '../shared/procurementContracts';
 import type { ProcurementPlanApplyRequest, ProcurementProjectCreateRequest } from '../shared/procurementContracts';
@@ -26,7 +26,7 @@ export function registerIpc(
   appSvc: AppService,
   feishu: FeishuService,
   agent: AgentService,
-  deepSeek: DeepSeekConfigService,
+  providerConfig: AgentProviderConfigService,
   memories: MemoryService,
   permissions: AgentPermissionService,
   localCommands: LocalCommandRuntime,
@@ -165,7 +165,7 @@ export function registerIpc(
   ipcMain.handle('proposals:discard', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.proposals.discard(id)));
   ipcMain.handle('proposals:approve', (_e: IpcMainInvokeEvent, id: string) => wrap(() => appSvc.proposals.approve(id, (command) => commands.execute(command))));
 
-  // —— 原生 Pi Agent / DeepSeek ——
+  // —— 原生 Pi Agent / 多模型 Provider ——
   ipcMain.handle('agent:start', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.start(request)));
   ipcMain.handle('agent:send', (_e: IpcMainInvokeEvent, request: AgentRunRequest) => wrap(() => agent.send(request)));
   ipcMain.handle('agent:cancel', () => wrap(() => agent.cancel()));
@@ -223,11 +223,19 @@ export function registerIpc(
   ipcMain.handle('automations:setGlobalEnabled', (_e: IpcMainInvokeEvent, enabled: boolean) => wrap(() => automations.setGlobalEnabled(enabled)));
   ipcMain.handle('automations:approveRun', (_e: IpcMainInvokeEvent, id: string) => wrap(() => automations.approveRun(id)));
   ipcMain.handle('localCommands:getConfig', () => wrap(() => localCommands.config()));
-  ipcMain.handle('deepseek:status', () => wrap(() => deepSeek.status()));
+  ipcMain.handle('agentProvider:status', () => wrap(() => providerConfig.status()));
+  ipcMain.handle('agentProvider:saveConfig', (_e: IpcMainInvokeEvent, input: AgentProviderConfigInput) =>
+    wrap(() => { providerConfig.saveConfig(input); return true; }));
+  ipcMain.handle('agentProvider:test', async () => {
+    try { return { ok: true as const, data: await providerConfig.test() }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  // DeepSeek-only IPC remains for one compatibility cycle with older renderer bundles.
+  ipcMain.handle('deepseek:status', () => wrap(() => providerConfig.status()));
   ipcMain.handle('deepseek:saveConfig', (_e: IpcMainInvokeEvent, model: DeepSeekModel, key: string) =>
-    wrap(() => { deepSeek.save(model, key); return true; }));
+    wrap(() => { providerConfig.save(model, key); return true; }));
   ipcMain.handle('deepseek:test', async () => {
-    try { return { ok: true as const, data: await deepSeek.test() }; }
+    try { return { ok: true as const, data: await providerConfig.test() }; }
     catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
   });
 

@@ -150,7 +150,7 @@ export default function AgentConversation({ compact = false, onHide, onTaskConfi
           </details>
         )}
         {streaming && <div className="agent-message assistant streaming"><span>Agent</span><p>{streaming}</p></div>}
-        {running && !streaming && <p className="agent-working" role="status">{runPhase === 'awaiting_approval' ? '等待你确认后继续当前操作' : activeToolName ? TOOL_LABELS[activeToolName] ?? '正在使用受限工具' : runPhase === 'connecting' ? firstPacketSlow ? '连接响应较慢，仍在等待 DeepSeek；超时后可重试' : '正在连接 DeepSeek' : runPhase === 'applying' ? '正在应用操作结果' : 'Agent 正在处理，可隐藏到后台继续'}</p>}
+        {running && !streaming && <p className="agent-working" role="status">{runPhase === 'awaiting_approval' ? '等待你确认后继续当前操作' : activeToolName ? TOOL_LABELS[activeToolName] ?? '正在使用受限工具' : runPhase === 'connecting' ? firstPacketSlow ? '模型服务响应较慢，仍在等待；超时后可重试' : '正在连接模型服务' : runPhase === 'applying' ? '正在应用操作结果' : 'Agent 正在处理，可隐藏到后台继续'}</p>}
 
         {pendingApproval && (
           <article className="agent-approval-card" data-approval-id={pendingApproval.id} tabIndex={-1}>

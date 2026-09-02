@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,10 +27,19 @@ const CONTRACT_CARD: ContractCard = {
   contract: { id: 'contract-24', procurementProjectId: PROJECT.task.id, fullName: '总部办公终端设备框架采购合同（第一批）', shortName: '终端框采一批', contractNo: 'HT-2026-024', supplierName: '合成科技有限公司', amountMinor: 12345678, currency: 'CNY', signedOn: '2026-08-01', effectiveOn: '2026-08-02', expiresOn: '2027-08-01', tzId: 'Asia/Shanghai', status: 'active', archivedFromStatus: null, createdAtUtc: '2026-08-01T00:00:00.000Z', updatedAtUtc: '2026-08-01T00:00:00.000Z' },
   nextAction: { id: 'action-24', contractId: 'contract-24', type: 'payment', title: '支付首付款', description: '', dueAtUtc: '2099-09-01T01:00:00.000Z', amountMinor: 3000000, relatedActionId: null, status: 'pending', position: 0, completedAtUtc: null, createdAtUtc: '2026-08-01T00:00:00.000Z', updatedAtUtc: '2026-08-01T00:00:00.000Z' },
   pendingActionCount: 1,
-  risk: 'normal'
+  risk: 'normal',
+  primaryFile: { id: 'link-file-24', contractId: 'contract-24', kind: 'file', title: '签署扫描件', target: 'C:\\合同资料\\HT-2026-024.pdf', meta: '' },
+  fileCount: 1,
+  urlCount: 1
 };
 
-const CONTRACT_DETAIL: ContractDetail = { contract: CONTRACT_CARD.contract, actions: [CONTRACT_CARD.nextAction!], reminders: [], links: [], note: '' };
+const CONTRACT_DETAIL: ContractDetail = {
+  contract: CONTRACT_CARD.contract,
+  actions: [CONTRACT_CARD.nextAction!],
+  reminders: [],
+  links: [CONTRACT_CARD.primaryFile!, { id: 'link-url-24', contractId: 'contract-24', kind: 'url', title: '电子合同平台', target: 'https://example.test/contracts/24', meta: '' }],
+  note: ''
+};
 
 function setApi(overrides: Partial<Window['api']> = {}): void {
   Object.defineProperty(window, 'api', { configurable: true, writable: true, value: {
@@ -66,7 +75,11 @@ describe('P24 Renderer 合同轨道与工作区', () => {
     expect(screen.getByRole('region', { name: '杂事' })).not.toBeNull();
     expect(container.querySelector('.l2-lanes-triple')).not.toBeNull();
     await waitFor(() => expect(setL2ContentMode).toHaveBeenCalledWith({ agent: false, procurement: true, contracts: true, misc: true }));
-    await userEvent.click(screen.getByRole('button', { name: /终端框采一批，供应商/ }));
+    const contractCard = screen.getByRole('button', { name: /终端框采一批，合同编号/ });
+    expect(contractCard.getAttribute('aria-label')).toContain('合同金额');
+    expect(contractCard.getAttribute('aria-label')).toContain('1 份附件，1 个附属链接');
+    expect(screen.getByText('签署扫描件')).not.toBeNull();
+    await userEvent.click(contractCard);
     expect(useWorkspaceStore.getState().section).toBe('contracts');
     expect(window.api.setLevel).toHaveBeenCalledWith('l3');
   });
@@ -76,7 +89,10 @@ describe('P24 Renderer 合同轨道与工作区', () => {
     const view = render(<L3Panel layoutWidth={1200} />);
     expect(await screen.findByRole('heading', { name: CONTRACT_CARD.contract.fullName })).not.toBeNull();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '履约', '付款开票', '验收', '资料', '备注']);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '合同节点', '付款开票', '验收', '资料', '备注']);
+    expect(await screen.findByText('HT-2026-024')).not.toBeNull();
+    expect((await screen.findAllByText('合成科技有限公司')).length).toBeGreaterThan(0);
+    expect(await screen.findByRole('button', { name: '签署扫描件' })).not.toBeNull();
     const search = screen.getByRole('textbox', { name: '搜索工作项' });
     await userEvent.type(search, 'HT-2026-024');
     expect(screen.getByRole('button', { name: /终端框采一批/ })).not.toBeNull();
@@ -86,7 +102,7 @@ describe('P24 Renderer 合同轨道与工作区', () => {
     expect(result.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact ?? ''))).toEqual([]);
   });
 
-  it('新建合同同时提交正式全名、简称、精确金额和采购项目关联', async () => {
+  it('新建合同原子提交核心台账、扫描件、附属链接和多个合同节点', async () => {
     const createContract = vi.fn(async (_input: ContractCreateRequest) => ({ ok: true as const, data: CONTRACT_CARD.contract })); setApi({ createContract });
     render(<NewContractForm projects={[PROJECT]} onClose={() => undefined} />);
     await userEvent.type(screen.getByRole('textbox', { name: /^合同正式全名/ }), '总部办公终端框架合同');
@@ -94,9 +110,25 @@ describe('P24 Renderer 合同轨道与工作区', () => {
     await userEvent.type(screen.getByRole('textbox', { name: /^供应商/ }), '合成科技');
     await userEvent.type(screen.getByRole('textbox', { name: '合同金额（CNY）' }), '123456.78');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '关联采购项目' }), PROJECT.task.id);
+    await userEvent.type(screen.getByRole('textbox', { name: '合同扫描件绝对路径' }), 'C:\\合同资料\\签署扫描件.pdf');
+    await userEvent.type(screen.getByRole('textbox', { name: '附属链接' }), 'https://example.test/contracts/24');
+    await userEvent.type(screen.getByRole('textbox', { name: '节点名称' }), '完成到货验收');
+    fireEvent.change(screen.getByLabelText('计划完成时间'), { target: { value: '2099-09-01T09:00' } });
+    fireEvent.change(screen.getByLabelText('提醒时间'), { target: { value: '2099-08-31T09:00' } });
+    await userEvent.click(screen.getByRole('button', { name: '加入节点' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '首批合同节点类型' }), 'payment');
+    await userEvent.type(screen.getByRole('textbox', { name: '节点名称' }), '支付尾款');
+    fireEvent.change(screen.getByLabelText('计划完成时间'), { target: { value: '2099-09-10T09:00' } });
     await userEvent.click(screen.getByRole('button', { name: '创建合同' }));
     const input = createContract.mock.calls[0]?.[0];
     expect(input).toMatchObject({ fullName: '总部办公终端框架合同', shortName: '终端框采', supplierName: '合成科技', procurementProjectId: PROJECT.task.id, amountMinor: 12345678, currency: 'CNY' });
+    expect(input?.initialLinks).toEqual([
+      { kind: 'file', title: '合同扫描件', target: 'C:\\合同资料\\签署扫描件.pdf' },
+      { kind: 'url', title: '附属链接', target: 'https://example.test/contracts/24' }
+    ]);
+    expect(input?.initialActions).toHaveLength(2);
+    expect(input?.initialActions?.map((node) => node.type)).toEqual(['acceptance', 'payment']);
+    expect(input?.initialActions?.[0]?.remindAtUtc).not.toBeNull();
   });
 
   it('新建合同只填写一种名称也可先生成草拟卡片', async () => {

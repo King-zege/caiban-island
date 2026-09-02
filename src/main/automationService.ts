@@ -15,7 +15,7 @@ import type {
 import { dateTimeLocalToUtc, utcToDateTimeLocal } from '../shared/time';
 import type { AgentPermissionService } from './agentPermissionService';
 import type { AgentSessionService } from './agentSessionService';
-import type { DeepSeekConfigService } from './deepSeekConfigService';
+import type { AgentProviderConfigService } from './agentProviderConfigService';
 import type { KnowledgeService } from './knowledgeService';
 
 interface AutomationRow {
@@ -115,7 +115,7 @@ export class AutomationService {
     private readonly permissions: AgentPermissionService,
     private readonly knowledge: KnowledgeService,
     private readonly sessions: AgentSessionService,
-    private readonly deepSeek: DeepSeekConfigService,
+    private readonly providerConfig: AgentProviderConfigService,
     private readonly renderPdf: PdfRenderer,
     private readonly interactiveBusy: () => boolean = () => false,
     private readonly notify: (run: AutomationRun) => void = () => undefined,
@@ -267,7 +267,7 @@ export class AutomationService {
     try {
       if (!automation.isDefaultDailyBriefing) throw new AutomationServiceError('通用自动化尚无安全的确定性执行器');
       let document = this.briefing(new Date(row.scheduled_for_utc), automation.timeZone);
-      if (this.analyze && this.deepSeek.status().configured) {
+      if (this.analyze && this.providerConfig.status().configured) {
         try { document = this.applyAnalysis(document, await this.analyze(document, AbortSignal.timeout(60_000))); }
         catch { document = { ...document, agentAnalysisGenerated: false, notes: [...document.notes, 'Agent 分析失败，已使用确定性基础清单'] }; }
       }
@@ -286,7 +286,7 @@ export class AutomationService {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') await rename(temp, output.absolutePath);
         else throw error;
       }
-      const session = this.sessions.create(this.deepSeek.model(), document.headline);
+      const session = this.sessions.create(this.providerConfig.model(), document.headline);
       this.sessions.append(session.id, 'assistant', markdown(document, output.relativePath));
       this.db.prepare("UPDATE automation_runs SET status='succeeded',session_id=?,output_relative_path=?,completed_at=?,error_category=NULL WHERE id=?")
         .run(session.id, output.relativePath, new Date().toISOString(), row.id);

@@ -13,6 +13,8 @@ import type {
   AgentAttentionEvent,
   AgentSessionDetail,
   AgentSessionSummary,
+  AgentProviderConfigInput,
+  AgentProviderStatus,
   DeepSeekModel,
   DeepSeekStatus,
   MemoryProposal,
@@ -207,6 +209,9 @@ const api = {
   getDeepSeekStatus: (): Promise<IpcResult<DeepSeekStatus>> => ipcRenderer.invoke('deepseek:status'),
   saveDeepSeekConfig: (model: DeepSeekModel, key: string): Promise<IpcResult<boolean>> => ipcRenderer.invoke('deepseek:saveConfig', model, key),
   testDeepSeek: (): Promise<IpcResult<string>> => ipcRenderer.invoke('deepseek:test'),
+  getAgentProviderStatus: (): Promise<IpcResult<AgentProviderStatus>> => ipcRenderer.invoke('agentProvider:status'),
+  saveAgentProviderConfig: (input: AgentProviderConfigInput): Promise<IpcResult<boolean>> => ipcRenderer.invoke('agentProvider:saveConfig', input),
+  testAgentProvider: (): Promise<IpcResult<string>> => ipcRenderer.invoke('agentProvider:test'),
   listMemories: (): Promise<IpcResult<MemoryRecord[]>> => ipcRenderer.invoke('memory:list'),
   listMemoryProposals: (): Promise<IpcResult<MemoryProposal[]>> => ipcRenderer.invoke('memory:listProposals'),
   confirmMemoryProposal: (id: string, editedFact?: string): Promise<IpcResult<MemoryRecord | null>> =>

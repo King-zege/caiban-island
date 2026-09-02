@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import path from 'node:path';
 import type {
   Contract,
   ContractAction,
@@ -11,6 +12,7 @@ import type {
   ContractCard,
   ContractCreateRequest,
   ContractDetail,
+  ContractInitialActionInput,
   ContractLink,
   ContractLinkInput,
   ContractRisk,
@@ -84,6 +86,10 @@ function validateFields(input: Omit<ContractCreateRequest, 'status'>): { fullNam
 function validateCreate(input: ContractCreateRequest): void {
   validateFields(input);
   if (input.status !== 'draft' && input.status !== 'active') throw new ContractError('新合同状态无效');
+  if ((input.initialLinks?.length ?? 0) > 20) throw new ContractError('新建合同时最多添加 20 份资料');
+  if ((input.initialActions?.length ?? 0) > 50) throw new ContractError('新建合同时最多添加 50 个合同节点');
+  input.initialLinks?.forEach(validateLink);
+  input.initialActions?.forEach(validateInitialAction);
 }
 
 function validateAction(input: ContractActionInput): void {
@@ -94,6 +100,25 @@ function validateAction(input: ContractActionInput): void {
   validateAmount(input.amountMinor);
 }
 
+function validateInitialAction(input: ContractInitialActionInput): void {
+  validateAction({ ...input, relatedActionId: null });
+  if (input.remindAtUtc !== null && !Number.isFinite(Date.parse(input.remindAtUtc))) throw new ContractError('合同节点提醒时间无效');
+}
+
+function validateLink(input: ContractLinkInput): string {
+  const target = input.target.trim();
+  if (target.length > 2048) throw new ContractError('合同资料目标不能超过 2048 个字符');
+  if (input.title.trim().length > 200) throw new ContractError('合同资料名称不能超过 200 个字符');
+  if (input.kind === 'url') {
+    let url: URL;
+    try { url = new URL(target); } catch { throw new ContractError('附属链接格式无效'); }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new ContractError('附属链接仅支持 http/https');
+  } else {
+    if (!path.win32.isAbsolute(target) || /^(?:\\\\[?.]\\|\\\\)/u.test(target)) throw new ContractError('合同附件请填写本机磁盘的绝对路径');
+  }
+  return target;
+}
+
 export class ContractService {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -101,8 +126,13 @@ export class ContractService {
     const contracts = (this.db.prepare("SELECT * FROM contracts WHERE status IN ('draft','active','closing') ORDER BY updated_at DESC, id").all() as unknown as Record<string, unknown>[]).map(toContract);
     return contracts.map((contract) => {
       const actions = this.listActions(contract.id).filter((action) => action.status === 'pending' || action.status === 'in_progress');
+      const links = this.listLinks(contract.id);
+      const files = links.filter((link) => link.kind === 'file');
       const nextAction = [...actions].sort((left, right) => (left.dueAtUtc ?? '9999').localeCompare(right.dueAtUtc ?? '9999') || left.position - right.position || left.id.localeCompare(right.id))[0] ?? null;
-      return { contract, nextAction, pendingActionCount: actions.length, risk: this.risk(nextAction, nowMs) };
+      return {
+        contract, nextAction, pendingActionCount: actions.length, risk: this.risk(nextAction, nowMs),
+        primaryFile: files[0] ?? null, fileCount: files.length, urlCount: links.length - files.length
+      };
     });
   }
 
@@ -114,7 +144,7 @@ export class ContractService {
   detail(id: string): ContractDetail {
     const contract = this.get(id);
     if (!contract) throw new ContractError('合同不存在');
-    const links = (this.db.prepare('SELECT * FROM contract_links WHERE contract_id=? ORDER BY rowid').all(id) as unknown as Record<string, unknown>[]).map(toLink);
+    const links = this.listLinks(id);
     const note = this.db.prepare('SELECT body FROM contract_notes WHERE contract_id=?').get(id) as { body: string } | undefined;
     const reminders = this.db.prepare(
       'SELECT r.action_id AS actionId, r.fire_at_utc AS fireAtUtc, r.fired FROM contract_action_reminders r JOIN contract_actions a ON a.id=r.action_id WHERE a.contract_id=? ORDER BY r.fire_at_utc, r.action_id'
@@ -132,6 +162,11 @@ export class ContractService {
        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`
     ).run(id, input.procurementProjectId, names.fullName, names.shortName, input.contractNo.trim(), input.supplierName.trim(), input.amountMinor, input.currency, input.signedOn, input.effectiveOn, input.expiresOn, input.tzId, input.status, now, now);
     this.log(id, 'contract_created', { status: input.status, projectLinked: Boolean(input.procurementProjectId) });
+    for (const link of input.initialLinks ?? []) this.addLink(id, link);
+    for (const initial of input.initialActions ?? []) {
+      const action = this.addAction(id, { ...initial, relatedActionId: null });
+      if (initial.remindAtUtc) this.setActionReminder({ actionId: action.id, fireAtUtc: initial.remindAtUtc, expectedFireAtUtc: null });
+    }
     return this.get(id) as Contract;
   }
 
@@ -178,6 +213,10 @@ export class ContractService {
 
   listActions(contractId: string): ContractAction[] {
     return (this.db.prepare('SELECT * FROM contract_actions WHERE contract_id=? ORDER BY position, id').all(contractId) as unknown as Record<string, unknown>[]).map(toAction);
+  }
+
+  listLinks(contractId: string): ContractLink[] {
+    return (this.db.prepare('SELECT * FROM contract_links WHERE contract_id=? ORDER BY rowid').all(contractId) as unknown as Record<string, unknown>[]).map(toLink);
   }
 
   addAction(contractId: string, input: ContractActionInput): ContractAction {
@@ -239,8 +278,7 @@ export class ContractService {
   }
 
   addLink(contractId: string, input: ContractLinkInput): ContractLink {
-    const contract = this.assertEditable(contractId); const target = input.target.trim();
-    if (input.kind === 'url' ? !/^https?:\/\/\S+$/i.test(target) : !target) throw new ContractError(input.kind === 'url' ? '网址仅支持 http/https' : '文件路径不能为空');
+    const contract = this.assertEditable(contractId); const target = validateLink(input);
     const id = randomUUID(); const title = input.title.trim() || target;
     this.db.prepare('INSERT INTO contract_links(id, contract_id, kind, title, target, meta) VALUES(?,?,?,?,?,?)').run(id, contractId, input.kind, title, target, JSON.stringify({ addedAt: new Date().toISOString() }));
     this.touch(contract); this.log(contractId, 'contract_link_added', { linkId: id, kind: input.kind });

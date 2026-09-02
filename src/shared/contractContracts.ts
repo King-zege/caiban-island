@@ -63,6 +63,9 @@ export interface ContractCard {
   nextAction: ContractAction | null;
   pendingActionCount: number;
   risk: ContractRisk;
+  primaryFile: ContractLink | null;
+  fileCount: number;
+  urlCount: number;
 }
 
 export interface ContractDetail {
@@ -86,9 +89,11 @@ export interface ContractCreateRequest {
   expiresOn: string | null;
   tzId: string;
   status: 'draft' | 'active';
+  initialLinks?: ContractLinkInput[];
+  initialActions?: ContractInitialActionInput[];
 }
 
-export interface ContractUpdateRequest extends Omit<ContractCreateRequest, 'status'> {
+export interface ContractUpdateRequest extends Omit<ContractCreateRequest, 'status' | 'initialLinks' | 'initialActions'> {
   contractId: string;
   expectedUpdatedAtUtc: string;
 }
@@ -132,6 +137,15 @@ export interface ContractLinkInput {
   target: string;
 }
 
+export interface ContractInitialActionInput {
+  type: ContractActionType;
+  title: string;
+  description: string;
+  dueAtUtc: string | null;
+  amountMinor: number | null;
+  remindAtUtc: string | null;
+}
+
 export type ContractWorkspaceSection = 'overview' | 'performance' | 'billing' | 'acceptance' | 'materials' | 'notes';
 
 export const CONTRACT_ACTION_LABELS: Record<ContractActionType, string> = {
@@ -140,4 +154,8 @@ export const CONTRACT_ACTION_LABELS: Record<ContractActionType, string> = {
 
 export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   draft: '草拟', active: '履约中', closing: '收尾中', closed: '已关闭', terminated: '已终止', archived: '已归档'
+};
+
+export const CONTRACT_ACTION_STATUS_LABELS: Record<ContractActionStatus, string> = {
+  pending: '待完成', in_progress: '进行中', completed: '已完成', waived: '已豁免'
 };

@@ -10,6 +10,7 @@ import { AppService } from '../src/main/appService';
 import { AgentSessionService } from '../src/main/agentSessionService';
 import { AgentService } from '../src/main/agentService';
 import { createAgentTools } from '../src/main/agentTools';
+import { AgentProviderConfigError, AgentProviderConfigService, normalizeEnterpriseBaseUrl } from '../src/main/agentProviderConfigService';
 import { DeepSeekConfigService } from '../src/main/deepSeekConfigService';
 import { MemoryService } from '../src/main/memoryService';
 import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
@@ -52,7 +53,7 @@ class BlockingRunner implements PiAgentRunner {
   }
 }
 
-describe('Agent 会话、事件与 DeepSeek 配置', () => {
+describe('Agent 会话、事件与多 Provider 配置', () => {
   it('migration v7 后会话可恢复、删除与导出', () => {
     const f = fresh(); const session = f.sessions.create('deepseek-v4-flash', '规划电脑采购');
     f.sessions.append(session.id, 'user', '规划电脑采购'); f.sessions.append(session.id, 'assistant', '先核对需求');
@@ -71,6 +72,108 @@ describe('Agent 会话、事件与 DeepSeek 配置', () => {
     await expect(config.test()).resolves.toContain('200');
     expect(fetchMock).toHaveBeenCalledWith('https://api.deepseek.com/models', expect.objectContaining({ method: 'GET' }));
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('ping');
+  });
+
+  it('企业网关保存自定义模型并规范化 Chat Completions 地址', () => {
+    const f = fresh();
+    const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage());
+    config.saveConfig({
+      provider: 'enterprise',
+      baseUrl: 'https://gateway.corp.example/v1/chat/completions/',
+      model: 'anthropic/claude-enterprise-prod',
+      apiKey: 'enterprise-secret'
+    });
+
+    expect(config.runtime()).toEqual({
+      provider: 'enterprise',
+      baseUrl: 'https://gateway.corp.example/v1',
+      model: 'anthropic/claude-enterprise-prod',
+      apiKey: 'enterprise-secret'
+    });
+    expect(f.app.settings.get('enterprise_api_key_encrypted')).not.toContain('enterprise-secret');
+    expect(config.status()).toMatchObject({
+      provider: 'enterprise',
+      configured: true,
+      configuredProviders: expect.arrayContaining(['deepseek', 'enterprise'])
+    });
+  });
+
+  it('企业 Base URL 拒绝明文远程地址、嵌入凭据与查询参数', () => {
+    expect(() => normalizeEnterpriseBaseUrl('http://gateway.corp.example/v1')).toThrow(AgentProviderConfigError);
+    expect(() => normalizeEnterpriseBaseUrl('https://user:secret@gateway.corp.example/v1')).toThrow(AgentProviderConfigError);
+    expect(() => normalizeEnterpriseBaseUrl('https://gateway.corp.example/v1?token=secret')).toThrow(AgentProviderConfigError);
+    expect(normalizeEnterpriseBaseUrl('http://127.0.0.1:9000/v1/')).toBe('http://127.0.0.1:9000/v1');
+  });
+
+  it('系统加密不可用时不切换当前 Provider 或写入企业配置', () => {
+    const f = fresh();
+    const unavailableStorage: SafeStorageAdapter = {
+      isEncryptionAvailable: () => false,
+      encryptString: () => { throw new Error('should not encrypt'); },
+      decryptString: () => { throw new Error('should not decrypt'); }
+    };
+    const config = new AgentProviderConfigService(f.app.settings, unavailableStorage);
+    expect(() => config.saveConfig({
+      provider: 'enterprise', baseUrl: 'https://gateway.corp.example/v1',
+      model: 'openai/gpt-enterprise', apiKey: 'cannot-store'
+    })).toThrow('系统加密不可用');
+    expect(config.status()).toMatchObject({ provider: 'deepseek' });
+    expect(f.app.settings.get('enterprise_base_url')).toBeNull();
+  });
+
+  it('企业网关连接测试只向选定模型发送固定最小消息', async () => {
+    const f = fresh();
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => new Response('{"choices":[]}', { status: 200 }));
+    const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage(), fetchMock as typeof fetch);
+    config.saveConfig({
+      provider: 'enterprise', baseUrl: 'https://gateway.corp.example/v1',
+      model: 'openai/gpt-enterprise', apiKey: 'enterprise-test-key'
+    });
+
+    await expect(config.test()).resolves.toBe('连接成功（HTTP 200）');
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] ?? [];
+    expect(requestUrl).toBe('https://gateway.corp.example/v1/chat/completions');
+    expect(requestInit).toMatchObject({ method: 'POST' });
+    expect((requestInit as RequestInit).headers).toMatchObject({ Authorization: 'Bearer enterprise-test-key' });
+    const body = JSON.parse(String((requestInit as RequestInit).body)) as { model: string; messages: Array<{ content: string }> };
+    expect(body).toMatchObject({ model: 'openai/gpt-enterprise', messages: [{ content: '仅回复 OK' }] });
+    expect(JSON.stringify(body)).not.toContain('采购');
+  });
+
+  it('GLM 使用官方端点与模型白名单，独立保存 API Key', () => {
+    const f = fresh();
+    const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage());
+    config.saveConfig({
+      provider: 'glm', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      model: 'glm-5.2', apiKey: 'glm-secret'
+    });
+    expect(config.runtime()).toEqual({
+      provider: 'glm', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      model: 'glm-5.2', apiKey: 'glm-secret'
+    });
+    expect(() => config.saveConfig({
+      provider: 'glm', baseUrl: 'https://untrusted.example/v4', model: 'glm-5.2', apiKey: ''
+    })).toThrow('不支持的 GLM 服务地址');
+    expect(() => config.saveConfig({
+      provider: 'glm', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-unknown', apiKey: ''
+    })).toThrow('不支持的 GLM 模型');
+  });
+
+  it('Agent run 将企业 Provider、Base URL 与模型传给运行时', async () => {
+    const f = fresh(); const runner = new CompletingRunner();
+    f.deepSeek.saveConfig({
+      provider: 'enterprise', baseUrl: 'https://gateway.corp.example/v1',
+      model: 'deepseek/analysis-pro', apiKey: 'corp-key'
+    });
+    const service = new AgentService(f.app, f.sessions, f.deepSeek, () => undefined, runner, f.memories);
+    const started = service.start({ input: '检查企业模型连接' });
+    await service.waitForIdle();
+
+    expect(runner.lastOptions).toMatchObject({
+      provider: 'enterprise', baseUrl: 'https://gateway.corp.example/v1',
+      model: 'deepseek/analysis-pro', apiKey: 'corp-key'
+    });
+    expect(f.sessions.get(started.session.id).session.model).toBe('deepseek/analysis-pro');
   });
 
   it('main 为事件分配单调序号，并在终态快照保留可恢复状态', async () => {

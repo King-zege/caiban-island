@@ -41,6 +41,39 @@ describe('P24 合同台账与履约生命周期', () => {
     expect(() => app.createContract({ ...base, procurementProjectId: null, fullName: '', shortName: '', supplierName: '', status: 'draft' })).toThrow('至少填写');
   });
 
+  it('创建合同时原子保存扫描件、附属链接、多个节点和独立提醒', () => {
+    const { app } = fresh();
+    const contract = app.createContract({
+      ...base,
+      procurementProjectId: null,
+      initialLinks: [
+        { kind: 'file', title: '合同签署扫描件', target: 'C:\\合同资料\\HT-2026-001.pdf' },
+        { kind: 'url', title: '电子合同平台', target: 'https://example.test/contracts/1' }
+      ],
+      initialActions: [
+        { type: 'delivery', title: '首批交付', description: '', dueAtUtc: '2099-09-01T00:00:00.000Z', amountMinor: null, remindAtUtc: '2099-08-30T00:00:00.000Z' },
+        { type: 'acceptance', title: '最终验收', description: '', dueAtUtc: '2099-10-01T00:00:00.000Z', amountMinor: null, remindAtUtc: '2099-09-29T00:00:00.000Z' }
+      ]
+    });
+    const detail = app.contracts.detail(contract.id);
+    expect(detail.links.map((item) => item.kind)).toEqual(['file', 'url']);
+    expect(detail.actions.map((item) => item.title)).toEqual(['首批交付', '最终验收']);
+    expect(detail.reminders).toHaveLength(2);
+    expect(app.contracts.listCards()[0]).toMatchObject({ primaryFile: { title: '合同签署扫描件' }, fileCount: 1, urlCount: 1, pendingActionCount: 2 });
+  });
+
+  it('拒绝相对附件路径，并在首批节点提醒无效时回滚整张合同', () => {
+    const { app } = fresh();
+    expect(() => app.createContract({ ...base, procurementProjectId: null, initialLinks: [{ kind: 'file', title: '扫描件', target: '合同资料\\扫描件.pdf' }] })).toThrow('绝对路径');
+    expect(app.contracts.listCards()).toHaveLength(0);
+    expect(() => app.createContract({
+      ...base,
+      procurementProjectId: null,
+      initialActions: [{ type: 'acceptance', title: '最终验收', description: '', dueAtUtc: '2099-09-01T00:00:00.000Z', amountMinor: null, remindAtUtc: '2020-01-01T00:00:00.000Z' }]
+    })).toThrow('必须晚于当前时间');
+    expect(app.contracts.listCards()).toHaveLength(0);
+  });
+
   it('付款、开票关联及状态提醒遵循合同边界', () => {
     const { app } = fresh();
     const contract = app.createContract({ ...base, procurementProjectId: null });
@@ -72,13 +105,13 @@ describe('P24 合同台账与履约生命周期', () => {
     expect(app.reminders.nextPendingAt()).toBe('2099-11-30T00:00:00.000Z');
   });
 
-  it('卡片返回供应商、下一动作和逾期风险，稳定按动作到期时间选择', () => {
+  it('卡片返回供应商、下一节点、资料摘要和逾期风险，稳定按节点到期时间选择', () => {
     const { app } = fresh();
     const contract = app.createContract({ ...base, procurementProjectId: null });
     app.addContractAction(contract.id, { type: 'payment', title: '后付款', description: '', dueAtUtc: '2099-10-01T00:00:00.000Z', amountMinor: null, relatedActionId: null });
     app.addContractAction(contract.id, { type: 'invoice', title: '逾期开票', description: '', dueAtUtc: '2020-01-01T00:00:00.000Z', amountMinor: null, relatedActionId: null });
     expect(app.contracts.listCards(Date.parse('2026-08-29T00:00:00.000Z'))[0]).toMatchObject({
-      contract: { supplierName: '示例科技有限公司' }, nextAction: { title: '逾期开票' }, pendingActionCount: 2, risk: 'overdue'
+      contract: { supplierName: '示例科技有限公司' }, nextAction: { title: '逾期开票' }, pendingActionCount: 2, risk: 'overdue', primaryFile: null, fileCount: 0, urlCount: 0
     });
   });
 });

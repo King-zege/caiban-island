@@ -1,6 +1,6 @@
 import type { AppService } from './appService';
 import type { AgentSessionService } from './agentSessionService';
-import type { DeepSeekConfigService } from './deepSeekConfigService';
+import type { AgentProviderConfigService } from './agentProviderConfigService';
 import { createAgentTools } from './agentTools';
 import { PiAgentAdapter, type PiAdapterEvent, type PiAgentRunner } from './piAgentAdapter';
 import type { AgentContextProvider } from './agentContext';
@@ -16,6 +16,7 @@ import type {
   AgentRunSnapshot,
   AgentRunState,
   AgentRunPhase,
+  AgentProviderRuntimeConfig,
   AgentSessionDetail,
   AgentSessionSummary
 } from '../shared/agentContracts';
@@ -70,7 +71,7 @@ export class AgentService {
   constructor(
     private readonly appSvc: AppService,
     private readonly sessions: AgentSessionService,
-    private readonly deepSeek: DeepSeekConfigService,
+    private readonly providerConfig: AgentProviderConfigService,
     private readonly emit: (event: AgentRunEvent) => void,
     private readonly runner: PiAgentRunner = new PiAgentAdapter(),
     private readonly memories?: MemoryService,
@@ -95,17 +96,19 @@ export class AgentService {
 
   start(request: AgentRunRequest): AgentSessionDetail {
     this.assertCanRun(request.input);
-    this.deepSeek.apiKey();
-    const session = this.sessions.create(this.deepSeek.model(), request.input);
-    this.launch(session, request.input);
+    const config = this.providerConfig.runtime();
+    const session = this.sessions.create(config.model, request.input);
+    this.launch(session, request.input, config);
     return this.sessions.get(session.id);
   }
 
   send(request: AgentRunRequest): AgentSessionDetail {
     if (!request.sessionId) throw new AgentRunError('缺少会话 ID');
     this.assertCanRun(request.input);
+    const config = this.providerConfig.runtime();
+    this.sessions.setModel(request.sessionId, config.model);
     const detail = this.sessions.get(request.sessionId);
-    this.launch(detail.session, request.input);
+    this.launch(detail.session, request.input, config);
     return detail;
   }
 
@@ -167,9 +170,8 @@ export class AgentService {
     if (trimmed.length > 12000) throw new AgentRunError('单条消息不能超过 12000 字符');
   }
 
-  private launch(session: AgentSessionSummary, rawInput: string): void {
+  private launch(session: AgentSessionSummary, rawInput: string, config: AgentProviderRuntimeConfig): void {
     const input = rawInput.trim();
-    const key = this.deepSeek.apiKey();
     const existing = this.sessions.get(session.id).messages;
     const userMessage = this.sessions.append(session.id, 'user', input);
     this.emitEvent({ type: 'message', sessionId: session.id, message: userMessage });
@@ -199,7 +201,7 @@ export class AgentService {
       pendingApproval: null, error: null
     };
     this.emitEvent({ type: 'state', sessionId: session.id, state: 'running', phase: 'connecting' });
-    active.promise = this.execute(active, session, input, key, existing, userMessage).finally(() => {
+    active.promise = this.execute(active, session, input, config, existing, userMessage).finally(() => {
       clearTimeout(active.timer);
       if (this.active === active) this.active = null;
     });
@@ -209,7 +211,7 @@ export class AgentService {
     active: ActiveRun,
     session: AgentSessionSummary,
     input: string,
-    key: string,
+    config: AgentProviderRuntimeConfig,
     history: AgentSessionDetail['messages'],
     currentMessage: AgentSessionDetail['messages'][number]
   ): Promise<void> {
@@ -219,8 +221,10 @@ export class AgentService {
         sessionId: session.id,
         input,
         history,
-        model: session.model,
-        apiKey: key,
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        model: config.model,
+        apiKey: config.apiKey,
         systemPrompt: this.systemPrompt(session.id, [...history, currentMessage]),
         tools: createAgentTools(this.appSvc, session.id, this.sessions, this.memories, this.files, new AppCommandService(this.appSvc, this.knowledge, this.automations), this.knowledge, this.automations),
         signal: active.controller.signal,

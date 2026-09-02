@@ -155,12 +155,20 @@ const CONTRACT_CREATE_FIELDS = [...CONTRACT_EDIT_FIELDS, 'status'] as const;
 function contractCreateInput(value: unknown, update = false): void {
   const input = object(value, '合同');
   const fields = update ? ['contractId', ...CONTRACT_EDIT_FIELDS, 'expectedUpdatedAtUtc'] : [...CONTRACT_CREATE_FIELDS];
-  exact(input, fields);
+  if (update) exact(input, fields); else exactOptional(input, fields, ['initialLinks', 'initialActions']);
   nullableString(input, 'procurementProjectId'); string(input, 'fullName'); string(input, 'shortName'); string(input, 'contractNo');
   string(input, 'supplierName'); nullableInteger(input, 'amountMinor'); string(input, 'currency'); nullableString(input, 'signedOn');
   nullableString(input, 'effectiveOn'); nullableString(input, 'expiresOn'); string(input, 'tzId');
   if (!update && input.status !== 'draft' && input.status !== 'active') throw new Error('合同编辑状态无效');
   if (update) { string(input, 'contractId'); string(input, 'expectedUpdatedAtUtc'); }
+  if (!update && 'initialLinks' in input) {
+    if (!Array.isArray(input.initialLinks)) throw new Error('合同初始资料无效');
+    input.initialLinks.forEach(contractLinkInput);
+  }
+  if (!update && 'initialActions' in input) {
+    if (!Array.isArray(input.initialActions)) throw new Error('合同初始节点无效');
+    input.initialActions.forEach(contractInitialActionInput);
+  }
 }
 
 function contractActionInput(value: unknown): void {
@@ -168,6 +176,19 @@ function contractActionInput(value: unknown): void {
   exact(input, ['type', 'title', 'description', 'dueAtUtc', 'amountMinor', 'relatedActionId']);
   if (!CONTRACT_ACTION_TYPE_VALUES.has(String(input.type))) throw new Error('合同履约动作类型无效');
   string(input, 'title'); string(input, 'description'); nullableString(input, 'dueAtUtc'); nullableInteger(input, 'amountMinor'); nullableString(input, 'relatedActionId');
+}
+
+function contractInitialActionInput(value: unknown): void {
+  const input = object(value, '合同初始节点');
+  exact(input, ['type', 'title', 'description', 'dueAtUtc', 'amountMinor', 'remindAtUtc']);
+  if (!CONTRACT_ACTION_TYPE_VALUES.has(String(input.type))) throw new Error('合同节点类型无效');
+  string(input, 'title'); string(input, 'description'); nullableString(input, 'dueAtUtc'); nullableInteger(input, 'amountMinor'); nullableString(input, 'remindAtUtc');
+}
+
+function contractLinkInput(value: unknown): void {
+  const link = object(value, '合同资料'); exact(link, ['kind', 'title', 'target']);
+  if (link.kind !== 'url' && link.kind !== 'file') throw new Error('合同资料类型无效');
+  string(link, 'title'); string(link, 'target');
 }
 
 function taskInput(value: unknown): void {
@@ -261,8 +282,7 @@ function validateInput(name: AppCommandName, value: unknown): void {
     case 'remove_contract_action': taskIdOnly(input, 'actionId'); break;
     case 'set_contract_action_reminder': exact(input, ['actionId', 'fireAtUtc', 'expectedFireAtUtc']); string(input, 'actionId'); nullableString(input, 'fireAtUtc'); nullableString(input, 'expectedFireAtUtc'); break;
     case 'add_contract_link': {
-      exact(input, ['contractId', 'link']); string(input, 'contractId'); const link = object(input.link, '合同资料'); exact(link, ['kind', 'title', 'target']);
-      if (link.kind !== 'url' && link.kind !== 'file') throw new Error('合同资料类型无效'); string(link, 'title'); string(link, 'target'); break;
+      exact(input, ['contractId', 'link']); string(input, 'contractId'); contractLinkInput(input.link); break;
     }
     case 'remove_contract_link': taskIdOnly(input, 'linkId'); break;
     case 'save_contract_note': exact(input, ['contractId', 'body']); string(input, 'contractId'); string(input, 'body'); break;

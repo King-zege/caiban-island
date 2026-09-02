@@ -4,16 +4,16 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；版本：`v0.3.0`；P0–P28 已完成。正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.3.0>（发布标签指向 `e0ade4b`）。
-- 最近已验收节点：P26 Agent 自动化与每日清单、P27 性能与遗留实现清理、P28 Windows/安全/打包发布硬化。
+- 分支：`main`；版本：`v0.4.0`；P0–P29 已完成。正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>。
+- 最近已验收节点：P27 性能与遗留实现清理、P28 Windows/安全/打包发布硬化、P29 多 Provider、Agent 连续对话与合同资料/节点增强。
 - 数据库迁移：v1–v12。
 - Pi：`@earendil-works/pi-agent-core@0.81.1`、`@earendil-works/pi-ai@0.81.1`，精确锁定，MIT。
-- DeepSeek：官方 Base URL；`deepseek-v4-flash` / `deepseek-v4-pro`；Key 经 safeStorage。
+- 模型 Provider：DeepSeek 官方（Flash/Pro）、智谱 GLM 官方开放平台/Coding Plan，以及企业 OpenAI Chat Completions 兼容网关；企业模型 ID 自由填写。各 Provider 的 Key 独立经 safeStorage 保存。
 - Qoder MCP、旧内置 LLM、stdio 桥和专用 DraftService 已删除；遗留 pending 草稿已转换为通用 AgentProposal。
 
 P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 renderer JS 为 759 KB，相比 P22 前约 1.20 MB 降低约 36%。P21 的 production transition benchmark、Windows 150% DPI/高对比度/减少动画验收仍有效。具体次数、尺寸和哈希不作为长期规范；重新发布时重新生成记录。
 
-当前 v0.3.0 维护基线通过 typecheck、43 个测试文件/232 项测试、build 和 package；P28 的 `npm audit --omit=dev`（0 漏洞）、Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 验收仍有效。发布产物为 `Caiban-Island-0.3.0-Windows-x64.exe` 与同名 ZIP。
+当前 v0.4.0 维护基线通过 typecheck、43 个测试文件/241 项测试、build 和 package；P28 的 `npm audit --omit=dev`（0 漏洞）、Windows 150% DPI 的 100 项合成数据截图和 transition `--assert` 验收仍有效。发布产物为 `Caiban-Island-0.4.0-Windows-x64.exe` 与同名 ZIP。
 
 ### v0.2.1 维护修复
 
@@ -26,8 +26,15 @@ P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 
 - L2 Agent 是纯对话视图，只保留消息、临时思考/工具/审批状态和输入区；权限、目录、自动化、会话切换/新建、导出与删除只在 L3。
 - L2/L3 共享 Agent store 与消息组件，不共享完整管理外壳。L3 每次进入都会从 SQLite 刷新当前会话；当前会话已删除时回退到最新会话。
 - 消息视口在首次进入、重新进入和流式增长时自动定位最新内容；L2/L3 输入区固定可见，消息与会话列表各自滚动。
-- DeepSeek 原生思考流仅在当前运行临时展示，正文开始后折叠为“思考过程”；不进入 SQLite、日志、搜索、记忆或导出。provider 请求超时为 120 秒并有限重试。
+- Provider 的结构化思考流仅在当前运行临时展示，正文开始后折叠为“思考过程”；不进入 SQLite、日志、搜索、记忆或导出。provider 请求超时为 120 秒并有限重试。
 - 草拟合同允许信息不完整时先建卡：正式全名与简称至少填写一项，另一项由 main 规范化派生；供应商、合同号、金额和日期均可稍后补充。
+
+### v0.4.0 发布增强
+
+- Agent Provider 扩展为 DeepSeek 官方、智谱 GLM 与企业 OpenAI Chat Completions 兼容网关；企业网关可填写自定义 HTTPS Base URL、模型 ID 和独立加密 API Key。
+- L2 Agent 保留输入并专注对话；L2/L3 流式内容自动跟随最新消息，重新进入 L3 时恢复到最新对话。思考流临时低强调展示，正式回答开始后折叠为可展开的“思考过程”。
+- 合同卡突出合同号、供应商、金额、首份扫描件和资料数量；L3 将本机附件与附属链接分组管理，文件只接受本机磁盘绝对路径。
+- 合同支持一次创建多个付款、交付、验收、续签、归档或自定义节点，并为每个节点设置独立提醒；初始资料、节点和提醒在同一事务中保存。
 
 ## 2. 当前用户体验
 
@@ -40,10 +47,10 @@ P27 基线通过 typecheck、43 个测试文件/229 项测试与 build；首屏 
 ## 3. 实现入口
 
 - `src/main/agentService.ts`：唯一 run、事件、快照、会话编排。
-- `src/main/piAgentAdapter.ts`：Pi/DeepSeek 协议、流式文本和工具循环。
+- `src/main/agentProviderConfigService.ts`：Provider、URL、模型和加密 Key 配置；`src/main/piAgentAdapter.ts`：Pi/Provider 协议、流式文本和工具循环。
 - `src/main/agentTools.ts`：工具 allowlist。
 - `src/main/agentPermissionService.ts`：三档权限与审批。
-- `src/main/contractService.ts`：合同台账、动作、提醒、资料与生命周期。
+- `src/main/contractService.ts`：合同台账、多合同节点、逐节点提醒、扫描件/附件/附属链接与生命周期。
 - `src/main/knowledgeService.ts`、`automationService.ts`：本地知识索引、持久化自动化、每日清单与固定模板 PDF。
 - `src/main/appCommandService.ts`、`src/shared/appCommandContracts.ts`：统一正式命令。
 - `src/main/authorizedFileService.ts`：授权目录文件边界。

@@ -1,6 +1,7 @@
 import { Bot, Cloud, Database, Download, Eye, EyeOff, FolderOpen, Pause, Play, Save, Settings2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { DeepSeekModel, DeepSeekStatus } from '../../../shared/types';
+import { DEEPSEEK_BASE_URL, DEEPSEEK_MODELS, GLM_BASE_URLS, GLM_MODELS } from '../../../shared/types';
+import type { AgentProviderId, AgentProviderStatus } from '../../../shared/types';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import { AsyncFeedback } from './ui/AsyncFeedback';
 import { Button, IconButton } from './ui/Button';
@@ -25,6 +26,12 @@ const SETTINGS_SECTIONS = [
   { id: 'data' as const, label: '数据与高级', icon: Database }
 ];
 
+const PROVIDER_LABELS: Record<AgentProviderId, string> = {
+  deepseek: 'DeepSeek 官方',
+  glm: '智谱 GLM',
+  enterprise: '企业模型网关'
+};
+
 export default function SettingsView(): React.JSX.Element {
   const notify = useWorkspaceStore((state) => state.notify);
   const [section, setSection] = useState<SettingsSection>('common');
@@ -36,28 +43,35 @@ export default function SettingsView(): React.JSX.Element {
   const [autostart, setAutostart] = useState(false);
   const [acrylic, setAcrylic] = useState(true);
   const [paused, setPaused] = useState(false);
-  const [deepSeekStatus, setDeepSeekStatus] = useState<DeepSeekStatus | null>(null);
-  const [deepSeekModel, setDeepSeekModel] = useState<DeepSeekModel>('deepseek-v4-flash');
-  const [deepSeekKey, setDeepSeekKey] = useState('');
-  const [deepSeekKeyVisible, setDeepSeekKeyVisible] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<AgentProviderStatus | null>(null);
+  const [agentProvider, setAgentProvider] = useState<AgentProviderId>('deepseek');
+  const [agentBaseUrl, setAgentBaseUrl] = useState<string>(DEEPSEEK_BASE_URL);
+  const [agentModel, setAgentModel] = useState<string>(DEEPSEEK_MODELS[0]);
+  const [agentKey, setAgentKey] = useState('');
+  const [agentKeyVisible, setAgentKeyVisible] = useState(false);
   const [feishuToken, setFeishuToken] = useState('');
   const [feishuTokenVisible, setFeishuTokenVisible] = useState(false);
   const [feishuStatus, setFeishuStatus] = useState<FeishuStatus | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setInitialError(null);
-    const [settingsResult, feishuResult, deepSeekResult] = await Promise.all([
-      window.api.getSettings(), window.api.getFeishuStatus(), window.api.getDeepSeekStatus()
+    const [settingsResult, feishuResult, agentResult] = await Promise.all([
+      window.api.getSettings(), window.api.getFeishuStatus(), window.api.getAgentProviderStatus()
     ]);
     setLoading(false);
-    const failed = [settingsResult, feishuResult, deepSeekResult].find((result) => !result.ok);
+    const failed = [settingsResult, feishuResult, agentResult].find((result) => !result.ok);
     if (failed && !failed.ok) setInitialError(failed.error);
     if (settingsResult.ok) {
       const settings = settingsResult.data as { reminder_default_offsets: number[]; autostart: boolean; acrylic_disabled: boolean };
       setDefaultOffsets(settings.reminder_default_offsets ?? []); setAutostart(settings.autostart === true); setAcrylic(settings.acrylic_disabled !== true);
     }
     if (feishuResult.ok) setFeishuStatus(feishuResult.data as FeishuStatus);
-    if (deepSeekResult.ok) { setDeepSeekStatus(deepSeekResult.data); setDeepSeekModel(deepSeekResult.data.model); }
+    if (agentResult.ok) {
+      setAgentStatus(agentResult.data);
+      setAgentProvider(agentResult.data.provider);
+      setAgentBaseUrl(agentResult.data.baseUrl);
+      setAgentModel(agentResult.data.model);
+    }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -75,16 +89,35 @@ export default function SettingsView(): React.JSX.Element {
     setDefaultOffsets(next);
     if (!await saveSetting('reminder_default_offsets', JSON.stringify(next), '默认提醒已更新')) setDefaultOffsets(previous);
   };
-  const saveDeepSeek = async () => {
-    setBusyAction('deepseek-save'); const result = await window.api.saveDeepSeekConfig(deepSeekModel, deepSeekKey); setBusyAction(null);
-    if (!result.ok) { showError(result.error, () => void saveDeepSeek()); return; }
-    setDeepSeekKey(''); setDeepSeekKeyVisible(false);
-    const status = await window.api.getDeepSeekStatus(); if (status.ok) setDeepSeekStatus(status.data);
-    showSuccess('DeepSeek 配置已安全保存');
+  const selectAgentProvider = (provider: AgentProviderId) => {
+    setAgentProvider(provider);
+    const saved = agentStatus?.profiles[provider];
+    setAgentBaseUrl(saved?.baseUrl || (provider === 'deepseek' ? DEEPSEEK_BASE_URL : provider === 'glm' ? GLM_BASE_URLS[0] : ''));
+    setAgentModel(saved?.model || (provider === 'deepseek' ? DEEPSEEK_MODELS[0] : provider === 'glm' ? GLM_MODELS[0] : ''));
+    setAgentKey('');
+    setAgentKeyVisible(false);
   };
-  const testDeepSeek = async () => {
-    setBusyAction('deepseek-test'); const result = await window.api.testDeepSeek(); setBusyAction(null);
-    if (result.ok) showSuccess(result.data); else showError(result.error, () => void testDeepSeek());
+  const refreshAgentStatus = async () => {
+    const result = await window.api.getAgentProviderStatus();
+    if (result.ok) setAgentStatus(result.data);
+    return result;
+  };
+  const saveAgentProvider = async () => {
+    setBusyAction('agent-provider-save');
+    const result = await window.api.saveAgentProviderConfig({ provider: agentProvider, baseUrl: agentBaseUrl, model: agentModel, apiKey: agentKey });
+    setBusyAction(null);
+    if (!result.ok) { showError(result.error, () => void saveAgentProvider()); return; }
+    setAgentKey(''); setAgentKeyVisible(false);
+    const status = await refreshAgentStatus();
+    if (status.ok) {
+      setAgentBaseUrl(status.data.baseUrl);
+      setAgentModel(status.data.model);
+    }
+    showSuccess(`${PROVIDER_LABELS[agentProvider]}配置已安全保存`);
+  };
+  const testAgentProvider = async () => {
+    setBusyAction('agent-provider-test'); const result = await window.api.testAgentProvider(); setBusyAction(null);
+    if (result.ok) showSuccess(result.data); else showError(result.error, () => void testAgentProvider());
   };
   const refreshFeishu = async () => { const result = await window.api.getFeishuStatus(); if (result.ok) setFeishuStatus(result.data as FeishuStatus); };
   const saveFeishu = async () => {
@@ -124,9 +157,15 @@ export default function SettingsView(): React.JSX.Element {
     {section === 'agent' && <div className="settings-section" role="tabpanel">
       <div className="section-heading"><div><h2>Agent 模型连接</h2><p>权限模式与授权目录在 Agent 工作区内管理。</p></div></div>
       <div className="connection-block">
-        <div className="connection-head"><span><strong>Pi Agent · DeepSeek</strong><small>唯一 Agent 通道；连接测试使用模型列表，不发送对话内容。</small></span><span className={'connection-status ' + (deepSeekStatus?.configured ? 'configured' : '')}>{deepSeekStatus?.configured ? '已配置' : '未配置'}</span></div>
-        <div className="settings-form-grid"><label className="ui-field"><span className="ui-field-label">官方服务地址</span><input value="https://api.deepseek.com" disabled aria-label="DeepSeek 官方服务地址" /></label><label className="ui-field"><span className="ui-field-label">模型</span><select value={deepSeekModel} onChange={(event) => setDeepSeekModel(event.target.value as DeepSeekModel)}><option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></select></label><Field label="DeepSeek API Key" type={deepSeekKeyVisible ? 'text' : 'password'} value={deepSeekKey} placeholder="留空表示不修改" onChange={(event) => setDeepSeekKey(event.target.value)} trailing={<IconButton icon={deepSeekKeyVisible ? EyeOff : Eye} label={deepSeekKeyVisible ? '隐藏 DeepSeek API Key' : '显示 DeepSeek API Key'} onClick={() => setDeepSeekKeyVisible((value) => !value)} />} /></div>
-        <div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'deepseek-save'} onClick={() => void saveDeepSeek()}>{busyAction === 'deepseek-save' ? '正在保存' : '保存配置'}</Button><Button disabled={busyAction === 'deepseek-test' || !deepSeekStatus?.configured} onClick={() => void testDeepSeek()}>{busyAction === 'deepseek-test' ? '正在测试' : '测试连接'}</Button></div>
+        <div className="connection-head"><span><strong>Pi Agent · 多模型 Provider</strong><small>Key 分 Provider 加密保存；企业网关使用 OpenAI Chat Completions 兼容协议。</small></span><span className={'connection-status ' + (agentStatus?.profiles[agentProvider]?.configured ? 'configured' : '')}>{agentStatus?.profiles[agentProvider]?.configured ? '已配置' : '未配置'}</span></div>
+        <div className="settings-form-grid agent-provider-grid">
+          <label className="ui-field"><span className="ui-field-label">模型服务</span><select aria-label="Agent 模型服务" value={agentProvider} onChange={(event) => selectAgentProvider(event.target.value as AgentProviderId)}><option value="deepseek">DeepSeek 官方</option><option value="glm">智谱 GLM</option><option value="enterprise">企业模型网关</option></select></label>
+          {agentProvider === 'glm' ? <label className="ui-field"><span className="ui-field-label">GLM 服务类型</span><select aria-label="GLM 服务地址" value={agentBaseUrl} onChange={(event) => setAgentBaseUrl(event.target.value)}><option value={GLM_BASE_URLS[0]}>开放平台通用 API</option><option value={GLM_BASE_URLS[1]}>Coding Plan</option></select></label> : <Field label={agentProvider === 'deepseek' ? '官方服务地址' : '企业 Base URL'} aria-label={agentProvider === 'deepseek' ? 'DeepSeek 官方服务地址' : '企业 Base URL'} value={agentBaseUrl} disabled={agentProvider === 'deepseek'} maxLength={2048} placeholder="https://gateway.example.com/v1" hint={agentProvider === 'enterprise' ? '填写到 /v1 等基础路径，不要包含 /chat/completions；仅支持 HTTPS，回环地址可用 HTTP。' : undefined} onChange={(event) => setAgentBaseUrl(event.target.value)} />}
+          {agentProvider === 'enterprise' ? <Field label="企业模型 ID" aria-label="企业模型 ID" value={agentModel} maxLength={200} placeholder="例如企业网关公布的 gpt、claude 或 deepseek 模型 ID" hint="不限制模型品牌；请求会原样使用这个模型 ID。" onChange={(event) => setAgentModel(event.target.value)} /> : <label className="ui-field"><span className="ui-field-label">模型</span><select aria-label="Agent 模型" value={agentModel} onChange={(event) => setAgentModel(event.target.value)}>{agentProvider === 'deepseek' ? <><option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></> : GLM_MODELS.map((model) => <option key={model} value={model}>{model === 'glm-5.2' ? `${model}（默认）` : model}</option>)}</select></label>}
+          <Field label={`${PROVIDER_LABELS[agentProvider]} API Key`} aria-label={`${PROVIDER_LABELS[agentProvider]} API Key`} type={agentKeyVisible ? 'text' : 'password'} value={agentKey} maxLength={8192} autoComplete="off" placeholder={agentStatus?.profiles[agentProvider]?.configured ? '已保存；留空表示不修改' : '粘贴 API Key'} hint={agentProvider === 'enterprise' ? '同一个企业 Key 可配合不同模型 ID 使用；Key 不会进入数据库明文或日志。' : 'Key 仅经 Windows safeStorage 加密保存。'} onChange={(event) => setAgentKey(event.target.value)} trailing={<IconButton icon={agentKeyVisible ? EyeOff : Eye} label={agentKeyVisible ? `隐藏${PROVIDER_LABELS[agentProvider]} API Key` : `显示${PROVIDER_LABELS[agentProvider]} API Key`} onClick={() => setAgentKeyVisible((value) => !value)} />} />
+        </div>
+        <p className="connection-test-note">连接测试不会发送采购资料；DeepSeek 读取模型列表，GLM 与企业网关只发送固定的“仅回复 OK”测试消息。</p>
+        <div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'agent-provider-save' || !agentBaseUrl.trim() || !agentModel.trim() || (!agentStatus?.profiles[agentProvider]?.configured && !agentKey.trim())} onClick={() => void saveAgentProvider()}>{busyAction === 'agent-provider-save' ? '正在保存' : '保存并启用'}</Button><Button disabled={busyAction === 'agent-provider-test' || !agentStatus?.configured || agentStatus.provider !== agentProvider || agentStatus.baseUrl !== agentBaseUrl.trim() || agentStatus.model !== agentModel.trim()} onClick={() => void testAgentProvider()}>{busyAction === 'agent-provider-test' ? '正在测试' : '测试已保存配置'}</Button></div>
       </div>
     </div>}
 

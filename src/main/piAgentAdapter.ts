@@ -1,9 +1,11 @@
 import { Agent } from '@earendil-works/pi-agent-core';
 import type { AgentEvent, AgentMessage, AgentTool, StreamFn } from '@earendil-works/pi-agent-core';
-import { createModels } from '@earendil-works/pi-ai';
+import { createModels, createProvider } from '@earendil-works/pi-ai';
 import { deepseekProvider } from '@earendil-works/pi-ai/providers/deepseek';
+import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import type { Api, Model } from '@earendil-works/pi-ai';
-import type { AgentMessageDto, DeepSeekModel } from '../shared/agentContracts';
+import { DEEPSEEK_BASE_URL } from '../shared/agentContracts';
+import type { AgentMessageDto, AgentProviderId, AgentProviderRuntimeConfig } from '../shared/agentContracts';
 import type { BeforeToolCallResult } from '@earendil-works/pi-agent-core';
 
 export type PiAdapterEvent =
@@ -17,7 +19,9 @@ export interface PiRunOptions {
   sessionId: string;
   input: string;
   history: AgentMessageDto[];
-  model: DeepSeekModel;
+  provider?: AgentProviderId;
+  baseUrl?: string;
+  model: string;
   apiKey: string;
   systemPrompt: string;
   tools: AgentTool[];
@@ -37,13 +41,46 @@ export interface PiModelRuntime {
   streamFn: StreamFn;
 }
 
-export type PiRuntimeFactory = (model: DeepSeekModel, apiKey: string) => PiModelRuntime;
+export type PiRuntimeFactory = (config: AgentProviderRuntimeConfig) => PiModelRuntime;
 
-function defaultRuntime(modelId: DeepSeekModel): PiModelRuntime {
+function customOpenAiRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
+  const isGlm = config.provider === 'glm';
+  const model: Model<'openai-completions'> = {
+    id: config.model,
+    name: config.model,
+    api: 'openai-completions',
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    reasoning: isGlm,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: isGlm ? 200_000 : 128_000,
+    maxTokens: isGlm ? 128_000 : 32_000,
+    compat: isGlm
+      ? { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, thinkingFormat: 'zai', zaiToolStream: true }
+      : { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, supportsUsageInStreaming: false, supportsStrictMode: false, maxTokensField: 'max_tokens' }
+  };
+  const provider = createProvider({
+    id: config.provider,
+    name: config.provider === 'glm' ? '智谱 GLM' : '企业模型网关',
+    baseUrl: config.baseUrl,
+    auth: { apiKey: { name: '采办岛模型 API Key', resolve: async () => ({ auth: {} }) } },
+    models: [model],
+    api: openAICompletionsApi()
+  });
+  const models = createModels();
+  models.setProvider(provider);
+  const resolved = models.getModel(config.provider, config.model);
+  if (!resolved) throw new Error(`Pi 0.81.1 未找到模型：${config.model}`);
+  return { model: resolved, streamFn: models.streamSimple.bind(models) };
+}
+
+function defaultRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
+  if (config.provider !== 'deepseek') return customOpenAiRuntime(config);
   const models = createModels();
   models.setProvider(deepseekProvider());
-  const model = models.getModel('deepseek', modelId);
-  if (!model) throw new Error('Pi 0.81.1 未找到模型：' + modelId);
+  const model = models.getModel('deepseek', config.model);
+  if (!model) throw new Error(`Pi 0.81.1 未找到模型：${config.model}`);
   return { model, streamFn: models.streamSimple.bind(models) };
 }
 
@@ -88,7 +125,12 @@ export class PiAgentAdapter implements PiAgentRunner {
   constructor(private readonly runtimeFactory: PiRuntimeFactory = defaultRuntime) {}
 
   async run(options: PiRunOptions): Promise<PiRunResult> {
-    const runtime = this.runtimeFactory(options.model, options.apiKey);
+    const runtime = this.runtimeFactory({
+      provider: options.provider ?? 'deepseek',
+      baseUrl: options.baseUrl ?? DEEPSEEK_BASE_URL,
+      model: options.model,
+      apiKey: options.apiKey
+    });
     const beforeToolCall = options.beforeToolCall;
 
     let turnCount = 0;

@@ -9,7 +9,7 @@ import { AppService } from './appService';
 import { FeishuService } from './feishuService';
 import { FullscreenDetector } from './fullscreenDetector';
 import { AgentSessionService } from './agentSessionService';
-import { DeepSeekConfigService } from './deepSeekConfigService';
+import { AgentProviderConfigService } from './agentProviderConfigService';
 import { AgentService } from './agentService';
 import { AgentNotificationTracker } from './agentNotification';
 import { MemoryContextProvider, MemoryService } from './memoryService';
@@ -275,7 +275,7 @@ app.on('child-process-gone', (_event, details) => {
       const db = openDatabase(path.join(app.getPath('userData'), 'island.db'));
       const appSvc = new AppService(db, app.getPath('userData'));
       const agentSessions = new AgentSessionService(db, app.getPath('userData'));
-      const deepSeek = new DeepSeekConfigService(appSvc.settings, safeStorage);
+      const providerConfig = new AgentProviderConfigService(appSvc.settings, safeStorage);
       const memories = new MemoryService(db);
       const permissions = new AgentPermissionService(appSvc.settings);
       const authorizedFiles = new AuthorizedFileService(permissions);
@@ -290,8 +290,9 @@ app.on('child-process-gone', (_event, details) => {
       const analyzeBriefing = async (document: import('../shared/types').DailyBriefingDocument, signal: AbortSignal): Promise<DailyBriefingAnalysis> => {
         const chunks: string[] = [];
         const runner = new PiAgentAdapter();
+        const provider = providerConfig.runtime();
         const result = await runner.run({
-          sessionId: randomUUID(), model: deepSeek.model(), apiKey: deepSeek.apiKey(), history: [], tools: [], signal,
+          sessionId: randomUUID(), provider: provider.provider, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey, history: [], tools: [], signal,
           input: JSON.stringify(document),
           systemPrompt: '你是采购工作清单排序器。输入是可信的结构化 DailyBriefingDocument；不得新增、删除或改写事项，只能按风险重排各区的 id，并给出最多 8 条简短行动建议。只输出 JSON：{"overdueOrder":[],"todayOrder":[],"nextSevenDaysOrder":[],"notes":[]}。',
           onEvent: (event) => { if (event.type === 'text_delta') chunks.push(event.delta); }
@@ -305,7 +306,7 @@ app.on('child-process-gone', (_event, details) => {
         return { overdueOrder: stringArray('overdueOrder'), todayOrder: stringArray('todayOrder'), nextSevenDaysOrder: stringArray('nextSevenDaysOrder'), notes: stringArray('notes') };
       };
       automationService = new AutomationService(
-        db, permissions, knowledgeService, agentSessions, deepSeek, renderPdf,
+        db, permissions, knowledgeService, agentSessions, providerConfig, renderPdf,
         () => agentService?.isRunning() ?? false,
         (run) => {
           if (!win.isDestroyed()) win.webContents.send('automation:event', run);
@@ -368,10 +369,10 @@ app.on('child-process-gone', (_event, details) => {
         showToast('采办岛', notice.body, () => openAgentAttention(notice.attention), () => fallbackAgentAttention(notice.attention));
       };
       agentService = new AgentService(
-        appSvc, agentSessions, deepSeek, emitAgentEvent,
+        appSvc, agentSessions, providerConfig, emitAgentEvent,
         undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService, automationService
       );
-      registerIpc(controller, appSvc, feishu, agentService, deepSeek, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
+      registerIpc(controller, appSvc, feishu, agentService, providerConfig, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
       void knowledgeService.initialize().catch(() => undefined);
       automationService.ensureDefault();
       automationService.start();

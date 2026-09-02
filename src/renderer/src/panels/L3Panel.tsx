@@ -37,7 +37,7 @@ const TASK_SECTIONS: Array<{ id: TaskWorkspaceSection; label: string; icon: Luci
 
 const CONTRACT_SECTIONS: Array<{ id: ContractWorkspaceSection; label: string; icon: LucideIcon }> = [
   { id: 'overview', label: '概览', icon: Gauge },
-  { id: 'performance', label: '履约', icon: ListChecks },
+  { id: 'performance', label: '合同节点', icon: ListChecks },
   { id: 'billing', label: '付款开票', icon: CircleDollarSign },
   { id: 'acceptance', label: '验收', icon: ClipboardCheck },
   { id: 'materials', label: '资料', icon: Paperclip },
