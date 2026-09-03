@@ -4,9 +4,10 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v13。
-- 正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>，标签指向 `35ead4e`。
-- P30 自动化门禁：typecheck、44 个测试文件/264 项测试、build、package、production audit 与 ASAR 检查均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。真实 Peng/飞书企业沙箱仍按 `TEST_PLAN.md` 人工验收。
+- 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v13；P30 实现提交为 `6656236`。
+- 正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>，标签指向 `35ead4e`，仍是生产下载入口。
+- P30 预发布测试版：<https://github.com/King-zege/caiban-island/releases/tag/p30-test-20260903>，标签 `p30-test-20260903` 指向 `6656236`，包含 Windows x64 portable EXE 与 ZIP；不要把它宣称为正式 `v0.5.0`。
+- P30 自动化门禁：typecheck、44 个测试文件/264 项测试、build、package、production audit 与 ASAR 检查均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。测试资产 SHA-256：EXE `EC677434A4B971945FE90E886555C02A55D36D8AB1C4E8DC081ED6B4ED19FCFE`，ZIP `6DC4A2DDBF562DC373F6FAC44E2302D322E5A3229106E8E946B6AB3468D1BAD7`。
 - Pi 包精确锁定为 `@earendil-works/pi-agent-core@0.81.1` 与 `@earendil-works/pi-ai@0.81.1`，MIT。
 - Provider：DeepSeek 官方、智谱 GLM 官方开放平台/Coding Plan、Peng DeepSeek Chat Completions、Peng OpenAI Responses、Peng Anthropic Messages。三个 Peng Provider 共用一个 safeStorage Key、分别保存模型。
 
@@ -55,6 +56,7 @@
 - Agent 变更覆盖文本、工具循环、思考分流、空响应、认证/限流/5xx、断流、超时、取消、序号补偿、重载与三档权限。
 - 合同变更覆盖不完整草拟卡、金额精度、资料路径、多节点/提醒、状态机、事务回滚和并发冲突。
 - 完成前执行 `npm run typecheck`、`npm test`、`npm run build`；发布相关改动再执行 `npm run package`，并按 `TEST_PLAN.md` 做安全与 Windows 验收。
+- P30 尚缺真实企业沙箱验收：用实际 Peng 授权模型逐一验证三种协议；验证飞书私聊、群内 `@机器人`、三档权限审批、桌面/飞书会话连续性，以及断网重连、重启、撤销用户。完成前保持 GitHub Release 为 prerelease，不能把 P30 标记为节点完成或正式生产版本。
 
 ## 6. 接手顺序与后续方向
 
