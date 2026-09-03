@@ -362,6 +362,31 @@ const SCHEMA_V11 = [
   'CREATE INDEX IF NOT EXISTS automation_runs_status_created ON automation_runs(status,created_at)'
 ];
 
+const SCHEMA_V13 = [
+  `CREATE TABLE IF NOT EXISTS feishu_agent_users(
+    open_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL DEFAULT '',
+    paired_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    revoked_at TEXT
+  )`,
+  'CREATE INDEX IF NOT EXISTS feishu_agent_users_active ON feishu_agent_users(revoked_at,paired_at)',
+  `CREATE TABLE IF NOT EXISTS feishu_agent_chats(
+    chat_id TEXT PRIMARY KEY,
+    chat_type TEXT NOT NULL CHECK(chat_type IN ('p2p','group')),
+    session_id TEXT REFERENCES agent_sessions(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS feishu_agent_events(
+    event_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('message','card_action')),
+    chat_id TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    processed_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS feishu_agent_events_processed ON feishu_agent_events(processed_at)'
+];
+
 function convertLegacyDraft(raw: string): { commands: unknown[]; warnings: string[]; title: string } {
   try {
     const payload = JSON.parse(raw) as Record<string, unknown>;
@@ -489,6 +514,10 @@ export function migrate(db: DatabaseSync): void {
       db.exec('DROP INDEX IF EXISTS drafts_session_state_created');
       db.exec('DROP TABLE drafts');
       record(12);
+    }
+    if (!applied.has(13)) {
+      for (const stmt of SCHEMA_V13) db.exec(stmt);
+      record(13);
     }
     db.exec('COMMIT');
   } catch (e) {

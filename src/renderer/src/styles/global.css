@@ -2049,3 +2049,22 @@
 .settings-actions { margin-top: var(--space-4); }
 .sync-readout { padding: var(--space-3); border-left: 2px solid var(--status-completed); color: var(--text-secondary); background: var(--surface-raised); }
 .sync-readout.error { border-left-color: var(--danger); }
+
+.compact-setting-list { margin-top: var(--space-4); }
+.subsection-heading { margin-top: var(--space-8); }
+.pairing-code {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-section);
+  background: var(--surface-raised);
+}
+.pairing-code strong { font-family: var(--font-utility); font-size: 20px; font-weight: 700; letter-spacing: .18em; }
+.pairing-code span { color: var(--text-secondary); }
+.paired-users { display: grid; gap: var(--space-2); margin-top: var(--space-5); }
+.paired-users > div { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); }
+.paired-users span { display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
+.paired-users small, .paired-users p { color: var(--text-secondary); }

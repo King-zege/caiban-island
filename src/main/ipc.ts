@@ -5,6 +5,7 @@ import type { IslandWindowController } from './windowController';
 import { mkdirSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
+import type { FeishuAgentBridge } from './feishuAgentBridge';
 import type { AgentService } from './agentService';
 import type { AgentProviderConfigService } from './agentProviderConfigService';
 import type { MemoryService } from './memoryService';
@@ -20,11 +21,13 @@ import type { ContractActionInput, ContractActionReminderRequest, ContractAction
 import type { KnowledgeService } from './knowledgeService';
 import type { AutomationService } from './automationService';
 import type { AutomationCreateRequest, AutomationEnabledRequest, AutomationUpdateRequest } from '../shared/automationContracts';
+import type { FeishuBotConfigInput } from '../shared/feishuAgentContracts';
 
 export function registerIpc(
   c: IslandWindowController,
   appSvc: AppService,
   feishu: FeishuService,
+  feishuAgent: FeishuAgentBridge,
   agent: AgentService,
   providerConfig: AgentProviderConfigService,
   memories: MemoryService,
@@ -226,6 +229,10 @@ export function registerIpc(
   ipcMain.handle('agentProvider:status', () => wrap(() => providerConfig.status()));
   ipcMain.handle('agentProvider:saveConfig', (_e: IpcMainInvokeEvent, input: AgentProviderConfigInput) =>
     wrap(() => { providerConfig.saveConfig(input); return true; }));
+  ipcMain.handle('agentProvider:discoverPengModels', async (_e: IpcMainInvokeEvent, apiKey: string) => {
+    try { return { ok: true as const, data: await providerConfig.discoverPengModels(apiKey) }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
   ipcMain.handle('agentProvider:test', async () => {
     try { return { ok: true as const, data: await providerConfig.test() }; }
     catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
@@ -286,6 +293,17 @@ export function registerIpc(
     appSvc.settings.set('feishu_auto_sync', v ? '1' : '0');
     return { ok: true, data: true };
   });
+  ipcMain.handle('feishuAgent:status', () => wrap(() => feishuAgent.status()));
+  ipcMain.handle('feishuAgent:saveConfig', async (_e: IpcMainInvokeEvent, input: FeishuBotConfigInput) => {
+    try { return { ok: true as const, data: await feishuAgent.saveConfig(input) }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('feishuAgent:test', async () => {
+    try { return { ok: true as const, data: await feishuAgent.testConnection() }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('feishuAgent:generatePairingCode', () => wrap(() => feishuAgent.generatePairingCode()));
+  ipcMain.handle('feishuAgent:revokeUser', (_e: IpcMainInvokeEvent, openId: string) => wrap(() => feishuAgent.revokeUser(openId)));
   // 快速导出（写入数据目录 export\，免对话框，便于自动化与随手导出）
   ipcMain.handle('feishu:exportCsv', () => {
     try {

@@ -88,7 +88,7 @@ describe('P15 长期记忆提案与安全边界', () => {
     expect(record?.sourceMessageId).toBe(message.id);
     expect(f.memories.listProposals()).toEqual([]);
     const version = f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(12);
+    expect(version.version).toBe(13);
     expect(f.db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_messages_fts'").get()).toBeTruthy();
   });
 
@@ -118,7 +118,7 @@ describe('P15 长期记忆提案与安全边界', () => {
     const results = new AgentSessionService(upgraded, dir).search('legacy supplier');
     expect(results[0].sessionId).toBe('legacy-session');
     const version = upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number };
-    expect(version.version).toBe(12);
+    expect(version.version).toBe(13);
     upgraded.close();
   });
 

@@ -2,10 +2,12 @@ import { Agent } from '@earendil-works/pi-agent-core';
 import type { AgentEvent, AgentMessage, AgentTool, StreamFn } from '@earendil-works/pi-agent-core';
 import { createModels, createProvider } from '@earendil-works/pi-ai';
 import { deepseekProvider } from '@earendil-works/pi-ai/providers/deepseek';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import type { Api, Model } from '@earendil-works/pi-ai';
 import { DEEPSEEK_BASE_URL } from '../shared/agentContracts';
-import type { AgentMessageDto, AgentProviderId, AgentProviderRuntimeConfig } from '../shared/agentContracts';
+import type { AgentMessageDto, AgentProviderId, AgentProviderProtocol, AgentProviderRuntimeConfig } from '../shared/agentContracts';
 import type { BeforeToolCallResult } from '@earendil-works/pi-agent-core';
 
 export type PiAdapterEvent =
@@ -20,6 +22,7 @@ export interface PiRunOptions {
   input: string;
   history: AgentMessageDto[];
   provider?: AgentProviderId;
+  protocol?: AgentProviderProtocol;
   baseUrl?: string;
   model: string;
   apiKey: string;
@@ -43,8 +46,44 @@ export interface PiModelRuntime {
 
 export type PiRuntimeFactory = (config: AgentProviderRuntimeConfig) => PiModelRuntime;
 
-function customOpenAiRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
+function expectedProtocol(provider: AgentProviderId): AgentProviderProtocol {
+  if (provider === 'peng_openai') return 'openai-responses';
+  if (provider === 'peng_anthropic') return 'anthropic-messages';
+  return 'openai-completions';
+}
+
+function customRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
   const isGlm = config.provider === 'glm';
+  if (config.provider === 'peng_openai') {
+    const model: Model<'openai-responses'> = {
+      id: config.model, name: config.model, api: 'openai-responses', provider: config.provider, baseUrl: config.baseUrl,
+      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200_000, maxTokens: 32_000
+    };
+    const provider = createProvider({
+      id: config.provider, name: 'Peng · OpenAI Responses', baseUrl: config.baseUrl,
+      auth: { apiKey: { name: 'Peng API Key', resolve: async () => ({ auth: {} }) } }, models: [model], api: openAIResponsesApi()
+    });
+    const models = createModels(); models.setProvider(provider);
+    const resolved = models.getModel(config.provider, config.model);
+    if (!resolved) throw new Error(`Pi 0.81.1 未找到模型：${config.model}`);
+    return { model: resolved, streamFn: models.streamSimple.bind(models) };
+  }
+  if (config.provider === 'peng_anthropic') {
+    const model: Model<'anthropic-messages'> = {
+      id: config.model, name: config.model, api: 'anthropic-messages', provider: config.provider, baseUrl: config.baseUrl,
+      reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200_000, maxTokens: 16_384
+    };
+    const provider = createProvider({
+      id: config.provider, name: 'Peng · Anthropic Messages', baseUrl: config.baseUrl,
+      auth: { apiKey: { name: 'Peng API Key', resolve: async () => ({ auth: {} }) } }, models: [model], api: anthropicMessagesApi()
+    });
+    const models = createModels(); models.setProvider(provider);
+    const resolved = models.getModel(config.provider, config.model);
+    if (!resolved) throw new Error(`Pi 0.81.1 未找到模型：${config.model}`);
+    return { model: resolved, streamFn: models.streamSimple.bind(models) };
+  }
   const model: Model<'openai-completions'> = {
     id: config.model,
     name: config.model,
@@ -62,7 +101,7 @@ function customOpenAiRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime
   };
   const provider = createProvider({
     id: config.provider,
-    name: config.provider === 'glm' ? '智谱 GLM' : '企业模型网关',
+    name: config.provider === 'glm' ? '智谱 GLM' : 'Peng · DeepSeek Completions',
     baseUrl: config.baseUrl,
     auth: { apiKey: { name: '采办岛模型 API Key', resolve: async () => ({ auth: {} }) } },
     models: [model],
@@ -75,8 +114,9 @@ function customOpenAiRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime
   return { model: resolved, streamFn: models.streamSimple.bind(models) };
 }
 
-function defaultRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
-  if (config.provider !== 'deepseek') return customOpenAiRuntime(config);
+export function createPiModelRuntime(config: AgentProviderRuntimeConfig): PiModelRuntime {
+  if (config.protocol !== expectedProtocol(config.provider)) throw new Error('Agent Provider 与协议不匹配');
+  if (config.provider !== 'deepseek') return customRuntime(config);
   const models = createModels();
   models.setProvider(deepseekProvider());
   const model = models.getModel('deepseek', config.model);
@@ -122,11 +162,13 @@ function historyToPi(messages: AgentMessageDto[]): AgentMessage[] {
 }
 
 export class PiAgentAdapter implements PiAgentRunner {
-  constructor(private readonly runtimeFactory: PiRuntimeFactory = defaultRuntime) {}
+  constructor(private readonly runtimeFactory: PiRuntimeFactory = createPiModelRuntime) {}
 
   async run(options: PiRunOptions): Promise<PiRunResult> {
+    const provider = options.provider ?? 'deepseek';
     const runtime = this.runtimeFactory({
-      provider: options.provider ?? 'deepseek',
+      provider,
+      protocol: options.protocol ?? expectedProtocol(provider),
       baseUrl: options.baseUrl ?? DEEPSEEK_BASE_URL,
       model: options.model,
       apiKey: options.apiKey

@@ -7,6 +7,7 @@ import { createTray } from './tray';
 import { openDatabase } from './db';
 import { AppService } from './appService';
 import { FeishuService } from './feishuService';
+import { FeishuAgentBridge } from './feishuAgentBridge';
 import { FullscreenDetector } from './fullscreenDetector';
 import { AgentSessionService } from './agentSessionService';
 import { AgentProviderConfigService } from './agentProviderConfigService';
@@ -54,6 +55,7 @@ let localCommandRuntime: LocalCommandRuntime | null = null;
 let isQuitting = false;
 let fullscreenDetector: FullscreenDetector | null = null;
 let agentService: AgentService | null = null;
+let feishuAgentBridge: FeishuAgentBridge | null = null;
 let knowledgeService: KnowledgeService | null = null;
 let automationService: AutomationService | null = null;
 let detectedRenderMode: RenderMode = 'software';
@@ -292,7 +294,7 @@ app.on('child-process-gone', (_event, details) => {
         const runner = new PiAgentAdapter();
         const provider = providerConfig.runtime();
         const result = await runner.run({
-          sessionId: randomUUID(), provider: provider.provider, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey, history: [], tools: [], signal,
+          sessionId: randomUUID(), provider: provider.provider, protocol: provider.protocol, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey, history: [], tools: [], signal,
           input: JSON.stringify(document),
           systemPrompt: '你是采购工作清单排序器。输入是可信的结构化 DailyBriefingDocument；不得新增、删除或改写事项，只能按风险重排各区的 id，并给出最多 8 条简短行动建议。只输出 JSON：{"overdueOrder":[],"todayOrder":[],"nextSevenDaysOrder":[],"notes":[]}。',
           onEvent: (event) => { if (event.type === 'text_delta') chunks.push(event.delta); }
@@ -372,10 +374,12 @@ app.on('child-process-gone', (_event, details) => {
         appSvc, agentSessions, providerConfig, emitAgentEvent,
         undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService, automationService
       );
-      registerIpc(controller, appSvc, feishu, agentService, providerConfig, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
+      feishuAgentBridge = new FeishuAgentBridge(db, appSvc.settings, safeStorage, agentService, permissions);
+      registerIpc(controller, appSvc, feishu, feishuAgentBridge, agentService, providerConfig, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
       void knowledgeService.initialize().catch(() => undefined);
       automationService.ensureDefault();
       automationService.start();
+      void feishuAgentBridge.start().catch(() => undefined);
 
       if (process.env['ELECTRON_RENDERER_URL']) {
         await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -413,6 +417,7 @@ app.on('child-process-gone', (_event, details) => {
       if (feishuTimer) clearTimeout(feishuTimer);
       if (localCommandRuntime) void localCommandRuntime.close();
       if (agentService) void agentService.dispose();
+      if (feishuAgentBridge) void feishuAgentBridge.dispose();
       knowledgeService?.dispose();
       automationService?.stop();
     });

@@ -8,7 +8,7 @@
 | --- | --- |
 | shared 纯逻辑、schema、排序、时间 | 对应单测 + typecheck |
 | AppService、SQLite、迁移、提醒、归档 | 单元/集成、事务回滚、旧库升级与幂等 |
-| Agent、权限、AppCommand、文件、CLI | faux provider 工具循环、审批/Bypass、schema、路径和回环安全 |
+| Agent、权限、AppCommand、文件、CLI、飞书机器人 | faux provider 工具循环、fake Channel、审批/Bypass、schema、路径和回环安全 |
 | renderer UI/状态 | Testing Library 交互、焦点/键盘、axe、L2/L3 状态连续性 |
 | 窗口、动效、DPI、主题 | 状态机/几何测试、隔离 Electron 截图与性能基准、Windows 人工矩阵 |
 | 依赖、构建、分发 | typecheck、全量测试、build、package、ASAR/portable 冒烟和许可证检查 |
@@ -27,7 +27,7 @@ npm run package
 ## 2. 自动化覆盖
 
 - 任务：字段校验、项目/杂事约束、紧急度与稳定排序、进度、名称/时间旧值冲突。
-- SQLite：CRUD、WAL、外键级联、v1–v12 迁移、双名称回填、旧草稿转提案及旧表删除、失败回滚与重复启动幂等。
+- SQLite：CRUD、WAL、外键级联、v1–v13 迁移、双名称回填、旧草稿转提案、飞书配对/会话/事件防重表、会话删除置空、失败回滚与重复启动幂等。
 - 合同：一项目多合同/独立合同、不完整草拟卡片及名称派生、整数最小货币单位、状态机、稳定节点排序、付款—开票关联、扫描件绝对路径/附件/附属链接、创建时多节点与资料事务回滚、并发冲突与归档恢复。
 - 提醒：项目提前量、采购节点/合同节点/杂事精确时间、合同逐节点提醒、原子领取、时间修改、生命周期取消/恢复、睡眠漏发合并。
 - 知识库：v9→v10/幂等迁移、合成 PDF/DOCX/XLSX/PPTX/文本定位、增量修改与删除、无文本/旧格式降级、取消、FTS、项目绑定、符号链接/路径逃逸及注入/凭据/绝对路径脱敏。
@@ -37,7 +37,9 @@ npm run package
 - AppCommand：完整 schema、坏枚举、缺失/多余字段、风险、预期旧值、摘要与撤销元数据。
 - 权限：三种模式跨重启、Bypass 首次确认/警示、批准/拒绝/取消、重复确认、未知工具 fail-closed。
 - 文件/CLI：回环鉴权、Content-Type/体积、非法命令、`..`、设备/UNC、符号链接/联接、未授权相邻目录、移动与单文件删除。
-- Pi/Provider：DeepSeek 兼容配置、GLM 官方端点/模型白名单、企业 HTTPS/回环 URL 校验、任意企业模型 ID、分 Provider 密钥密文和运行时透传；正文/临时思考分流、工具调用、空响应、异常终止、401、429、5xx、断流、超时、取消、12 轮上限。逐工具验证顶层 object schema，并在 DeepSeek 最终 HTTP payload 层断言 `execute_app_command`；全部测试使用 faux/mock 和合成 Key。
+- Pi/Provider：DeepSeek/GLM 基线，Peng 三个精确 Base URL、无重复 `/v1`、Bearer/x-api-key、模型发现清洗/排序、共用密钥密文、旧企业配置迁移与三个 Pi API 绑定；固定最小测试消息、异常响应、401/403/404/429/5xx、断流、超时、取消、12 轮上限。逐工具验证顶层 object schema；全部测试使用 faux/mock 和合成 Key。
+- 飞书 Agent：fake Channel 覆盖连接/禁用/重连状态、8 位配对码过期/单次使用/失败限速、多人/撤销、群聊提及、未授权用户、text/post 与附件拒绝、跨重启消息/卡片防重、chat 会话续接、`/new`/`/status`/`/cancel`/`/help`、全局忙碌不排队及断线失败。
+- 飞书审批/安全：覆盖三档模式、仅原发起人、跨用户/重复/过期卡片、桌面审批同步、撤销/禁用取消；断言不下载附件，不外发 thinking、Key、App Secret、Authorization、原始工具结果、消息正文日志或私人路径。
 - 会话/记忆：事件序号与快照补偿、早到/丢失/重载、可见消息持久化、FTS5、记忆容量/证据/安全扫描。
 - Renderer：L2 默认卡片、采购/合同/杂事三轨、合同金额/资料摘要、L3 合同六分区、扫描件/附件/附属链接、多合同节点与逐节点提醒、双名称与跨域搜索、L2 纯 Agent 对话/L3 完整管理、流式自动跟底、思考折叠、审批差异卡、错误重试、会话管理、通知导航、键盘与焦点恢复。
 - 构建拆包：L3 外壳、归档、设置、记忆和领域编辑器保持独立异步 chunk；首屏 renderer JS 以 P22 的约 1.20 MB 为基线至少降低 30%。
@@ -63,7 +65,7 @@ npm run package
 - 窗口：浏览器最大化不遮挡；真正全屏退让；单实例；托盘；开机自启；通知点击定位。
 - 外观：深色、浅色、高对比度、减少动画、Acrylic 失败回退、200% 文本。
 - 内容：每轨 0/1/7/100 数据、采购/合同/杂事任意组合、长中文、长文件绝对路径、逾期、无节点/无扫描件/多合同节点、通用提案、归档、离线和凭据遮罩。
-- Agent：后台继续、显式取消、慢首包、错误重试、正文/思考分流、流式与重进自动跟底、审批焦点、Bypass 警示、L2 纯对话/L3 完整管理与 L3 无“AI 草稿”。
+- Agent：后台继续、显式取消、慢首包、错误重试、正文/思考分流、流式与重进自动跟底、审批焦点、Bypass 警示、L2 纯对话/L3 完整管理与 L3 无“AI 草稿”。飞书人工沙箱另覆盖私聊/群聊创建修改删除合成任务、三种权限、三种 Peng 协议、桌面/飞书会话连续性、断网重连、重启和撤销。
 
 ## 5. 性能门禁
 
@@ -78,6 +80,6 @@ npm run package
 
 - 提交前扫描 SQLite、日志、搜索索引、记忆、导出与包内运行数据：无真实凭据、Authorization、思考内容、私人绝对路径或用户文件正文；源码只包含思考事件协议与合成夹具。
 - 日志只含命令/工具名、阶段、耗时、权限决策与错误类别。
-- 包内必须含 Pi ESM 运行依赖、DeepSeek 与 OpenAI Completions lazy provider、`caiban-cli.mjs` 与第三方声明；不得含本应用旧 MCP/LLM/stdio 文件或 Pi CJS `require`。
+- 包内必须含 Pi ESM 运行依赖、Completions/Responses/Anthropic lazy API、懒加载飞书 Channel SDK、`caiban-cli.mjs` 与第三方声明；不得含本应用旧 MCP/LLM/stdio 文件或 Pi CJS `require`。
 - portable/zip 时间戳与哈希属于发布产物记录，不写入长期规范。SmartScreen 行为应与 README 说明一致。
 - 发布前执行 `npm audit --omit=dev`、`git diff --check` 与凭据/私人路径扫描；任何高危依赖、未解释生成物或真实数据都会阻断发布。

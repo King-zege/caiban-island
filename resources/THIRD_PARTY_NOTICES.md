@@ -22,3 +22,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 - `pdfjs-dist@6.2.108` — Apache License 2.0，用于本地 PDF 文本与页码提取。
 
 完整许可证文本随对应 npm 软件包分发于 `node_modules`；portable 构建包含本文件。
+
+## P30 Feishu Channel dependency
+
+- `@larksuiteoapi/node-sdk@1.73.1` — MIT License，用于飞书自建应用 Channel 长连接、消息发送与卡片更新；仅在机器人启用时懒加载。
+
+上游包与许可证文本随 npm 软件包分发于 `node_modules/@larksuiteoapi/node-sdk`。

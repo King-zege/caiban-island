@@ -53,7 +53,12 @@ interface ActiveRun {
   partialThinking: string;
   activeTool: AgentRunSnapshot['activeTool'];
   error: AgentRunSnapshot['error'];
+  origin: AgentRunOrigin;
 }
+
+export type AgentRunOrigin =
+  | { type: 'desktop' }
+  | { type: 'feishu'; chatId: string; senderId: string; messageId: string };
 
 type UnsequencedAgentEvent<T = AgentRunEvent> = T extends AgentRunEvent ? Omit<T, 'sequence' | 'at'> : never;
 
@@ -67,12 +72,13 @@ export class AgentService {
     partialText: '', partialThinking: '', activeTool: null, pendingApproval: null, error: null
   };
   private readonly releaseApprovalListener: (() => void) | null;
+  private readonly listeners = new Set<(event: AgentRunEvent) => void>();
 
   constructor(
     private readonly appSvc: AppService,
     private readonly sessions: AgentSessionService,
     private readonly providerConfig: AgentProviderConfigService,
-    private readonly emit: (event: AgentRunEvent) => void,
+    emit: (event: AgentRunEvent) => void,
     private readonly runner: PiAgentRunner = new PiAgentAdapter(),
     private readonly memories?: MemoryService,
     private readonly contextProviders: AgentContextProvider[] = [],
@@ -81,6 +87,7 @@ export class AgentService {
     private readonly knowledge?: KnowledgeService,
     private readonly automations?: AutomationService
   ) {
+    this.listeners.add(emit);
     this.releaseApprovalListener = this.permissions?.onApproval((event) => {
       if (event.type === 'required') {
         this.updatePhase('awaiting_approval');
@@ -94,21 +101,21 @@ export class AgentService {
     }) ?? null;
   }
 
-  start(request: AgentRunRequest): AgentSessionDetail {
+  start(request: AgentRunRequest, origin: AgentRunOrigin = { type: 'desktop' }): AgentSessionDetail {
     this.assertCanRun(request.input);
     const config = this.providerConfig.runtime();
     const session = this.sessions.create(config.model, request.input);
-    this.launch(session, request.input, config);
+    this.launch(session, request.input, config, origin);
     return this.sessions.get(session.id);
   }
 
-  send(request: AgentRunRequest): AgentSessionDetail {
+  send(request: AgentRunRequest, origin: AgentRunOrigin = { type: 'desktop' }): AgentSessionDetail {
     if (!request.sessionId) throw new AgentRunError('缺少会话 ID');
     this.assertCanRun(request.input);
     const config = this.providerConfig.runtime();
     this.sessions.setModel(request.sessionId, config.model);
     const detail = this.sessions.get(request.sessionId);
-    this.launch(detail.session, request.input, config);
+    this.launch(detail.session, request.input, config, origin);
     return detail;
   }
 
@@ -152,6 +159,12 @@ export class AgentService {
   setSurfaceVisible(visible: boolean): void { this.surfaceVisible = visible; }
   isSurfaceVisible(): boolean { return this.surfaceVisible; }
   isRunning(): boolean { return this.active !== null; }
+  activeOrigin(): AgentRunOrigin | null { return this.active?.origin ?? null; }
+
+  subscribe(listener: (event: AgentRunEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   async waitForIdle(): Promise<void> {
     await this.active?.promise;
@@ -170,7 +183,7 @@ export class AgentService {
     if (trimmed.length > 12000) throw new AgentRunError('单条消息不能超过 12000 字符');
   }
 
-  private launch(session: AgentSessionSummary, rawInput: string, config: AgentProviderRuntimeConfig): void {
+  private launch(session: AgentSessionSummary, rawInput: string, config: AgentProviderRuntimeConfig, origin: AgentRunOrigin): void {
     const input = rawInput.trim();
     const existing = this.sessions.get(session.id).messages;
     const userMessage = this.sessions.append(session.id, 'user', input);
@@ -188,6 +201,7 @@ export class AgentService {
       partialThinking: '',
       activeTool: null,
       error: null,
+      origin,
       timer: setTimeout(() => {
         active.timedOut = true;
         controller.abort();
@@ -222,6 +236,7 @@ export class AgentService {
         input,
         history,
         provider: config.provider,
+        protocol: config.protocol,
         baseUrl: config.baseUrl,
         model: config.model,
         apiKey: config.apiKey,
@@ -329,7 +344,8 @@ export class AgentService {
     const at = new Date().toISOString();
     this.snapshot.sequence = this.sequence;
     this.snapshot.lastActivityAt = at;
-    this.emit({ ...event, sequence: this.sequence, at } as AgentRunEvent);
+    const sequenced = { ...event, sequence: this.sequence, at } as AgentRunEvent;
+    for (const listener of this.listeners) listener(sequenced);
   }
 
   private emitError(sessionId: string, message: string, category: string): void {

@@ -4,11 +4,11 @@
 
 ## 1. 当前基线
 
-- 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v12。
+- 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v13。
 - 正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>，标签指向 `35ead4e`。
-- 发布门禁：typecheck、43 个测试文件/241 项测试、build、package 均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。
+- P30 自动化门禁：typecheck、44 个测试文件/264 项测试、build、package、production audit 与 ASAR 检查均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。真实 Peng/飞书企业沙箱仍按 `TEST_PLAN.md` 人工验收。
 - Pi 包精确锁定为 `@earendil-works/pi-agent-core@0.81.1` 与 `@earendil-works/pi-ai@0.81.1`，MIT。
-- Provider：DeepSeek 官方、智谱 GLM 官方开放平台/Coding Plan、企业 OpenAI Chat Completions 兼容网关。各 Provider 的 Key 独立经 safeStorage 保存。
+- Provider：DeepSeek 官方、智谱 GLM 官方开放平台/Coding Plan、Peng DeepSeek Chat Completions、Peng OpenAI Responses、Peng Anthropic Messages。三个 Peng Provider 共用一个 safeStorage Key、分别保存模型。
 
 ## 2. 当前产品事实
 
@@ -16,7 +16,7 @@
 - L2/L3 共用 Agent store 与消息组件。进入或重新进入时定位最新消息；流式正文自动跟底。思考流只在当前 run 临时显示，正文开始后折叠，不落库、不进日志/搜索/记忆/导出。
 - 合同允许信息不完整时先建草拟卡；卡片与 L3 显示合同号、供应商、金额、扫描件/附件/链接。合同可有多个节点，每个节点独立提醒。
 - Agent 可检索主工作目录并运行一次性/每日/每周自动化；默认每日 09:00 生成会话和固定模板 PDF，无模型时确定性降级。
-- 所有正式写入统一经过 AppCommand → AppService；飞书只单向同步采购项目。
+- 所有正式写入统一经过 AppCommand → AppService；飞书多维表格只单向同步采购项目。飞书机器人经长连接调用同一个 AgentService，不直接写库或调用本地 CLI。
 
 ## 3. 关键实现入口
 
@@ -25,6 +25,7 @@
 | `src/main/agentService.ts` | 唯一 run、事件、快照、会话编排 |
 | `src/main/agentProviderConfigService.ts` | Provider、URL、模型与加密 Key 配置 |
 | `src/main/piAgentAdapter.ts` | 流式 Provider 协议与工具循环 |
+| `src/main/feishuAgentBridge.ts` | 飞书 Channel、配对、会话映射、进度/审批卡与防重 |
 | `src/main/agentTools.ts` / `agentPermissionService.ts` | 工具 allowlist、风险与三档权限 |
 | `src/main/appCommandService.ts` / `src/shared/appCommandContracts.ts` | 正式命令、schema、差异与并发前置值 |
 | `src/main/contractService.ts` | 合同台账、资料、多节点、逐节点提醒与生命周期 |
@@ -35,7 +36,7 @@
 
 固定调用链：
 
-`L2/L3 Agent → preload IPC → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件工具 → AppService`
+`L2/L3 Agent 或 FeishuAgentBridge → AgentService → PiAgentAdapter → beforeToolCall → AppCommand/授权文件工具 → AppService`
 
 ## 4. 不可破坏的契约
 
@@ -45,7 +46,8 @@
 - 所有 Provider 工具参数保持顶层 `type: object`；可空 UTC 保持真正的 `null`。未知工具 fail-closed。
 - Bypass 也不能突破 AppCommand、授权目录、safeStorage、本地回环以及无任意 shell/网络边界。
 - 文件工具只接受授权目录 ID 与相对路径；main 拒绝 `..`、设备/UNC、符号链接/联接逃逸和未授权相邻目录。
-- 企业 Base URL 只允许 HTTPS；本机回环调试可用 HTTP。URL 不得含凭据、query 或 hash，连接测试不得发送业务正文。
+- Peng OpenAI 类协议固定 `/v1` Base URL，Anthropic 固定根 URL；协议由用户显式选择。连接测试只发送固定“仅回复 OK”，模型目录使用 Bearer `GET /v1/models`。
+- 飞书 App Secret、配对码和消息正文不得进入日志；进度卡不得发送 thinking、原始工具结果或敏感路径。仅当前飞书 run 原发起人能操作审批/取消。
 
 ## 5. 修改与验收
 

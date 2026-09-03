@@ -66,7 +66,7 @@ describe('P22 双名称、判别类型与通用提案', () => {
     db.exec(`
       CREATE TABLE drafts(id TEXT PRIMARY KEY, source TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, session_id TEXT);
       CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at);
-      DELETE FROM schema_migrations WHERE version = 12;
+      DELETE FROM schema_migrations WHERE version >= 12;
     `);
     db.prepare("INSERT INTO drafts(id,source,payload,state,created_at,session_id) VALUES('legacy-misc','pi',?,'pending','2026-01-01',NULL)").run(JSON.stringify(payload));
 

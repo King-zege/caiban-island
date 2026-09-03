@@ -137,7 +137,7 @@ describe('P21 migration v7', () => {
     expect(upgraded.prepare("SELECT value FROM settings WHERE key IN ('mcp_token_encrypted','api_key_enc')").all()).toEqual([]);
     expect(upgraded.prepare('SELECT name FROM tasks WHERE id = ?').get(task.id)).toEqual({ name: '保留任务' });
     expect(upgraded.prepare("SELECT title FROM agent_sessions WHERE id='legacy-session'").get()).toEqual({ title: '旧会话' });
-    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 12 });
+    expect(upgraded.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 13 });
     upgraded.close();
   });
 });

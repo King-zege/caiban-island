@@ -32,7 +32,7 @@ afterEach(() => { for (const db of databases.splice(0)) db.close(); for (const r
 describe('P26 Agent 自动化与每日工作清单', () => {
   it('migration v11 建立自动化、防重运行和到时索引', async () => {
     const f = await fixture();
-    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 12 });
+    expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 13 });
     expect((f.db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name IN ('agent_automations','automation_runs')").get() as { count: number }).count).toBe(2);
   });
 

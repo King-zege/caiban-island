@@ -55,7 +55,7 @@ describe('P20 migration 回滚', () => {
       CREATE INDEX drafts_session_state_created ON drafts(session_id, state, created_at);
       INSERT INTO drafts VALUES('rollback-draft','pi','{}','pending','2026-01-01',NULL);
       CREATE TRIGGER reject_legacy_proposal BEFORE INSERT ON agent_proposals BEGIN SELECT RAISE(ABORT, 'synthetic migration failure'); END;
-      DELETE FROM schema_migrations WHERE version = 12;
+      DELETE FROM schema_migrations WHERE version >= 12;
     `);
     expect(() => migrate(f.db)).toThrow();
     expect(f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toEqual({ version: 11 });

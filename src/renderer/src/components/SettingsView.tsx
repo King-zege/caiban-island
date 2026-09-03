@@ -1,7 +1,7 @@
 import { Bot, Cloud, Database, Download, Eye, EyeOff, FolderOpen, Pause, Play, Save, Settings2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { DEEPSEEK_BASE_URL, DEEPSEEK_MODELS, GLM_BASE_URLS, GLM_MODELS } from '../../../shared/types';
-import type { AgentProviderId, AgentProviderStatus } from '../../../shared/types';
+import { DEEPSEEK_BASE_URL, DEEPSEEK_MODELS, GLM_BASE_URLS, GLM_MODELS, PENG_OPENAI_BASE_URL, PENG_ROOT_URL, PENG_PROVIDER_IDS } from '../../../shared/types';
+import type { AgentProviderId, AgentProviderStatus, FeishuBotStatus, FeishuPairingCode } from '../../../shared/types';
 import { useWorkspaceStore } from '../state/useWorkspaceStore';
 import { AsyncFeedback } from './ui/AsyncFeedback';
 import { Button, IconButton } from './ui/Button';
@@ -22,15 +22,19 @@ type FeishuStatus = {
 const SETTINGS_SECTIONS = [
   { id: 'common' as const, label: '常用', icon: Settings2 },
   { id: 'agent' as const, label: 'Agent', icon: Bot },
-  { id: 'feishu' as const, label: '飞书同步', icon: Cloud },
+  { id: 'feishu' as const, label: '飞书', icon: Cloud },
   { id: 'data' as const, label: '数据与高级', icon: Database }
 ];
 
 const PROVIDER_LABELS: Record<AgentProviderId, string> = {
   deepseek: 'DeepSeek 官方',
   glm: '智谱 GLM',
-  enterprise: '企业模型网关'
+  peng_deepseek: 'Peng · DeepSeek',
+  peng_openai: 'Peng · OpenAI',
+  peng_anthropic: 'Peng · Anthropic'
 };
+
+const isPengProvider = (provider: AgentProviderId): boolean => PENG_PROVIDER_IDS.includes(provider as (typeof PENG_PROVIDER_IDS)[number]);
 
 export default function SettingsView(): React.JSX.Element {
   const notify = useWorkspaceStore((state) => state.notify);
@@ -49,23 +53,35 @@ export default function SettingsView(): React.JSX.Element {
   const [agentModel, setAgentModel] = useState<string>(DEEPSEEK_MODELS[0]);
   const [agentKey, setAgentKey] = useState('');
   const [agentKeyVisible, setAgentKeyVisible] = useState(false);
+  const [pengModels, setPengModels] = useState<string[]>([]);
   const [feishuToken, setFeishuToken] = useState('');
   const [feishuTokenVisible, setFeishuTokenVisible] = useState(false);
   const [feishuStatus, setFeishuStatus] = useState<FeishuStatus | null>(null);
+  const [feishuAgentStatus, setFeishuAgentStatus] = useState<FeishuBotStatus | null>(null);
+  const [feishuAppId, setFeishuAppId] = useState('');
+  const [feishuAppSecret, setFeishuAppSecret] = useState('');
+  const [feishuAppSecretVisible, setFeishuAppSecretVisible] = useState(false);
+  const [feishuAgentEnabled, setFeishuAgentEnabled] = useState(false);
+  const [pairingCode, setPairingCode] = useState<FeishuPairingCode | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setInitialError(null);
-    const [settingsResult, feishuResult, agentResult] = await Promise.all([
-      window.api.getSettings(), window.api.getFeishuStatus(), window.api.getAgentProviderStatus()
+    const [settingsResult, feishuResult, agentResult, feishuAgentResult] = await Promise.all([
+      window.api.getSettings(), window.api.getFeishuStatus(), window.api.getAgentProviderStatus(), window.api.getFeishuAgentStatus()
     ]);
     setLoading(false);
-    const failed = [settingsResult, feishuResult, agentResult].find((result) => !result.ok);
+    const failed = [settingsResult, feishuResult, agentResult, feishuAgentResult].find((result) => !result.ok);
     if (failed && !failed.ok) setInitialError(failed.error);
     if (settingsResult.ok) {
       const settings = settingsResult.data as { reminder_default_offsets: number[]; autostart: boolean; acrylic_disabled: boolean };
       setDefaultOffsets(settings.reminder_default_offsets ?? []); setAutostart(settings.autostart === true); setAcrylic(settings.acrylic_disabled !== true);
     }
     if (feishuResult.ok) setFeishuStatus(feishuResult.data as FeishuStatus);
+    if (feishuAgentResult.ok) {
+      setFeishuAgentStatus(feishuAgentResult.data);
+      setFeishuAppId(feishuAgentResult.data.appId);
+      setFeishuAgentEnabled(feishuAgentResult.data.enabled);
+    }
     if (agentResult.ok) {
       setAgentStatus(agentResult.data);
       setAgentProvider(agentResult.data.provider);
@@ -92,10 +108,11 @@ export default function SettingsView(): React.JSX.Element {
   const selectAgentProvider = (provider: AgentProviderId) => {
     setAgentProvider(provider);
     const saved = agentStatus?.profiles[provider];
-    setAgentBaseUrl(saved?.baseUrl || (provider === 'deepseek' ? DEEPSEEK_BASE_URL : provider === 'glm' ? GLM_BASE_URLS[0] : ''));
+    setAgentBaseUrl(saved?.baseUrl || (provider === 'deepseek' ? DEEPSEEK_BASE_URL : provider === 'glm' ? GLM_BASE_URLS[0] : provider === 'peng_anthropic' ? PENG_ROOT_URL : PENG_OPENAI_BASE_URL));
     setAgentModel(saved?.model || (provider === 'deepseek' ? DEEPSEEK_MODELS[0] : provider === 'glm' ? GLM_MODELS[0] : ''));
     setAgentKey('');
     setAgentKeyVisible(false);
+    setPengModels([]);
   };
   const refreshAgentStatus = async () => {
     const result = await window.api.getAgentProviderStatus();
@@ -119,6 +136,13 @@ export default function SettingsView(): React.JSX.Element {
     setBusyAction('agent-provider-test'); const result = await window.api.testAgentProvider(); setBusyAction(null);
     if (result.ok) showSuccess(result.data); else showError(result.error, () => void testAgentProvider());
   };
+  const discoverPengModels = async () => {
+    setBusyAction('agent-provider-models'); const result = await window.api.discoverPengModels(agentKey); setBusyAction(null);
+    if (!result.ok) { showError(result.error, () => void discoverPengModels()); return; }
+    setPengModels(result.data.models);
+    if (!result.data.models.includes(agentModel)) setAgentModel(result.data.models[0] ?? '');
+    showSuccess(`已获取 ${result.data.models.length} 个模型`);
+  };
   const refreshFeishu = async () => { const result = await window.api.getFeishuStatus(); if (result.ok) setFeishuStatus(result.data as FeishuStatus); };
   const saveFeishu = async () => {
     setBusyAction('feishu-save'); const result = await window.api.saveFeishuToken(feishuToken); setBusyAction(null);
@@ -126,6 +150,18 @@ export default function SettingsView(): React.JSX.Element {
     setFeishuToken(''); setFeishuTokenVisible(false); await refreshFeishu(); showSuccess('飞书令牌已安全保存');
   };
   const testFeishu = async () => { setBusyAction('feishu-test'); const result = await window.api.testFeishu(); setBusyAction(null); if (result.ok) showSuccess(result.data); else showError(result.error, () => void testFeishu()); };
+  const saveFeishuAgent = async () => {
+    setBusyAction('feishu-agent-save');
+    const result = await window.api.saveFeishuAgentConfig({ appId: feishuAppId, appSecret: feishuAppSecret, enabled: feishuAgentEnabled });
+    setBusyAction(null);
+    if (!result.ok) { showError(result.error, () => void saveFeishuAgent()); return; }
+    setFeishuAgentStatus(result.data); setFeishuAppSecret(''); setFeishuAppSecretVisible(false);
+    if (result.data.enabled && result.data.connectionState !== 'connected') showError(`配置已保存，但连接失败（${result.data.lastErrorCategory ?? 'unknown'}）`, () => void testFeishuAgent());
+    else showSuccess('飞书机器人配置已安全保存');
+  };
+  const testFeishuAgent = async () => { setBusyAction('feishu-agent-test'); const result = await window.api.testFeishuAgent(); setBusyAction(null); if (result.ok) showSuccess(result.data); else showError(result.error, () => void testFeishuAgent()); };
+  const generatePairingCode = async () => { const result = await window.api.generateFeishuPairingCode(); if (result.ok) { setPairingCode(result.data); showSuccess('已生成一次性配对码'); } else showError(result.error); };
+  const revokePairedUser = async (openId: string) => { const result = await window.api.revokeFeishuPairedUser(openId); if (result.ok) { setFeishuAgentStatus(result.data); showSuccess('已撤销飞书用户授权'); } else showError(result.error); };
   const syncFeishu = async () => {
     setBusyAction('feishu-sync'); const result = await window.api.syncFeishu(); setBusyAction(null);
     if (result.ok) { showSuccess(`同步完成：新增 ${result.data.created} 条，更新 ${result.data.updated} 条`); await refreshFeishu(); }
@@ -156,21 +192,36 @@ export default function SettingsView(): React.JSX.Element {
 
     {section === 'agent' && <div className="settings-section" role="tabpanel">
       <div className="section-heading"><div><h2>Agent 模型连接</h2><p>权限模式与授权目录在 Agent 工作区内管理。</p></div></div>
+      {agentStatus?.pengMigrationRequired && <AsyncFeedback tone="error" message="旧企业网关不是 Peng 地址，原密钥未被发送或迁移。请重新配置 Peng Key；成功保存后会清理旧配置。" />}
       <div className="connection-block">
-        <div className="connection-head"><span><strong>Pi Agent · 多模型 Provider</strong><small>Key 分 Provider 加密保存；企业网关使用 OpenAI Chat Completions 兼容协议。</small></span><span className={'connection-status ' + (agentStatus?.profiles[agentProvider]?.configured ? 'configured' : '')}>{agentStatus?.profiles[agentProvider]?.configured ? '已配置' : '未配置'}</span></div>
+        <div className="connection-head"><span><strong>Pi Agent · 多模型 Provider</strong><small>DeepSeek 与 GLM 独立保存 Key；三个 Peng 协议共用一个加密 Key，并分别保存模型。</small></span><span className={'connection-status ' + (agentStatus?.profiles[agentProvider]?.configured ? 'configured' : '')}>{agentStatus?.profiles[agentProvider]?.configured ? '已配置' : '未配置'}</span></div>
         <div className="settings-form-grid agent-provider-grid">
-          <label className="ui-field"><span className="ui-field-label">模型服务</span><select aria-label="Agent 模型服务" value={agentProvider} onChange={(event) => selectAgentProvider(event.target.value as AgentProviderId)}><option value="deepseek">DeepSeek 官方</option><option value="glm">智谱 GLM</option><option value="enterprise">企业模型网关</option></select></label>
-          {agentProvider === 'glm' ? <label className="ui-field"><span className="ui-field-label">GLM 服务类型</span><select aria-label="GLM 服务地址" value={agentBaseUrl} onChange={(event) => setAgentBaseUrl(event.target.value)}><option value={GLM_BASE_URLS[0]}>开放平台通用 API</option><option value={GLM_BASE_URLS[1]}>Coding Plan</option></select></label> : <Field label={agentProvider === 'deepseek' ? '官方服务地址' : '企业 Base URL'} aria-label={agentProvider === 'deepseek' ? 'DeepSeek 官方服务地址' : '企业 Base URL'} value={agentBaseUrl} disabled={agentProvider === 'deepseek'} maxLength={2048} placeholder="https://gateway.example.com/v1" hint={agentProvider === 'enterprise' ? '填写到 /v1 等基础路径，不要包含 /chat/completions；仅支持 HTTPS，回环地址可用 HTTP。' : undefined} onChange={(event) => setAgentBaseUrl(event.target.value)} />}
-          {agentProvider === 'enterprise' ? <Field label="企业模型 ID" aria-label="企业模型 ID" value={agentModel} maxLength={200} placeholder="例如企业网关公布的 gpt、claude 或 deepseek 模型 ID" hint="不限制模型品牌；请求会原样使用这个模型 ID。" onChange={(event) => setAgentModel(event.target.value)} /> : <label className="ui-field"><span className="ui-field-label">模型</span><select aria-label="Agent 模型" value={agentModel} onChange={(event) => setAgentModel(event.target.value)}>{agentProvider === 'deepseek' ? <><option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></> : GLM_MODELS.map((model) => <option key={model} value={model}>{model === 'glm-5.2' ? `${model}（默认）` : model}</option>)}</select></label>}
-          <Field label={`${PROVIDER_LABELS[agentProvider]} API Key`} aria-label={`${PROVIDER_LABELS[agentProvider]} API Key`} type={agentKeyVisible ? 'text' : 'password'} value={agentKey} maxLength={8192} autoComplete="off" placeholder={agentStatus?.profiles[agentProvider]?.configured ? '已保存；留空表示不修改' : '粘贴 API Key'} hint={agentProvider === 'enterprise' ? '同一个企业 Key 可配合不同模型 ID 使用；Key 不会进入数据库明文或日志。' : 'Key 仅经 Windows safeStorage 加密保存。'} onChange={(event) => setAgentKey(event.target.value)} trailing={<IconButton icon={agentKeyVisible ? EyeOff : Eye} label={agentKeyVisible ? `隐藏${PROVIDER_LABELS[agentProvider]} API Key` : `显示${PROVIDER_LABELS[agentProvider]} API Key`} onClick={() => setAgentKeyVisible((value) => !value)} />} />
+          <label className="ui-field"><span className="ui-field-label">模型服务与协议</span><select aria-label="Agent 模型服务" value={agentProvider} onChange={(event) => selectAgentProvider(event.target.value as AgentProviderId)}>{Object.entries(PROVIDER_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          {agentProvider === 'glm' ? <label className="ui-field"><span className="ui-field-label">GLM 服务类型</span><select aria-label="GLM 服务地址" value={agentBaseUrl} onChange={(event) => setAgentBaseUrl(event.target.value)}><option value={GLM_BASE_URLS[0]}>开放平台通用 API</option><option value={GLM_BASE_URLS[1]}>Coding Plan</option></select></label> : <Field label="服务地址" aria-label="Agent 服务地址" value={agentBaseUrl} disabled maxLength={2048} hint={isPengProvider(agentProvider) ? (agentProvider === 'peng_anthropic' ? 'Anthropic SDK 入口；运行时追加 /v1/messages。' : 'OpenAI 兼容入口；运行时自行追加协议路径。') : 'DeepSeek 官方固定入口。'} onChange={(event) => setAgentBaseUrl(event.target.value)} />}
+          {isPengProvider(agentProvider) ? <><Field label={pengModels.length > 0 ? '搜索或选择 Peng 模型' : 'Peng 模型 ID'} aria-label="Peng 模型 ID" list={pengModels.length > 0 ? 'peng-model-options' : undefined} value={agentModel} maxLength={200} placeholder="先验证 Key 并获取模型" hint={pengModels.length > 0 ? '输入可搜索目录；兼容性以当前协议测试为准。' : '模型 ID 不按名称推断协议；请选择上方明确的协议入口。'} onChange={(event) => setAgentModel(event.target.value)} />{pengModels.length > 0 && <datalist id="peng-model-options">{pengModels.map((model) => <option key={model} value={model} />)}</datalist>}</> : <label className="ui-field"><span className="ui-field-label">模型</span><select aria-label="Agent 模型" value={agentModel} onChange={(event) => setAgentModel(event.target.value)}>{agentProvider === 'deepseek' ? <><option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></> : GLM_MODELS.map((model) => <option key={model} value={model}>{model === 'glm-5.2' ? `${model}（默认）` : model}</option>)}</select></label>}
+          <Field label={isPengProvider(agentProvider) ? 'Peng 企业 API Key' : `${PROVIDER_LABELS[agentProvider]} API Key`} aria-label={isPengProvider(agentProvider) ? 'Peng 企业 API Key' : `${PROVIDER_LABELS[agentProvider]} API Key`} type={agentKeyVisible ? 'text' : 'password'} value={agentKey} maxLength={8192} autoComplete="off" placeholder={(isPengProvider(agentProvider) ? agentStatus?.pengKeyConfigured : agentStatus?.profiles[agentProvider]?.configured) ? '已保存；留空表示不修改' : '粘贴 API Key'} hint={isPengProvider(agentProvider) ? '三个 Peng 协议共用此 Key；Key 不会进入数据库明文、renderer 返回值或日志。' : 'Key 仅经 Windows safeStorage 加密保存。'} onChange={(event) => setAgentKey(event.target.value)} trailing={<IconButton icon={agentKeyVisible ? EyeOff : Eye} label={agentKeyVisible ? '隐藏 API Key' : '显示 API Key'} onClick={() => setAgentKeyVisible((value) => !value)} />} />
         </div>
-        <p className="connection-test-note">连接测试不会发送采购资料；DeepSeek 读取模型列表，GLM 与企业网关只发送固定的“仅回复 OK”测试消息。</p>
-        <div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'agent-provider-save' || !agentBaseUrl.trim() || !agentModel.trim() || (!agentStatus?.profiles[agentProvider]?.configured && !agentKey.trim())} onClick={() => void saveAgentProvider()}>{busyAction === 'agent-provider-save' ? '正在保存' : '保存并启用'}</Button><Button disabled={busyAction === 'agent-provider-test' || !agentStatus?.configured || agentStatus.provider !== agentProvider || agentStatus.baseUrl !== agentBaseUrl.trim() || agentStatus.model !== agentModel.trim()} onClick={() => void testAgentProvider()}>{busyAction === 'agent-provider-test' ? '正在测试' : '测试已保存配置'}</Button></div>
+        <p className="connection-test-note">模型测试只发送固定的“仅回复 OK”，不携带采购资料。Peng 模型目录统一使用 Bearer 鉴权读取。</p>
+        <div className="settings-actions">{isPengProvider(agentProvider) && <Button disabled={busyAction === 'agent-provider-models' || (!agentKey.trim() && !agentStatus?.pengKeyConfigured)} onClick={() => void discoverPengModels()}>{busyAction === 'agent-provider-models' ? '正在获取' : '验证 Key 并获取模型'}</Button>}<Button icon={Save} variant="primary" disabled={busyAction === 'agent-provider-save' || !agentBaseUrl.trim() || !agentModel.trim() || (!(isPengProvider(agentProvider) ? agentStatus?.pengKeyConfigured : agentStatus?.profiles[agentProvider]?.configured) && !agentKey.trim())} onClick={() => void saveAgentProvider()}>{busyAction === 'agent-provider-save' ? '正在保存' : '保存并启用'}</Button><Button disabled={busyAction === 'agent-provider-test' || !agentStatus?.configured || agentStatus.provider !== agentProvider || agentStatus.baseUrl !== agentBaseUrl.trim() || agentStatus.model !== agentModel.trim()} onClick={() => void testAgentProvider()}>{busyAction === 'agent-provider-test' ? '正在测试' : '测试已保存配置'}</Button></div>
       </div>
     </div>}
 
     {section === 'feishu' && <div className="settings-section" role="tabpanel">
-      <div className="section-heading"><div><h2>单向导出采购任务</h2></div></div>
+      <div className="section-heading"><div><h2>飞书连接</h2><p>Agent 机器人与多维表格是彼此独立的能力。</p></div></div>
+      <div className="connection-block">
+        <div className="connection-head"><span><strong>飞书 Agent 机器人</strong><small>{feishuAgentStatus?.botName ? `机器人：${feishuAgentStatus.botName}` : '应用运行时通过官方长连接收取私聊或群内 @机器人 消息，不开放公网 Webhook。'}</small></span><span className={'connection-status ' + (feishuAgentStatus?.connectionState === 'connected' ? 'configured' : '')}>{feishuAgentStatus?.connectionState === 'connected' ? '已连接' : feishuAgentStatus?.connectionState === 'connecting' || feishuAgentStatus?.connectionState === 'reconnecting' ? '连接中' : feishuAgentStatus?.enabled ? '未连接' : '未启用'}</span></div>
+        {feishuAgentStatus?.lastErrorCategory && <p className="sync-readout error">连接错误类别：{feishuAgentStatus.lastErrorCategory}</p>}
+        <div className="settings-form-grid">
+          <Field label="飞书应用 App ID" aria-label="飞书应用 App ID" value={feishuAppId} maxLength={200} placeholder="cli_..." onChange={(event) => setFeishuAppId(event.target.value)} />
+          <Field label="飞书应用 App Secret" aria-label="飞书应用 App Secret" type={feishuAppSecretVisible ? 'text' : 'password'} value={feishuAppSecret} maxLength={8192} autoComplete="off" placeholder={feishuAgentStatus?.configured ? '已保存；留空表示不修改' : '粘贴 App Secret'} hint="App Secret 仅经 Windows safeStorage 加密保存。" onChange={(event) => setFeishuAppSecret(event.target.value)} trailing={<IconButton icon={feishuAppSecretVisible ? EyeOff : Eye} label={feishuAppSecretVisible ? '隐藏 App Secret' : '显示 App Secret'} onClick={() => setFeishuAppSecretVisible((value) => !value)} />} />
+        </div>
+        <div className="setting-list compact-setting-list"><div><span className="setting-copy"><strong>启用 Agent 机器人</strong><small>启用后随采办岛连接并自动重连；禁用会取消正在执行的飞书任务与待审批。</small></span><Switch checked={feishuAgentEnabled} label="启用 Agent 机器人" onChange={setFeishuAgentEnabled} /></div></div>
+        <p className="connection-test-note">飞书后台仅订阅 <code>im.message.receive_v1</code> 与 <code>card.action.trigger</code>；授权私聊、群内 @机器人、机器人发消息及读取/更新机器人消息，不申请附件或群内全部消息权限。</p>
+        <div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'feishu-agent-save' || !feishuAppId.trim() || (!feishuAgentStatus?.configured && !feishuAppSecret.trim())} onClick={() => void saveFeishuAgent()}>{busyAction === 'feishu-agent-save' ? '正在保存' : '保存机器人配置'}</Button><Button disabled={busyAction === 'feishu-agent-test' || !feishuAgentStatus?.configured} onClick={() => void testFeishuAgent()}>{busyAction === 'feishu-agent-test' ? '正在测试' : '测试长连接'}</Button><Button disabled={!feishuAgentStatus?.configured} onClick={() => void generatePairingCode()}>生成配对码</Button></div>
+        {pairingCode && <div className="pairing-code" role="status"><strong>{pairingCode.code}</strong><span>10 分钟内在机器人私聊发送 <code>/bind {pairingCode.code}</code>，到期时间 {new Date(pairingCode.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>}
+        <div className="paired-users"><strong>已配对用户</strong>{feishuAgentStatus?.pairedUsers.length ? feishuAgentStatus.pairedUsers.map((user) => <div key={user.openId}><span>{user.displayName || user.openId}<small>配对于 {new Date(user.pairedAt).toLocaleString()}</small></span><Button onClick={() => void revokePairedUser(user.openId)}>撤销</Button></div>) : <p>尚无已配对用户。</p>}</div>
+      </div>
+      <div className="section-heading subsection-heading"><div><h2>飞书多维表格单向导出</h2></div></div>
       <div className="connection-block"><div className="connection-head"><span><strong>飞书多维表格</strong><small>以采办岛数据为准，不会从表格回写任务。</small></span><span className={'connection-status ' + (feishuStatus?.configured ? 'configured' : '')}>{feishuStatus?.configured ? '已配置' : '未配置'}</span></div>{feishuStatus?.lastSync && <p className={'sync-readout ' + (feishuStatus.lastSync.ok ? 'success' : 'error')}>最近同步 {feishuStatus.lastSync.at.slice(5, 16).replace('T', ' ')}：{feishuStatus.lastSync.ok ? `新增 ${feishuStatus.lastSync.created} 条，更新 ${feishuStatus.lastSync.updated} 条` : feishuStatus.lastSync.error ?? '失败'}</p>}<Field label="个人访问令牌" type={feishuTokenVisible ? 'text' : 'password'} value={feishuToken} placeholder="粘贴新令牌，保存后输入框会清空" onChange={(event) => setFeishuToken(event.target.value)} trailing={<IconButton icon={feishuTokenVisible ? EyeOff : Eye} label={feishuTokenVisible ? '隐藏飞书令牌' : '显示飞书令牌'} onClick={() => setFeishuTokenVisible((value) => !value)} />} /><div className="settings-actions"><Button icon={Save} variant="primary" disabled={busyAction === 'feishu-save' || !feishuToken.trim()} onClick={() => void saveFeishu()}>保存令牌</Button><Button disabled={busyAction === 'feishu-test'} onClick={() => void testFeishu()}>测试连接</Button><Button icon={Cloud} disabled={busyAction === 'feishu-sync'} onClick={() => void syncFeishu()}>立即同步</Button></div></div>
       <div className="setting-list"><div><span className="setting-copy"><strong>任务变更后自动同步</strong><small>短时间内的连续变更会合并后发送。</small></span><Switch checked={feishuStatus?.autoSync ?? false} label="任务变更后自动同步" onChange={(next) => void window.api.setFeishuAutoSync(next).then((result) => { if (result.ok) { setFeishuStatus((current) => current ? { ...current, autoSync: next } : current); showSuccess('自动同步设置已更新'); } else showError(result.error); })} /></div></div>
     </div>}

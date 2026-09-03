@@ -17,6 +17,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
+    "@larksuiteoapi/node-sdk": "1.73.1",
     "jszip": "3.10.1",
     "koffi": "^3.1.5",
     "lucide-react": "^1.31.0",

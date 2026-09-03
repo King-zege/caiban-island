@@ -66,7 +66,7 @@ function minimalPdf(text: string): Buffer {
 describe('P25 工作目录知识库', () => {
   it('v10 迁移幂等建立来源、分块、FTS 与绑定表', async () => {
     const f = await fixture();
-    expect((f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number }).version).toBe(12);
+    expect((f.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number }).version).toBe(13);
     expect((f.db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name IN ('knowledge_sources','knowledge_chunks_fts','workspace_project_bindings')").get() as { count: number }).count).toBe(3);
   });
 

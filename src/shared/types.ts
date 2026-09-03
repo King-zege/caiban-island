@@ -53,3 +53,4 @@ export * from './procurementContracts';
 export * from './contractContracts';
 export * from './knowledgeContracts';
 export * from './automationContracts';
+export * from './feishuAgentContracts';
