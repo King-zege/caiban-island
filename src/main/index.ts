@@ -374,7 +374,10 @@ app.on('child-process-gone', (_event, details) => {
         appSvc, agentSessions, providerConfig, emitAgentEvent,
         undefined, memories, [new MemoryContextProvider(memories)], permissions, authorizedFiles, knowledgeService, automationService
       );
-      feishuAgentBridge = new FeishuAgentBridge(db, appSvc.settings, safeStorage, agentService, permissions);
+      feishuAgentBridge = new FeishuAgentBridge(
+        db, appSvc.settings, safeStorage, agentService, permissions, undefined,
+        (status) => { if (!win.isDestroyed()) win.webContents.send('feishuAgent:changed', status); }
+      );
       registerIpc(controller, appSvc, feishu, feishuAgentBridge, agentService, providerConfig, memories, permissions, localCommandRuntime, appCommands, knowledgeService, automationService);
       void knowledgeService.initialize().catch(() => undefined);
       automationService.ensureDefault();

@@ -2,7 +2,7 @@ export const DEEPSEEK_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const
 export type DeepSeekModel = (typeof DEEPSEEK_MODELS)[number];
 export const GLM_MODELS = ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'] as const;
 export type GlmModel = (typeof GLM_MODELS)[number];
-export const PENG_PROVIDER_IDS = ['peng_deepseek', 'peng_openai', 'peng_anthropic'] as const;
+export const PENG_PROVIDER_IDS = ['peng'] as const;
 export type PengProviderId = (typeof PENG_PROVIDER_IDS)[number];
 export const AGENT_PROVIDER_IDS = ['deepseek', 'glm', ...PENG_PROVIDER_IDS] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
@@ -11,7 +11,7 @@ export const GLM_BASE_URLS = ['https://open.bigmodel.cn/api/paas/v4', 'https://o
 export const PENG_ROOT_URL = 'https://api.peng-us.com' as const;
 export const PENG_OPENAI_BASE_URL = `${PENG_ROOT_URL}/v1` as const;
 export const PENG_MODELS_URL = `${PENG_OPENAI_BASE_URL}/models` as const;
-export type AgentProviderProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages';
+export type AgentProviderProtocol = 'openai-completions';
 
 export interface AgentProviderConfigInput {
   provider: AgentProviderId;

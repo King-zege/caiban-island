@@ -157,11 +157,12 @@ export class AgentPermissionService {
     toolCallId: string,
     toolName: string,
     args: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    forceApproval = false
   ): Promise<{ block: true; reason: string } | undefined> {
     const risk = this.riskForTool(toolName, args);
     const mode = this.snapshot().mode;
-    const needsApproval = risk !== 'read' && (mode === 'confirm_all' || (mode === 'auto_reversible' && risk === 'high'));
+    const needsApproval = risk !== 'read' && (forceApproval || mode === 'confirm_all' || (mode === 'auto_reversible' && risk === 'high'));
     if (!needsApproval) return undefined;
     if (this.pending) return { block: true, reason: '已有操作等待确认' };
     const commandName = toolName === 'execute_app_command' && typeof args === 'object' && args !== null && 'command' in args

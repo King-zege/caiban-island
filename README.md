@@ -10,7 +10,7 @@ Windows 10/11 顶部常驻的本地采购全流程与合同生命周期工作台
 - 采购项目支持正式全名/简称、版本化流程模板、采购方式、节点、deadline、提醒、资料和备注。
 - 合同支持正式全名/简称、合同号、供应商、精确金额、扫描件绝对路径、附件、附属链接，以及付款/开票/交付/验收等多节点和逐节点提醒；信息不完整时也可先建立草拟卡片。一项目可关联多份合同，也可独立录入。
 - 杂事保持名称、精确提醒、资料和备注的轻量模型。
-- Pi Agent 可连接 DeepSeek 官方、智谱 GLM，以及 Peng 的 DeepSeek Chat Completions、OpenAI Responses、Anthropic Messages 三种显式协议；所有正式操作仍通过统一 AppCommand，支持三档权限、内联审批、后台运行与事件快照恢复。
+- Pi Agent 可连接 DeepSeek 官方、智谱 GLM，以及统一的 Peng 企业网关；所有正式操作仍通过统一 AppCommand，支持三档权限、内联审批、后台运行与事件快照恢复。
 - Agent 可维护一个本地主工作目录：增量索引 PDF、DOCX、XLSX、PPTX、Markdown、TXT 与 CSV，检索结果带来源定位；旧式 Office、图片、压缩包与无文本 PDF 只索引元数据。Agent 不提供任意 shell、额外网络工具或未授权路径访问。
 - 默认每日 09:00 heartbeat 汇总逾期、今日与未来七日工作，生成 Agent 会话及本地 PDF；支持一次性、每日、每周自动化、睡眠/启动补跑、防重、总暂停和跨重启审批。模型不可用时仍生成确定性基础清单。
 - Windows Toast、归档与恢复、Markdown/JSON/CSV 导出；飞书多维表格仍只单向同步采购项目，另可通过飞书自建应用长连接把受控聊天转入同一个 Agent。
@@ -32,13 +32,15 @@ npm run package
 
 ## Agent 配置
 
-在 L3 → 设置 → Agent 中选择模型服务：DeepSeek 官方可选 Flash/Pro；智谱 GLM 可选开放平台或 Coding Plan 端点与预设模型；Peng 必须显式选择 DeepSeek、OpenAI 或 Anthropic 协议。Peng 的 OpenAI 入口固定为 `https://api.peng-us.com/v1`，Anthropic 入口固定为 `https://api.peng-us.com`；三个入口共用一个经 Electron safeStorage 加密的企业 Key，但分别保存模型。先点“验证 Key 并获取模型”，再从 `/v1/models` 返回的 ID 中搜索/选择并测试。未配置 Key 或离线时，手动任务功能仍完整可用。
+在 L3 → 设置 → Agent 中选择模型服务：DeepSeek 官方可选 Flash/Pro；智谱 GLM 可选开放平台或 Coding Plan 端点与预设模型；Peng 只有一个企业网关入口，固定为 `https://api.peng-us.com/v1`，运行时使用 OpenAI Chat Completions。Peng 只保存一份经 Electron safeStorage 加密的企业 Key 和一个所选模型。先点“验证 Key 并获取模型”，再从 `/v1/models` 返回的 ID 中搜索/选择并测试。旧版三个 Peng 模式会在本机自动收敛为该入口，不会重新发送或解密迁移 Key。未配置 Key 或离线时，手动任务功能仍完整可用。
 
 ## 飞书 Agent 机器人
 
-在设置 → 飞书 → 飞书 Agent 机器人中保存自建应用的 App ID/App Secret，测试长连接后启用。飞书后台订阅事件 `im.message.receive_v1`、卡片回调 `card.action.trigger`，只申请私聊消息、群内 `@机器人`、机器人发消息以及读取/更新机器人消息权限；不申请附件资源或群内全部消息权限。
+首次启动可选择“完成并连接飞书”，也可随时从设置 → 飞书打开六步连接向导。只需填写自建应用的 App ID/App Secret；向导会检查格式、保存并连接、给出飞书后台直达入口、引导发布版本和生成私聊配对码。Secret 只经 Windows safeStorage 加密保存在当前电脑。
 
-桌面端生成 8 位一次性配对码后，用户须在机器人私聊发送 `/bind <code>`。私聊可直接发任务，群聊必须 `@机器人`；支持 `/new`、`/status`、`/cancel`、`/help`。采办岛必须保持运行并联网，机器人不部署公网 Webhook，也不会下载图片、文件、音视频。机器人聊天是受三档权限与 AppCommand 约束的 Agent 输入通道，不改变多维表格“本地 → 飞书”的单向导出规则。
+飞书后台需启用机器人能力，事件与回调选择“使用长连接接收事件”，订阅 `im.message.receive_v1`，并开通 `im:message:send_as_bot` 后创建和发布版本；不需要公网回调地址，也不申请附件资源或群内全部消息权限。初始连接失败会按 5 秒、15 秒、60 秒退避重试，主界面显示连接状态，设置页可立即重连或导出默认关闭、无正文/凭据的诊断元数据。
+
+桌面端生成 8 位一次性配对码后，用户须在机器人私聊发送 `/bind <code>`。私聊可直接发任务，群聊必须 `@机器人`；支持 `/new`、`/status`、`/cancel`、`/help`。采办岛必须保持运行并联网，机器人不部署公网 Webhook，也不会下载图片、文件、音视频。为防止远程误操作，飞书来源的所有写入即使桌面权限为 Bypass 也必须由该次任务的原发起人在审批卡中确认。该通道不改变多维表格“本地 → 飞书”的单向导出规则。
 
 权限模式：
 

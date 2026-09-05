@@ -15,6 +15,7 @@ import type {
 import type {
   FeishuBotConfigInput,
   FeishuBotConnectionState,
+  FeishuBotErrorCategory,
   FeishuBotStatus,
   FeishuPairedUser,
   FeishuPairingCode
@@ -27,6 +28,7 @@ import type { SettingsService } from './settingsService';
 const APP_ID_KEY = 'feishu_bot_app_id';
 const APP_SECRET_KEY = 'feishu_bot_app_secret_encrypted';
 const ENABLED_KEY = 'feishu_bot_enabled';
+const DIAGNOSTICS_KEY = 'feishu_bot_diagnostics_enabled';
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
@@ -34,12 +36,21 @@ const EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MAX_EVENT_ROWS = 50_000;
 const SUPPORTED_CONTENT = new Set(['text', 'post']);
+const RETRY_DELAYS_MS = [5_000, 15_000, 60_000, 60_000, 60_000] as const;
+const MAX_DIAGNOSTIC_ENTRIES = 200;
 
-interface ChannelFactoryInput { appId: string; appSecret: string }
+interface ChannelFactoryInput { appId: string; appSecret: string; logger?: Logger }
 export type FeishuChannelFactory = (input: ChannelFactoryInput) => Promise<LarkChannel>;
 
 interface PairingEntry { code: string; expiresAt: number }
 interface AttemptEntry { startedAt: number; count: number }
+interface DiagnosticEntry {
+  at: string;
+  event: 'state' | 'sdk_error' | 'outbound_error' | 'event_duplicate' | 'pairing' | 'configuration';
+  state?: FeishuBotConnectionState;
+  category?: FeishuBotErrorCategory;
+  detail?: string;
+}
 interface RemoteRun {
   sessionId: string;
   chatId: string;
@@ -67,7 +78,7 @@ async function defaultChannelFactory(input: ChannelFactoryInput): Promise<LarkCh
     appId: input.appId,
     appSecret: input.appSecret,
     transport: 'websocket',
-    logger: silentLogger,
+    logger: input.logger ?? silentLogger,
     loggerLevel: lark.LoggerLevel.error,
     includeRawEvent: false,
     handshakeTimeoutMs: 15_000,
@@ -82,18 +93,22 @@ async function defaultChannelFactory(input: ChannelFactoryInput): Promise<LarkCh
   });
 }
 
-function safeError(error: unknown): string {
+function safeError(error: unknown, sensitiveValues: readonly string[] = []): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message
+  return sensitiveValues.filter(Boolean).reduce((value, sensitive) => value.split(sensitive).join('[已隐藏]'), message)
     .replace(/Bearer\s+\S+/giu, 'Bearer [已隐藏]')
+    .replace(/(app[_ -]?secret|token|authorization)\s*[:=]\s*[^\s,;]+/giu, '$1=[已隐藏]')
     .replace(/sk-[A-Za-z0-9_-]+/gu, '[已隐藏]')
     .replace(/[A-Za-z]:\\[^\s]+/gu, '[本地路径]')
     .slice(0, 240);
 }
 
-function errorCategory(error: unknown): string {
+function errorCategory(error: unknown): FeishuBotErrorCategory {
   const value = safeError(error);
-  if (/401|403|permission|auth|credential|凭据|权限/iu.test(value)) return 'authentication';
+  if (/decrypt|解密/iu.test(value)) return 'decryption';
+  if (/401|credential|凭据|invalid (?:app|secret)|app secret (?:invalid|error|无效)/iu.test(value)) return 'credentials';
+  if (/99991672|403|permission|scope|权限/iu.test(value)) return 'permission';
+  if (/1006|handshake|long connection|长连接/iu.test(value)) return 'long_connection';
   if (/429|rate/iu.test(value)) return 'rate_limit';
   if (/timeout|network|socket|connect/iu.test(value)) return 'network';
   return 'provider';
@@ -162,7 +177,13 @@ export class FeishuAgentBridge {
   private connectionState: FeishuBotConnectionState = 'disabled';
   private botName: string | null = null;
   private botOpenId: string | null = null;
-  private lastErrorCategory: string | null = null;
+  private lastErrorCategory: FeishuBotErrorCategory | null = null;
+  private lastErrorMessage: string | null = null;
+  private retryAttempt = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectPromise: Promise<void> | null = null;
+  private readonly diagnosticEntries: DiagnosticEntry[] = [];
+  private duplicateEventCount = 0;
   private readonly pairingCodes = new Map<string, PairingEntry>();
   private readonly attempts = new Map<string, AttemptEntry>();
   private readonly cleanupTimer: ReturnType<typeof setInterval>;
@@ -174,7 +195,8 @@ export class FeishuAgentBridge {
     private readonly safeStorage: SafeStorageAdapter,
     private readonly agent: AgentService,
     private readonly permissions: AgentPermissionService,
-    private readonly channelFactory: FeishuChannelFactory = defaultChannelFactory
+    private readonly channelFactory: FeishuChannelFactory = defaultChannelFactory,
+    private readonly emitStatus: (status: FeishuBotStatus) => void = () => undefined
   ) {
     this.releaseAgentListener = this.agent.subscribe((event) => this.handleAgentEvent(event));
     this.cleanupEvents();
@@ -191,15 +213,47 @@ export class FeishuAgentBridge {
       botName: this.botName,
       botOpenId: this.botOpenId,
       lastErrorCategory: this.lastErrorCategory,
+      lastErrorMessage: this.lastErrorMessage,
+      retryAttempt: this.retryAttempt,
+      diagnosticsEnabled: this.diagnosticsEnabled(),
       pairedUsers: this.listPairedUsers()
     };
   }
 
   enabled(): boolean { return this.settings.get(ENABLED_KEY) === '1'; }
+  diagnosticsEnabled(): boolean { return this.settings.get(DIAGNOSTICS_KEY) === '1'; }
+
+  setDiagnosticsEnabled(enabled: boolean): FeishuBotStatus {
+    this.settings.set(DIAGNOSTICS_KEY, enabled ? '1' : '0');
+    if (!enabled) {
+      this.diagnosticEntries.length = 0;
+      this.duplicateEventCount = 0;
+    } else this.recordDiagnostic('configuration', { detail: 'diagnostics_enabled' });
+    this.notifyChanged();
+    return this.status();
+  }
+
+  diagnosticReport(): { text: string; entryCount: number } {
+    const status = this.status();
+    const entries = this.diagnosticEntries.map((entry) => JSON.stringify(entry)).join('\n');
+    const summary = JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      appConfigured: status.configured,
+      enabled: status.enabled,
+      connectionState: status.connectionState,
+      botIdentityAvailable: Boolean(status.botName || status.botOpenId),
+      pairedUserCount: status.pairedUsers.length,
+      retryAttempt: status.retryAttempt,
+      duplicateEventCount: this.duplicateEventCount
+    });
+    return { text: `${summary}${entries ? `\n${entries}` : ''}\n`, entryCount: this.diagnosticEntries.length };
+  }
 
   async saveConfig(input: FeishuBotConfigInput): Promise<FeishuBotStatus> {
     const appId = input.appId.trim();
-    if (!appId || appId.length > 200 || /[\u0000-\u001f\u007f]/u.test(appId)) throw new FeishuAgentBridgeError('App ID 必须为 1–200 个可见字符');
+    if (!/^cli_[A-Za-z0-9]+$/u.test(appId) || appId.length > 200) {
+      throw new FeishuAgentBridgeError('App ID 应以 cli_ 开头，且只包含字母和数字');
+    }
     const secret = input.appSecret.trim();
     if (!secret && !this.settings.get(APP_SECRET_KEY)) throw new FeishuAgentBridgeError('请输入 App Secret');
     let encrypted: string | null = null;
@@ -212,24 +266,42 @@ export class FeishuAgentBridge {
     this.settings.set(APP_ID_KEY, appId);
     if (encrypted) this.settings.set(APP_SECRET_KEY, encrypted);
     this.settings.set(ENABLED_KEY, input.enabled ? '1' : '0');
-    if (input.enabled) await this.connect().catch(() => undefined);
-    else this.connectionState = 'disabled';
+    this.retryAttempt = 0;
+    this.recordDiagnostic('configuration', { detail: input.enabled ? 'saved_enabled' : 'saved_disabled' });
+    if (input.enabled) await this.connect(true).catch(() => undefined);
+    else await this.disconnect(true);
+    this.notifyChanged();
     return this.status();
   }
 
   async start(): Promise<void> {
     if (!this.enabled()) { this.connectionState = 'disabled'; return; }
-    await this.connect();
+    await this.connect(true);
+  }
+
+  async reconnect(): Promise<FeishuBotStatus> {
+    if (!this.enabled()) throw new FeishuAgentBridgeError('请先启用飞书机器人');
+    this.clearRetryTimer();
+    this.retryAttempt = 0;
+    await this.disconnect(false);
+    await this.connect(true);
+    return this.status();
   }
 
   async testConnection(): Promise<string> {
     const credentials = this.credentials();
-    const testChannel = await this.channelFactory(credentials);
+    let testChannel: LarkChannel | null = null;
     try {
+      testChannel = await this.channelFactory({ ...credentials, logger: this.diagnosticLogger(credentials.appSecret) });
       await testChannel.connect();
+      if (!testChannel.botIdentity?.name && !testChannel.botIdentity?.openId) {
+        throw new FeishuAgentBridgeError('连接已建立，但未读取到机器人身份；请先在飞书后台启用机器人能力');
+      }
       return `连接成功：${testChannel.botIdentity?.name ?? '飞书机器人'}`;
+    } catch (error) {
+      throw new FeishuAgentBridgeError(`飞书机器人连接测试失败：${safeError(error, [credentials.appSecret])}`);
     } finally {
-      await testChannel.disconnect().catch(() => undefined);
+      await testChannel?.disconnect().catch(() => undefined);
     }
   }
 
@@ -251,44 +323,86 @@ export class FeishuAgentBridge {
     this.db.prepare('UPDATE feishu_agent_users SET revoked_at=? WHERE open_id=?').run(now, normalizedOpenId);
     const origin = this.agent.activeOrigin();
     if (origin?.type === 'feishu' && origin.senderId === normalizedOpenId) this.agent.cancel();
+    this.recordDiagnostic('pairing', { detail: 'user_revoked' });
+    this.notifyChanged();
     return this.status();
   }
 
   async dispose(): Promise<void> {
     clearInterval(this.cleanupTimer);
+    this.clearRetryTimer();
     await this.disconnect(true);
     this.releaseAgentListener?.();
     this.releaseAgentListener = null;
   }
 
-  private async connect(): Promise<void> {
-    if (this.channel) return;
-    this.connectionState = 'connecting';
+  private async connect(scheduleRetry: boolean): Promise<void> {
+    if (this.channel && this.connectionState === 'connected') return;
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.performConnect(scheduleRetry).finally(() => { this.connectPromise = null; });
+    return this.connectPromise;
+  }
+
+  private async performConnect(scheduleRetry: boolean): Promise<void> {
+    this.clearRetryTimer();
+    this.connectionState = this.retryAttempt > 0 ? 'reconnecting' : 'connecting';
     this.lastErrorCategory = null;
+    this.lastErrorMessage = null;
+    this.recordDiagnostic('state', { state: this.connectionState });
+    this.notifyChanged();
+    let appSecret = '';
     try {
-      const channel = await this.channelFactory(this.credentials());
+      const credentials = this.credentials();
+      appSecret = credentials.appSecret;
+      const logger = this.diagnosticLogger(appSecret);
+      const channel = await this.channelFactory({ ...credentials, logger });
       this.channel = channel;
       this.channelUnsubscribers = [
         channel.on('message', (message) => this.handleMessage(message)),
         channel.on('cardAction', (event) => this.handleCardAction(event)),
-        channel.on('reconnecting', () => { this.connectionState = 'reconnecting'; }),
-        channel.on('reconnected', () => { this.connectionState = 'connected'; this.lastErrorCategory = null; }),
-        channel.on('error', (error) => { this.connectionState = 'error'; this.lastErrorCategory = errorCategory(error); })
+        channel.on('reconnecting', () => {
+          this.connectionState = 'reconnecting';
+          this.recordDiagnostic('state', { state: 'reconnecting' });
+          this.notifyChanged();
+        }),
+        channel.on('reconnected', () => {
+          this.connectionState = 'connected';
+          this.retryAttempt = 0;
+          this.lastErrorCategory = null;
+          this.lastErrorMessage = null;
+          this.recordDiagnostic('state', { state: 'connected', detail: 'sdk_reconnected' });
+          this.notifyChanged();
+        }),
+        channel.on('error', (error) => {
+          this.connectionState = 'error';
+          this.captureError(error, 'sdk_error', appSecret);
+          this.notifyChanged();
+        })
       ];
       await channel.connect();
       this.botName = channel.botIdentity?.name ?? null;
       this.botOpenId = channel.botIdentity?.openId ?? null;
       this.connectionState = 'connected';
+      this.retryAttempt = 0;
+      if (!this.botName && !this.botOpenId) {
+        this.lastErrorCategory = 'bot_disabled';
+        this.lastErrorMessage = '长连接已建立，但未读取到机器人身份；请确认已启用机器人能力并发布应用版本。';
+      }
+      this.recordDiagnostic('state', { state: 'connected', category: this.lastErrorCategory ?? undefined });
+      this.notifyChanged();
     } catch (error) {
       this.connectionState = 'error';
-      this.lastErrorCategory = errorCategory(error);
+      this.captureError(error, 'sdk_error', appSecret);
       await this.disconnect(false);
       this.connectionState = 'error';
-      throw new FeishuAgentBridgeError(`飞书机器人连接失败：${safeError(error)}`);
+      this.notifyChanged();
+      if (scheduleRetry) this.scheduleRetry();
+      throw new FeishuAgentBridgeError(`飞书机器人连接失败：${safeError(error, [appSecret])}`);
     }
   }
 
   private async disconnect(cancelRemote: boolean): Promise<void> {
+    this.clearRetryTimer();
     if (cancelRemote && this.agent.activeOrigin()?.type === 'feishu') {
       this.agent.cancel();
       if (this.remote) {
@@ -306,6 +420,8 @@ export class FeishuAgentBridge {
     this.botName = null;
     this.botOpenId = null;
     this.connectionState = this.enabled() ? 'disconnected' : 'disabled';
+    this.recordDiagnostic('state', { state: this.connectionState });
+    this.notifyChanged();
   }
 
   private credentials(): ChannelFactoryInput {
@@ -314,6 +430,56 @@ export class FeishuAgentBridge {
     if (!appId || !encrypted) throw new FeishuAgentBridgeError('尚未配置飞书机器人 App ID/App Secret');
     try { return { appId, appSecret: this.safeStorage.decryptString(Buffer.from(encrypted, 'base64')) }; }
     catch { throw new FeishuAgentBridgeError('App Secret 解密失败，请重新配置'); }
+  }
+
+  private scheduleRetry(): void {
+    if (!this.enabled() || this.retryTimer || this.retryAttempt >= RETRY_DELAYS_MS.length) return;
+    const delay = RETRY_DELAYS_MS[this.retryAttempt];
+    this.retryAttempt += 1;
+    this.connectionState = 'reconnecting';
+    this.recordDiagnostic('state', { state: 'reconnecting', detail: `retry_${this.retryAttempt}_scheduled` });
+    this.notifyChanged();
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (this.enabled()) void this.connect(true).catch(() => undefined);
+    }, delay);
+    this.retryTimer.unref();
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  private notifyChanged(): void {
+    try { this.emitStatus(this.status()); } catch { /* 状态推送失败不能影响机器人链路 */ }
+  }
+
+  private captureError(error: unknown, event: DiagnosticEntry['event'], appSecret = ''): void {
+    let secret = appSecret;
+    if (!secret) {
+      try { secret = this.credentials().appSecret; } catch { secret = ''; }
+    }
+    const detail = safeError(error, [secret]);
+    this.lastErrorCategory = errorCategory(detail);
+    this.lastErrorMessage = detail;
+    this.recordDiagnostic(event, { state: this.connectionState, category: this.lastErrorCategory, detail });
+  }
+
+  private diagnosticLogger(appSecret: string): Logger {
+    const capture = (...args: unknown[]): void => {
+      const detail = args.map((value) => safeError(value, [appSecret])).join(' ').slice(0, 240);
+      this.recordDiagnostic('sdk_error', { state: this.connectionState, category: errorCategory(detail), detail });
+    };
+    return { error: capture, warn: capture, info: () => undefined, debug: () => undefined, trace: () => undefined };
+  }
+
+  private recordDiagnostic(event: DiagnosticEntry['event'], value: Omit<DiagnosticEntry, 'at' | 'event'> = {}): void {
+    if (!this.diagnosticsEnabled()) return;
+    this.diagnosticEntries.push({ at: new Date().toISOString(), event, ...value });
+    if (this.diagnosticEntries.length > MAX_DIAGNOSTIC_ENTRIES) {
+      this.diagnosticEntries.splice(0, this.diagnosticEntries.length - MAX_DIAGNOSTIC_ENTRIES);
+    }
   }
 
   private listPairedUsers(): FeishuPairedUser[] {
@@ -332,7 +498,12 @@ export class FeishuAgentBridge {
   private recordEvent(eventId: string, kind: 'message' | 'card_action', chatId: string, outcome: string): boolean {
     const result = this.db.prepare(`INSERT OR IGNORE INTO feishu_agent_events(event_id,kind,chat_id,outcome,processed_at)
       VALUES(?,?,?,?,?)`).run(eventId, kind, chatId, outcome, new Date().toISOString());
-    return Number(result.changes) === 1;
+    const inserted = Number(result.changes) === 1;
+    if (!inserted) {
+      this.duplicateEventCount += 1;
+      this.recordDiagnostic('event_duplicate', { detail: kind });
+    }
+    return inserted;
   }
 
   private cleanupEvents(): void {
@@ -395,6 +566,8 @@ export class FeishuAgentBridge {
     this.db.prepare(`INSERT INTO feishu_agent_users(open_id,display_name,paired_at,last_seen_at,revoked_at)
       VALUES(?,?,?,?,NULL) ON CONFLICT(open_id) DO UPDATE SET display_name=excluded.display_name,paired_at=excluded.paired_at,last_seen_at=excluded.last_seen_at,revoked_at=NULL`)
       .run(message.senderId, displayName, at, at);
+    this.recordDiagnostic('pairing', { detail: 'user_paired' });
+    this.notifyChanged();
     await this.sendText(message.chatId, '配对成功。你现在可以在私聊中直接发任务，或在群聊中 @机器人。', message.messageId);
   }
 
@@ -463,7 +636,8 @@ export class FeishuAgentBridge {
   private async flushProgress(tone: 'blue' | 'green' | 'red' | 'orange' = 'blue'): Promise<void> {
     const remote = this.remote;
     if (!remote) return;
-    await this.requireChannel().updateCard(remote.progressMessageId, progressCard('采办岛 Agent', remote.phaseLabel, remote.visibleText, tone)).catch(() => undefined);
+    await this.requireChannel().updateCard(remote.progressMessageId, progressCard('采办岛 Agent', remote.phaseLabel, remote.visibleText, tone))
+      .catch((error) => this.captureError(error, 'outbound_error'));
   }
 
   private async finishRemote(tone: 'green' | 'red' | 'orange'): Promise<void> {
@@ -512,7 +686,13 @@ export class FeishuAgentBridge {
   }
 
   private async sendText(chatId: string, markdown: string, replyTo?: string): Promise<SendResult> {
-    return this.requireChannel().send(chatId, { markdown: safeMarkdown(markdown) }, replyTo ? { replyTo } : undefined);
+    try {
+      return await this.requireChannel().send(chatId, { markdown: safeMarkdown(markdown) }, replyTo ? { replyTo } : undefined);
+    } catch (error) {
+      this.captureError(error, 'outbound_error');
+      this.notifyChanged();
+      throw error;
+    }
   }
 
   private requireChannel(): LarkChannel {

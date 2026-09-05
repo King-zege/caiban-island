@@ -103,6 +103,95 @@
 .agent-provider-grid .ui-field:nth-last-child(2) { grid-column: 1 / -1; }
 .connection-test-note { max-width: 72ch; margin: var(--space-3) 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.55; }
 
+.feishu-agent-badge {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-chip);
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.feishu-agent-badge.connected { color: var(--status-completed); }
+.feishu-agent-badge.offline { color: var(--text-tertiary); }
+
+.feishu-setup-wizard {
+  display: grid;
+  margin-top: var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-section);
+  background: var(--surface-sunken);
+}
+.feishu-wizard-head,
+.feishu-wizard-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  gap: var(--space-4);
+}
+.feishu-wizard-head { border-bottom: 1px solid var(--border-subtle); }
+.feishu-wizard-head h3 { margin: 0; font-size: 18px; }
+.feishu-wizard-head p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: 12px; }
+.feishu-wizard-progress {
+  display: grid;
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  list-style: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.feishu-wizard-progress li { position: relative; display: grid; justify-items: center; gap: var(--space-1); color: var(--text-tertiary); }
+.feishu-wizard-progress li::before { content: ''; position: absolute; top: 12px; right: 50%; left: -50%; height: 1px; background: var(--border-subtle); }
+.feishu-wizard-progress li:first-child::before { display: none; }
+.feishu-wizard-progress li > span { z-index: 1; display: grid; width: 24px; height: 24px; border: 1px solid var(--border-strong); border-radius: var(--radius-chip); background: var(--surface-sunken); place-items: center; font-size: 11px; }
+.feishu-wizard-progress li.active { color: var(--text-primary); }
+.feishu-wizard-progress li.active > span { border-color: var(--accent); color: var(--accent); }
+.feishu-wizard-progress li.complete > span { border-color: var(--status-completed); color: var(--status-completed); }
+.feishu-wizard-progress small { font-size: 11px; }
+.feishu-setup-wizard > .async-feedback { margin: var(--space-4) var(--space-5) 0; }
+.feishu-wizard-body { min-height: 300px; padding: var(--space-6); }
+.feishu-wizard-copy,
+.feishu-pairing-step { display: grid; max-width: 68ch; align-content: start; gap: var(--space-3); }
+.feishu-wizard-copy > svg,
+.feishu-pairing-step > svg { color: var(--accent); }
+.feishu-wizard-copy h4,
+.feishu-pairing-step h4 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.feishu-wizard-copy p,
+.feishu-pairing-step p { margin: 0; color: var(--text-secondary); line-height: 1.6; }
+.feishu-wizard-fields { display: grid; max-width: 720px; gap: var(--space-4); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.feishu-wizard-fields .feishu-security-note { grid-column: 1 / -1; }
+.feishu-security-note { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--text-secondary); }
+.feishu-security-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-completed); }
+.feishu-connection-orb { width: 28px; height: 28px; border: 1px solid var(--border-strong); border-radius: var(--radius-chip); background: var(--surface-pressed); }
+.feishu-connection-orb.connected { border-color: var(--status-completed); background: color-mix(in srgb, var(--status-completed) 18%, var(--surface-pressed)); }
+.feishu-connection-orb.connecting,
+.feishu-connection-orb.reconnecting { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface-pressed)); }
+.feishu-diagnosis,
+.feishu-inline-diagnosis { display: grid; max-width: 72ch; padding: var(--space-4); gap: var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-raised); }
+.feishu-diagnosis p,
+.feishu-inline-diagnosis span { margin: 0; color: var(--text-secondary); }
+.feishu-diagnosis small,
+.feishu-inline-diagnosis small { color: var(--text-tertiary); overflow-wrap: anywhere; }
+.feishu-diagnosis .ui-button { width: fit-content; margin-top: var(--space-1); }
+.feishu-inline-diagnosis { margin-bottom: var(--space-4); }
+.feishu-checklist { display: grid; gap: 0; }
+.feishu-checklist > div { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.feishu-checklist label { display: flex; min-width: 0; align-items: center; gap: var(--space-3); color: var(--text-primary); }
+.feishu-checklist input { width: 20px; height: 20px; accent-color: var(--accent); }
+.feishu-checklist > p { max-width: 72ch; margin: var(--space-4) 0 0; color: var(--text-secondary); line-height: 1.55; }
+.feishu-pairing-command { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-raised); }
+.feishu-pairing-command code { font-family: var(--font-utility); font-size: 18px; letter-spacing: .04em; overflow-wrap: anywhere; }
+.feishu-pairing-step p.expired { color: var(--danger); }
+.feishu-command-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.feishu-command-list code { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--surface-raised); }
+.feishu-wizard-actions { border-top: 1px solid var(--border-subtle); }
+.feishu-wizard-actions > span { flex: 1; }
+
 [data-high-contrast='true'] .panel,
 [data-high-contrast='true'] button,
 [data-high-contrast='true'] input,
@@ -157,6 +246,15 @@
   .agent-toolbar { align-items: flex-start; flex-direction: column; }
   .agent-message { max-width: 94%; }
   .memory-grid, .memory-columns { grid-template-columns: 1fr; }
+  .feishu-agent-badge span { display: none; }
+  .feishu-wizard-head,
+  .feishu-wizard-actions { align-items: stretch; flex-wrap: wrap; }
+  .feishu-wizard-progress { padding-inline: var(--space-3); }
+  .feishu-wizard-progress small { display: none; }
+  .feishu-wizard-body { min-height: 0; padding: var(--space-5) var(--space-4); }
+  .feishu-wizard-fields { grid-template-columns: 1fr; }
+  .feishu-wizard-fields .feishu-security-note { grid-column: auto; }
+  .feishu-checklist > div { align-items: flex-start; padding-block: var(--space-2); }
   .standalone-heading,
   .welcome-choice,
   .archive-toolbar,

@@ -15,6 +15,7 @@ import NewContractForm from '../components/NewContractForm';
 import { useContractStore } from '../state/useContractStore';
 import type { ContractWorkspaceSection } from '../../../shared/contractContracts';
 import { CONTRACT_STATUS_LABELS } from '../../../shared/contractContracts';
+import FeishuAgentStatusBadge from '../components/FeishuAgentStatusBadge';
 
 const TaskEditor = lazy(() => import('../components/TaskEditor'));
 const MiscEditor = lazy(() => import('../components/MiscEditor'));
@@ -177,6 +178,7 @@ export default function L3Panel({ layoutWidth }: { layoutWidth?: number }): Reac
           <span><strong>采办岛</strong><small>{section === 'tasks' ? '采购项目工作台' : section === 'contracts' ? '合同生命周期台账' : WORKSPACE_NAV.find((item) => item.id === section)?.label}</small></span>
         </div>
         <div className="l3-actions">
+          <FeishuAgentStatusBadge />
           <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建任务</Button>
           <Button icon={FileSignature} variant="ghost" onClick={() => setShowContractForm(true)}>新建合同</Button>
           <Button icon={ArrowLeft} variant="ghost" onClick={() => { setL2View('overview'); void window.api.setLevel('l2'); }}>返回任务卡片</Button>

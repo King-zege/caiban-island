@@ -20,6 +20,7 @@ import type {
   DeepSeekStatus,
   FeishuBotConfigInput,
   FeishuBotStatus,
+  FeishuDiagnosticExportResult,
   FeishuPairingCode,
   MemoryProposal,
   MemoryRecord,
@@ -156,6 +157,14 @@ const api = {
   testFeishuAgent: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishuAgent:test'),
   generateFeishuPairingCode: (): Promise<IpcResult<FeishuPairingCode>> => ipcRenderer.invoke('feishuAgent:generatePairingCode'),
   revokeFeishuPairedUser: (openId: string): Promise<IpcResult<FeishuBotStatus>> => ipcRenderer.invoke('feishuAgent:revokeUser', openId),
+  reconnectFeishuAgent: (): Promise<IpcResult<FeishuBotStatus>> => ipcRenderer.invoke('feishuAgent:reconnect'),
+  setFeishuAgentDiagnosticsEnabled: (enabled: boolean): Promise<IpcResult<FeishuBotStatus>> => ipcRenderer.invoke('feishuAgent:setDiagnosticsEnabled', enabled),
+  exportFeishuAgentDiagnostics: (): Promise<IpcResult<FeishuDiagnosticExportResult>> => ipcRenderer.invoke('feishuAgent:exportDiagnostics'),
+  onFeishuAgentChanged: (cb: (status: FeishuBotStatus) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, value: FeishuBotStatus) => cb(value);
+    ipcRenderer.on('feishuAgent:changed', listener);
+    return () => ipcRenderer.removeListener('feishuAgent:changed', listener);
+  },
   exportCsv: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportCsv'),
   exportTaskCsv: (taskId: string): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportTaskCsv', taskId),
   exportArchivedCsv: (): Promise<IpcResult<string>> => ipcRenderer.invoke('feishu:exportArchivedCsv'),

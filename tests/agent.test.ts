@@ -74,25 +74,38 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('ping');
   });
 
-  it('Peng 三协议固定端点、共用加密 Key 并分别保存模型', () => {
+  it('Peng 使用单一固定端点并加密保存一份 Key 和模型', () => {
     const f = fresh();
     const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage());
     config.saveConfig({
-      provider: 'peng_deepseek', baseUrl: 'https://api.peng-us.com/v1',
-      model: 'deepseek/peng-prod', apiKey: 'peng-secret'
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
+      model: 'gpt-5.5', apiKey: 'peng-secret'
     });
     expect(config.runtime()).toEqual({
-      provider: 'peng_deepseek', baseUrl: 'https://api.peng-us.com/v1',
-      protocol: 'openai-completions', model: 'deepseek/peng-prod', apiKey: 'peng-secret'
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
+      protocol: 'openai-completions', model: 'gpt-5.5', apiKey: 'peng-secret'
     });
-    config.saveConfig({ provider: 'peng_anthropic', baseUrl: 'https://api.peng-us.com', model: 'claude/peng-prod', apiKey: '' });
-    expect(config.runtime()).toMatchObject({ provider: 'peng_anthropic', baseUrl: 'https://api.peng-us.com', model: 'claude/peng-prod', apiKey: 'peng-secret' });
     expect(f.app.settings.get('peng_api_key_encrypted')).not.toContain('peng-secret');
     expect(config.status()).toMatchObject({
-      provider: 'peng_anthropic', pengKeyConfigured: true,
+      provider: 'peng', pengKeyConfigured: true,
       configured: true,
-      configuredProviders: expect.arrayContaining(['deepseek', 'peng_deepseek', 'peng_anthropic'])
+      configuredProviders: expect.arrayContaining(['deepseek', 'peng'])
     });
+  });
+
+  it.each([
+    ['peng_deepseek', 'legacy-deepseek-model'],
+    ['peng_openai', 'legacy-openai-model'],
+    ['peng_anthropic', 'legacy-anthropic-model']
+  ] as const)('旧 Peng Provider %s 自动收敛到单一 Peng 且保留原模型与密文 Key', (legacyProvider, model) => {
+    const f = fresh(); const storage = new FakeSafeStorage();
+    f.app.settings.set('agent_provider', legacyProvider);
+    f.app.settings.set(`${legacyProvider}_model`, model);
+    const ciphertext = storage.encryptString('legacy-peng-key').toString('base64');
+    f.app.settings.set('peng_api_key_encrypted', ciphertext);
+    const migrated = new AgentProviderConfigService(f.app.settings, storage);
+    expect(migrated.runtime()).toMatchObject({ provider: 'peng', baseUrl: 'https://api.peng-us.com/v1', model, apiKey: 'legacy-peng-key' });
+    expect(f.app.settings.get('peng_api_key_encrypted')).toBe(ciphertext);
   });
 
   it('旧企业配置只在原地址为 Peng 时迁移，其他网关密文保持隔离并提示重配', () => {
@@ -102,7 +115,7 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
     peng.app.settings.set('enterprise_model', 'legacy-peng-model');
     peng.app.settings.set('enterprise_api_key_encrypted', storage.encryptString('legacy-peng-key').toString('base64'));
     const migrated = new AgentProviderConfigService(peng.app.settings, storage);
-    expect(migrated.runtime()).toMatchObject({ provider: 'peng_deepseek', baseUrl: 'https://api.peng-us.com/v1', model: 'legacy-peng-model', apiKey: 'legacy-peng-key' });
+    expect(migrated.runtime()).toMatchObject({ provider: 'peng', baseUrl: 'https://api.peng-us.com/v1', model: 'legacy-peng-model', apiKey: 'legacy-peng-key' });
     expect(peng.app.settings.get('enterprise_api_key_encrypted')).toBeNull();
 
     const other = fresh();
@@ -118,8 +131,7 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
 
   it('Peng 拒绝被 UI 或调用方改写固定 Base URL', () => {
     const f = fresh(); const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage());
-    expect(() => config.saveConfig({ provider: 'peng_openai', baseUrl: 'https://api.peng-us.com/v1/responses', model: 'gpt-prod', apiKey: 'key' })).toThrow('Peng 服务地址由应用固定管理');
-    expect(() => config.saveConfig({ provider: 'peng_anthropic', baseUrl: 'https://api.peng-us.com/v1', model: 'claude-prod', apiKey: 'key' })).toThrow('Peng 服务地址由应用固定管理');
+    expect(() => config.saveConfig({ provider: 'peng', baseUrl: 'https://api.peng-us.com/v1/responses', model: 'gpt-prod', apiKey: 'key' })).toThrow('Peng 服务地址由应用固定管理');
   });
 
   it('系统加密不可用时不切换当前 Provider 或写入 Peng 配置', () => {
@@ -131,37 +143,31 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
     };
     const config = new AgentProviderConfigService(f.app.settings, unavailableStorage);
     expect(() => config.saveConfig({
-      provider: 'peng_openai', baseUrl: 'https://api.peng-us.com/v1',
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
       model: 'openai/gpt-enterprise', apiKey: 'cannot-store'
     })).toThrow('系统加密不可用');
     expect(config.status()).toMatchObject({ provider: 'deepseek' });
     expect(f.app.settings.get('peng_api_key_encrypted')).toBeNull();
   });
 
-  it.each([
-    ['peng_deepseek', 'https://api.peng-us.com/v1/chat/completions', 'Authorization'],
-    ['peng_openai', 'https://api.peng-us.com/v1/responses', 'Authorization'],
-    ['peng_anthropic', 'https://api.peng-us.com/v1/messages', 'x-api-key']
-  ] as const)('Peng %s 先发现模型，再按真实协议发送固定最小消息', async (provider, expectedUrl, authHeader) => {
+  it('Peng 先发现模型，再通过统一 Chat Completions 发送固定最小消息', async () => {
     const f = fresh();
     const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
       if (String(input).endsWith('/models')) return new Response('{"data":[{"id":"model-prod"},{"id":"model-prod"}]}', { status: 200 });
-      if (provider === 'peng_openai') return new Response('{"output":[]}', { status: 200 });
-      if (provider === 'peng_anthropic') return new Response('{"content":[]}', { status: 200 });
       return new Response('{"choices":[]}', { status: 200 });
     });
     const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage(), fetchMock as typeof fetch);
     config.saveConfig({
-      provider, baseUrl: provider === 'peng_anthropic' ? 'https://api.peng-us.com' : 'https://api.peng-us.com/v1',
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
       model: 'model-prod', apiKey: 'peng-test-key'
     });
 
     await expect(config.test()).resolves.toBe('连接成功（HTTP 200）');
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.peng-us.com/v1/models');
     const [requestUrl, requestInit] = fetchMock.mock.calls[1] ?? [];
-    expect(requestUrl).toBe(expectedUrl);
+    expect(requestUrl).toBe('https://api.peng-us.com/v1/chat/completions');
     expect(requestInit).toMatchObject({ method: 'POST' });
-    expect((requestInit as RequestInit).headers).toHaveProperty(authHeader);
+    expect((requestInit as RequestInit).headers).toHaveProperty('Authorization');
     const body = JSON.parse(String((requestInit as RequestInit).body)) as { model: string };
     expect(body.model).toBe('model-prod');
     expect(JSON.stringify(body)).not.toContain('采购');
@@ -195,7 +201,7 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
       ? new Response('{"data":[{"id":"model-prod"}]}', { status: 200 })
       : new Response('{"unexpected":true}', { status: 200 }));
     const config = new AgentProviderConfigService(f.app.settings, new FakeSafeStorage(), fetchMock as typeof fetch);
-    config.saveConfig({ provider: 'peng_openai', baseUrl: 'https://api.peng-us.com/v1', model: 'model-prod', apiKey: 'test-key' });
+    config.saveConfig({ provider: 'peng', baseUrl: 'https://api.peng-us.com/v1', model: 'model-prod', apiKey: 'test-key' });
     const error = await config.test().catch((caught: unknown) => caught);
     expect(error).toMatchObject({ category: 'invalid_response', retryable: false });
   });
@@ -222,18 +228,18 @@ describe('Agent 会话、事件与多 Provider 配置', () => {
   it('Agent run 将 Peng Provider、固定 Base URL 与模型传给运行时', async () => {
     const f = fresh(); const runner = new CompletingRunner();
     f.deepSeek.saveConfig({
-      provider: 'peng_openai', baseUrl: 'https://api.peng-us.com/v1',
-      model: 'deepseek/analysis-pro', apiKey: 'corp-key'
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
+      model: 'gpt-5.5', apiKey: 'corp-key'
     });
     const service = new AgentService(f.app, f.sessions, f.deepSeek, () => undefined, runner, f.memories);
     const started = service.start({ input: '检查企业模型连接' });
     await service.waitForIdle();
 
     expect(runner.lastOptions).toMatchObject({
-      provider: 'peng_openai', baseUrl: 'https://api.peng-us.com/v1',
-      model: 'deepseek/analysis-pro', apiKey: 'corp-key'
+      provider: 'peng', baseUrl: 'https://api.peng-us.com/v1',
+      model: 'gpt-5.5', apiKey: 'corp-key'
     });
-    expect(f.sessions.get(started.session.id).session.model).toBe('deepseek/analysis-pro');
+    expect(f.sessions.get(started.session.id).session.model).toBe('gpt-5.5');
   });
 
   it('main 为事件分配单调序号，并在终态快照保留可恢复状态', async () => {
@@ -281,13 +287,9 @@ describe('Pi 生产事件协议', () => {
     expect(thinkingDeltaFromPiEvent(textEvent)).toBeNull(); expect(thinkingDeltaFromPiEvent(thinkingEvent)).toBe('内部推理');
   });
 
-  it.each([
-    ['peng_deepseek', 'https://api.peng-us.com/v1', 'openai-completions'],
-    ['peng_openai', 'https://api.peng-us.com/v1', 'openai-responses'],
-    ['peng_anthropic', 'https://api.peng-us.com', 'anthropic-messages']
-  ] as const)('Peng %s 在 Pi 运行时绑定明确协议且不重复拼接 /v1', (provider, baseUrl, api) => {
-    const runtime = createPiModelRuntime({ provider, protocol: api, baseUrl, model: 'synthetic-model', apiKey: 'test-only' });
-    expect(runtime.model).toMatchObject({ provider, baseUrl, api });
+  it('Peng 在 Pi 运行时绑定统一 Chat Completions 且不重复拼接 /v1', () => {
+    const runtime = createPiModelRuntime({ provider: 'peng', protocol: 'openai-completions', baseUrl: 'https://api.peng-us.com/v1', model: 'synthetic-model', apiKey: 'test-only' });
+    expect(runtime.model).toMatchObject({ provider: 'peng', baseUrl: 'https://api.peng-us.com/v1', api: 'openai-completions' });
   });
 
   it('faux provider 完成真实工具循环并原生创建杂事', async () => {
@@ -314,7 +316,13 @@ describe('Pi 生产事件协议', () => {
       expect(tool.parameters).toMatchObject({ type: 'object' });
     }
     const command = tools.find((tool) => tool.name === 'execute_app_command');
-    expect(command?.parameters).toMatchObject({ type: 'object', anyOf: expect.any(Array) });
+    expect(command?.parameters).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: expect.arrayContaining(['command', 'input']),
+      properties: { input: { anyOf: expect.any(Array) } }
+    });
+    expect(command?.parameters).not.toHaveProperty('anyOf');
   });
 
   it('DeepSeek provider 最终 HTTP payload 保留 execute_app_command 的 object schema', async () => {
@@ -338,7 +346,10 @@ describe('Pi 生产事件协议', () => {
     expect(capturedPayload).toBeDefined();
     const payload = capturedPayload as { tools?: Array<{ function?: { name?: string; parameters?: unknown } }> };
     const command = payload.tools?.find((tool) => tool.function?.name === 'execute_app_command');
-    expect(command?.function?.parameters).toMatchObject({ type: 'object', anyOf: expect.any(Array) });
+    expect(command?.function?.parameters).toMatchObject({
+      type: 'object', additionalProperties: false, properties: { input: { anyOf: expect.any(Array) } }
+    });
+    expect(command?.function?.parameters).not.toHaveProperty('anyOf');
   });
 
   it('空响应明确失败并可由上层归类重试', async () => {

@@ -9,7 +9,7 @@
 | 桌面运行时 | Electron 43、TypeScript strict、electron-vite |
 | UI / 状态 | React 19、Zustand、lucide-react |
 | 数据 | Electron `node:sqlite`，WAL + foreign keys，main 独占 |
-| Agent | `@earendil-works/pi-agent-core` / `pi-ai` 0.81.1；DeepSeek、GLM、Peng 三协议 Provider |
+| Agent | `@earendil-works/pi-agent-core` / `pi-ai` 0.81.1；DeepSeek、GLM、Peng 单一企业 Provider |
 | Windows 集成 | koffi Acrylic、Toast、托盘、单实例、全屏检测 |
 | 内容 / 同步 | react-markdown、JSZip、PDF.js；飞书 bitable v1 与 `@larksuiteoapi/node-sdk` Channel；CSV/Markdown 导出 |
 | 测试 / 打包 | Vitest、Testing Library、axe、Electron 截图/基准；electron-builder portable |
@@ -37,8 +37,8 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `AppService` | 正式业务事务、提醒一致性、变更通知 |
 | `AppCommandService` | 统一命令 schema、风险、预期旧值、摘要和撤销元数据 |
 | `AgentService` | 唯一 run、来源元数据、内部/renderer 事件订阅、会话、快照、工具与终态 |
-| `AgentProviderConfigService` | DeepSeek/GLM/Peng Provider、固定 URL、模型发现/协议校验、safeStorage 密钥与无业务正文连接测试 |
-| `PiAgentAdapter` | DeepSeek、OpenAI Completions、OpenAI Responses、Anthropic Messages 流式协议与工具循环；不含业务写入 |
+| `AgentProviderConfigService` | DeepSeek/GLM/Peng Provider、固定 URL、模型发现、旧 Peng 配置收敛、safeStorage 密钥与无业务正文连接测试 |
+| `PiAgentAdapter` | DeepSeek 与 OpenAI Chat Completions 流式协议及工具循环；不含业务写入 |
 | `AgentPermissionService` | 三档权限、审批等待、Bypass 和授权目录元数据 |
 | `AuthorizedFileService` | 授权根内文件操作与 realpath/逃逸防护 |
 | `KnowledgeService` | 单一主工作目录、增量扫描、Office/PDF 提取、FTS5、来源定位与不可信正文脱敏 |
@@ -46,7 +46,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 | `AgentSessionService` / `MemoryService` | 可见会话、FTS5 召回、确认记忆与提案 |
 | `ReminderService` | 项目、节点、杂事提醒的派生调度与原子领取 |
 | `ContractService` | 合同台账、多节点与逐节点提醒、付款—开票关联、扫描件/附件/附属链接、备注与生命周期状态机 |
-| `FeishuAgentBridge` | 懒加载官方 Channel 长连接、配对、会话映射、进度/审批卡与消息防重；只调用 AgentService |
+| `FeishuAgentBridge` | 懒加载官方 Channel 长连接、配对、会话映射、进度/审批卡、状态推送、初始退避重连与内存诊断；只调用 AgentService |
 | `ArchiveService` / `FeishuService` | 本地快照与恢复；独立的单向飞书多维表格 upsert/导出 |
 
 ## 4. Agent 与权限流
@@ -58,7 +58,7 @@ Pi 两个包精确锁定为 0.81.1，MIT，要求 Node ≥22.19。不得引入 `
 - `beforeToolCall` 根据 AppCommand 风险与权限模式执行、等待批准或阻断。未知工具 fail-closed 为高风险。
 - 只读工具包括项目、合同、归档、会话搜索、授权目录读取，以及工作目录树/检索/来源片段/派生索引刷新；正式数据工具统一调用 AppCommand。
 - 所有 Provider 的 function parameters 必须声明顶层 `type: object`；`execute_app_command` 以 `type: object` 与判别联合 `anyOf` 组合，既满足兼容端点约束又保留逐命令校验。TypeBox 可空 UTC 联合以 `null` 分支优先，防止 `Value.Convert` 把 `null` 转为空字符串。
-- `AgentProviderConfigService` 保留 DeepSeek/GLM 配置；Peng DeepSeek/OpenAI 固定 `https://api.peng-us.com/v1`，Peng Anthropic 固定 `https://api.peng-us.com`。三个 Peng Provider 共用 `peng_api_key_encrypted`，分别保存模型。旧企业配置只有原 URL 为 Peng 时迁移到 Peng DeepSeek；其他旧密文保留并提示重配，绝不自动发往新域名。renderer 只接收配置状态和模型 ID，不接收密钥。
+- `AgentProviderConfigService` 保留 DeepSeek/GLM 配置；Peng 只有一个固定 `https://api.peng-us.com/v1` 的 Chat Completions Provider，使用 `peng_api_key_encrypted` 与 `peng_model`。旧 `peng_deepseek`、`peng_openai`、`peng_anthropic` 激活值在本机收敛为 `peng`，优先复制原激活模型且不改写共享密文；旧企业配置只有原 URL 为 Peng 时迁移，其他旧密文保留并提示重配，绝不自动发往新域名。renderer 只接收配置状态和模型 ID，不接收密钥。
 - `FeishuAgentBridge` 仅在启用时动态导入 `@larksuiteoapi/node-sdk@1.73.1`，关闭 SDK 原始事件与日志；不开放 Webhook/端口。消息、卡片动作先跨重启防重，再校验群聊提及、配对用户与 run 来源。可见进度经 500ms 节流更新，thinking 与原始工具结果不进入飞书。
 - 授权文件只接受目录 ID 与相对路径；main 拒绝设备/UNC、`..`、符号链接/联接逃逸和未授权目标。
 - 无任意 shell 或 Agent 可调用的任意 URL/额外网络工具；只有用户在设置中保存并启用的模型 Base URL 可由 main 调用。
@@ -87,7 +87,7 @@ IPC 分组而非逐项复制：
 
 - `procurements/tasks/nodes/links/notes/reminders/misc/archive`：采购与杂事读写，写入经 AppCommand。
 - `contracts/contractActions/contractLinks/contractNotes`：合同台账、节点/提醒、扫描件/附件/附属链接与备注读写，写入经 AppCommand；`create_contract` 可在同一事务内创建首批资料、多个节点和提醒。
-- `agent/agentProvider/memory/proposals`：会话、run、权限、多 Provider 配置、记忆和通用提案；`feishuAgent/*`：机器人状态、保存/测试、配对码与撤销；renderer 永远拿不到 Key 或 App Secret。
+- `agent/agentProvider/memory/proposals`：会话、run、权限、多 Provider 配置、记忆和通用提案；`feishuAgent/*`：机器人状态、保存/测试、配对码、撤销、立即重连、诊断开关与安全导出；`feishuAgent:changed` 只推送无 Secret 的状态快照，renderer 永远拿不到 Key 或 App Secret。
 - `knowledge`：主目录状态/选择、相对目录树、检索、来源片段、刷新与取消；选择之外不向 renderer 暴露绝对路径。
 - `automations`：列表/运行、总开关和审批；创建、更新、单项启停和删除仍经 AppCommand。
 - `window/ui/island/reminder`：窗口状态、过渡、偏好、交互与通知导航。
@@ -104,6 +104,8 @@ IPC 分组而非逐项复制：
 - 启动和 `powerMonitor.resume` 合并漏发摘要；Toast 点击以只读事件定位，不携带备注或路径。
 - 归档写 SQLite 与 `archive/YYYY-MM/.../task.md|task.json`；同名不覆盖，恢复校验 JSON 后重建活跃任务。
 - `FeishuService` 只 upsert 活跃采购项目，合同、杂事与知识数据不外发；`FeishuAgentBridge` 是独立 Agent 通道，所有写入仍经工具、权限、AppCommand/AppService，不能直接调用多维表格同步或数据库写入。
+- `AgentPermissionService.beforeToolCall` 接收来源级强制审批标记。`AgentService` 只在 active origin 为飞书时启用该标记，因此桌面三档模式不变，飞书所有非只读工具都进入同一个待审批状态与卡片同步链路。
+- `execute_app_command` 的模型工具 schema 根节点是 `type: object` 且 `additionalProperties: false`；命令变体的 `anyOf` 下沉到 `input`，执行前再由 `parseAppCommand` 校验 command/input 关联，避免严格 OpenAI 兼容上游拒绝根级 union。
 
 ## 8. Windows 窗口与渲染
 

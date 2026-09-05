@@ -2,7 +2,7 @@ import { Type } from '@earendil-works/pi-ai';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { AppService } from './appService';
 import { AppCommandService } from './appCommandService';
-import type { AppCommand } from '../shared/appCommandContracts';
+import { APP_COMMAND_NAMES, parseAppCommand } from '../shared/appCommandContracts';
 import type { MemoryProposalRequest } from '../shared/agentContracts';
 import type { MemoryService } from './memoryService';
 import type { AgentSessionService } from './agentSessionService';
@@ -46,8 +46,7 @@ const TaskInputSchema = Type.Object({
 const MiscCreateSchema = Type.Object({ kind: Type.Literal('misc'), name: Type.String(), note: Type.String(), remindAtUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
 const ProjectCreateSchema = Type.Object({ kind: Type.Union([Type.Literal('procurement'), Type.Literal('task')]), name: Type.String(), fullName: Type.Optional(Type.String()), shortName: Type.Optional(Type.String()), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String() }, { additionalProperties: false });
 
-const AppCommandSchema = {
-  ...Type.Union([
+const AppCommandVariants = [
     Type.Object({ command: Type.Literal('create_procurement_project'), input: Type.Object({ fullName: Type.String(), shortName: Type.String(), description: Type.String(), urgency: UrgencySchema, deadlineUtc: NullableUtc, tzId: Type.String(), procurementMethod: ProcurementMethodSchema, templateId: NullableUtc, nodes: Type.Optional(Type.Array(NodeSchema)) }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('apply_procurement_plan'), input: Type.Object({ taskId: Type.String(), templateId: NullableUtc, templateVersion: Type.Union([Type.Null(), Type.Integer({ minimum: 1 })]), procurementMethod: ProcurementMethodSchema, nodes: Type.Array(NodeSchema), expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('create_contract'), input: ContractCreateSchema }, { additionalProperties: false }),
@@ -86,12 +85,15 @@ const AppCommandSchema = {
     Type.Object({ command: Type.Literal('update_automation'), input: Type.Object({ automationId: Type.String(), name: Type.String(), prompt: Type.String(), scheduleKind: Type.Union([Type.Literal('once'), Type.Literal('daily'), Type.Literal('weekly')]), timeZone: Type.String(), localTime: Type.String(), weekdays: Type.Array(Type.Integer({ minimum: 0, maximum: 6 })), runAtUtc: NullableUtc, expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('set_automation_enabled'), input: Type.Object({ automationId: Type.String(), enabled: Type.Boolean(), expectedUpdatedAtUtc: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
     Type.Object({ command: Type.Literal('delete_automation'), input: Type.Object({ automationId: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false })
-  ]),
-  // DeepSeek requires every function parameters schema to declare an object at
-  // the top level. Type.Union emits only `anyOf`, which the API reports as
-  // `type: null`, while `type` + `anyOf` preserves the discriminated union.
-  type: 'object' as const
-};
+] as const;
+
+// Keep the function root a plain object for strict OpenAI-compatible gateways.
+// Command-specific alternatives live under `input`; parseAppCommand performs
+// the final command/input correlation check before AppService is reached.
+const AppCommandSchema = Type.Object({
+  command: Type.Union(APP_COMMAND_NAMES.map((command) => Type.Literal(command))),
+  input: Type.Union(AppCommandVariants.map((variant) => variant.properties.input))
+}, { additionalProperties: false });
 
 const MemorySchema = Type.Object({
   operation: Type.Union([Type.Literal('add'), Type.Literal('replace'), Type.Literal('remove')]),
@@ -145,7 +147,7 @@ export function createAgentTools(
     parameters: AppCommandSchema, executionMode: 'sequential',
     execute: async (_id, params, signal) => {
       checkCancelled(signal);
-      const result = commands.execute({ name: params.command, input: params.input } as AppCommand);
+      const result = commands.execute(parseAppCommand({ name: params.command, input: params.input }));
       return text(result, { commandName: result.command, entityId: result.entityId });
     }
   };

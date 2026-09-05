@@ -22,6 +22,7 @@ import AgentPanel from '../components/AgentPanel';
 import ContractCard from '../components/ContractCard';
 import NewContractForm from '../components/NewContractForm';
 import { useContractStore } from '../state/useContractStore';
+import FeishuAgentStatusBadge from '../components/FeishuAgentStatusBadge';
 
 type SortMode = 'deadline' | 'urgency' | 'updated';
 
@@ -321,6 +322,7 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
           <button type="button" role="tab" data-l2-view="agent" aria-selected={l2View === 'agent'} tabIndex={l2View === 'agent' ? 0 : -1} className={l2View === 'agent' ? 'active' : ''} onKeyDown={moveL2ViewFocus} onClick={() => setL2View('agent')}><Bot aria-hidden="true" size={16} />Agent</button>
         </div>
         <div className="l2-actions">
+          {onboarded && <FeishuAgentStatusBadge compact />}
           {l2View === 'overview' && <Button icon={Plus} variant="primary" onClick={() => setShowForm(true)}>新建</Button>}
           {l2View === 'overview' && <IconButton icon={FileSignature} label="新建合同" onClick={() => setShowContractForm(true)} />}
           <IconButton icon={Maximize2} label="展开工作台" onClick={() => {
@@ -370,7 +372,13 @@ export default function L2Panel({ reducedMotion }: { reducedMotion: boolean }): 
             action={<Button variant="primary" onClick={() => void Promise.all([load(), loadContracts()])}>重试</Button>}
           />
         ) : !onboarded ? (
-          <WelcomeView onDone={() => setOnboarded(true)} />
+          <WelcomeView onDone={(connectFeishu) => {
+            setOnboarded(true);
+            if (connectFeishu) {
+              window.sessionStorage.setItem('caiban-open-feishu-setup', '1');
+              openSettings();
+            }
+          }} />
         ) : visibleTasks.length === 0 && contracts.length === 0 ? (
           <EmptyState
             icon={ClipboardList}

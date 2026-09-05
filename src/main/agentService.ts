@@ -245,7 +245,9 @@ export class AgentService {
         signal: active.controller.signal,
         onEvent: (event) => this.handleRunnerEvent(session.id, event),
         beforeToolCall: permissions
-          ? (toolCallId, toolName, args, signal) => permissions.beforeToolCall(session.id, toolCallId, toolName, args, signal)
+          ? (toolCallId, toolName, args, signal) => permissions.beforeToolCall(
+              session.id, toolCallId, toolName, args, signal, active.origin.type === 'feishu'
+            )
           : undefined
       });
       if (active.timedOut) {

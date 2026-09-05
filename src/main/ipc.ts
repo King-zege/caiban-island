@@ -2,7 +2,7 @@ import path from 'node:path';
 import { app, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { IslandWindowController } from './windowController';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { AppService } from './appService';
 import type { FeishuService } from './feishuService';
 import type { FeishuAgentBridge } from './feishuAgentBridge';
@@ -304,6 +304,27 @@ export function registerIpc(
   });
   ipcMain.handle('feishuAgent:generatePairingCode', () => wrap(() => feishuAgent.generatePairingCode()));
   ipcMain.handle('feishuAgent:revokeUser', (_e: IpcMainInvokeEvent, openId: string) => wrap(() => feishuAgent.revokeUser(openId)));
+  ipcMain.handle('feishuAgent:reconnect', async () => {
+    try { return { ok: true as const, data: await feishuAgent.reconnect() }; }
+    catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('feishuAgent:setDiagnosticsEnabled', (_e: IpcMainInvokeEvent, enabled: boolean) =>
+    wrap(() => feishuAgent.setDiagnosticsEnabled(enabled)));
+  ipcMain.handle('feishuAgent:exportDiagnostics', async () => {
+    try {
+      const report = feishuAgent.diagnosticReport();
+      const target = await dialog.showSaveDialog(c.win, {
+        title: '导出飞书机器人诊断日志',
+        defaultPath: `caiban-feishu-diagnostics-${new Date().toISOString().slice(0, 10)}.jsonl`,
+        filters: [{ name: 'JSON Lines', extensions: ['jsonl'] }]
+      });
+      if (target.canceled || !target.filePath) return { ok: false as const, error: '已取消导出' };
+      writeFileSync(target.filePath, report.text, { encoding: 'utf8', flag: 'w' });
+      return { ok: true as const, data: { path: target.filePath, entryCount: report.entryCount } };
+    } catch (error) {
+      return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   // 快速导出（写入数据目录 export\，免对话框，便于自动化与随手导出）
   ipcMain.handle('feishu:exportCsv', () => {
     try {

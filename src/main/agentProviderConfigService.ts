@@ -6,8 +6,7 @@ import {
   GLM_MODELS,
   PENG_MODELS_URL,
   PENG_OPENAI_BASE_URL,
-  PENG_PROVIDER_IDS,
-  PENG_ROOT_URL
+  PENG_PROVIDER_IDS
 } from '../shared/agentContracts';
 import type {
   AgentProviderConfigInput,
@@ -26,10 +25,10 @@ const ACTIVE_PROVIDER_KEY = 'agent_provider';
 const MODEL_KEYS: Record<AgentProviderId, string> = {
   deepseek: 'deepseek_model',
   glm: 'glm_model',
-  peng_deepseek: 'peng_deepseek_model',
-  peng_openai: 'peng_openai_model',
-  peng_anthropic: 'peng_anthropic_model'
+  peng: 'peng_model'
 };
+const LEGACY_PENG_MODEL_KEYS = ['peng_deepseek_model', 'peng_openai_model', 'peng_anthropic_model'] as const;
+const LEGACY_PENG_PROVIDER_IDS = ['peng_deepseek', 'peng_openai', 'peng_anthropic'] as const;
 const DEEPSEEK_API_KEY = 'deepseek_api_key_encrypted';
 const GLM_API_KEY = 'glm_api_key_encrypted';
 const PENG_API_KEY = 'peng_api_key_encrypted';
@@ -119,6 +118,7 @@ export class AgentProviderConfigService {
     private readonly safeStorage: SafeStorageAdapter,
     private readonly fetchFn: typeof fetch = fetch
   ) {
+    this.migrateConsolidatedPeng();
     this.migratePengEnterprise();
   }
 
@@ -190,7 +190,7 @@ export class AgentProviderConfigService {
       const value = this.settings.get(GLM_BASE_URL_KEY);
       return value && GLM_BASE_URLS.includes(value as (typeof GLM_BASE_URLS)[number]) ? value : GLM_BASE_URLS[0];
     }
-    return provider === 'peng_anthropic' ? PENG_ROOT_URL : PENG_OPENAI_BASE_URL;
+    return PENG_OPENAI_BASE_URL;
   }
 
   apiKey(provider = this.provider()): string {
@@ -209,13 +209,12 @@ export class AgentProviderConfigService {
   }
 
   protocol(provider = this.provider()): AgentProviderProtocol {
-    if (provider === 'peng_openai') return 'openai-responses';
-    if (provider === 'peng_anthropic') return 'anthropic-messages';
+    void provider;
     return 'openai-completions';
   }
 
   async discoverPengModels(rawApiKey = '', signal?: AbortSignal): Promise<PengModelDiscoveryResult> {
-    const apiKey = rawApiKey.trim() ? cleanApiKey(rawApiKey) : this.apiKey('peng_deepseek');
+    const apiKey = rawApiKey.trim() ? cleanApiKey(rawApiKey) : this.apiKey('peng');
     const response = await safeFetch(this.fetchFn, PENG_MODELS_URL, {
       method: 'GET', headers: { Authorization: `Bearer ${apiKey}` }, signal: signal ?? AbortSignal.timeout(15000)
     });
@@ -250,8 +249,6 @@ export class AgentProviderConfigService {
     const record = payload as Record<string, unknown>;
     let valid = false;
     if (provider === 'deepseek') valid = Array.isArray(record.data);
-    else if (provider === 'peng_openai') valid = Array.isArray(record.output) || typeof record.output_text === 'string';
-    else if (provider === 'peng_anthropic') valid = Array.isArray(record.content);
     else valid = Array.isArray(record.choices);
     if (!valid) throw new AgentProviderConfigError('模型测试返回了异常协议响应', 'invalid_response');
   }
@@ -259,26 +256,12 @@ export class AgentProviderConfigService {
   private testUrl(provider: AgentProviderId): string {
     if (provider === 'deepseek') return `${DEEPSEEK_BASE_URL}/models`;
     if (provider === 'glm') return `${this.baseUrl(provider)}/chat/completions`;
-    if (provider === 'peng_deepseek') return `${PENG_OPENAI_BASE_URL}/chat/completions`;
-    if (provider === 'peng_openai') return `${PENG_OPENAI_BASE_URL}/responses`;
-    return `${PENG_ROOT_URL}/v1/messages`;
+    return `${PENG_OPENAI_BASE_URL}/chat/completions`;
   }
 
   private testRequest(config: AgentProviderRuntimeConfig, signal: AbortSignal): RequestInit {
     if (config.provider === 'deepseek') {
       return { method: 'GET', headers: { Authorization: `Bearer ${config.apiKey}` }, signal };
-    }
-    if (config.provider === 'peng_openai') {
-      return {
-        method: 'POST', headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: config.model, input: '仅回复 OK', max_output_tokens: 16 }), signal
-      };
-    }
-    if (config.provider === 'peng_anthropic') {
-      return {
-        method: 'POST', headers: { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: config.model, messages: [{ role: 'user', content: '仅回复 OK' }], max_tokens: 8 }), signal
-      };
     }
     return {
       method: 'POST', headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
@@ -308,6 +291,19 @@ export class AgentProviderConfigService {
     return 'Peng 企业网关';
   }
 
+  private migrateConsolidatedPeng(): void {
+    const active = this.settings.get(ACTIVE_PROVIDER_KEY);
+    const legacyActiveIndex = LEGACY_PENG_PROVIDER_IDS.findIndex((provider) => provider === active);
+    if (!this.settings.get(MODEL_KEYS.peng)) {
+      const preferredKeys = legacyActiveIndex >= 0
+        ? [LEGACY_PENG_MODEL_KEYS[legacyActiveIndex], ...LEGACY_PENG_MODEL_KEYS.filter((_key, index) => index !== legacyActiveIndex)]
+        : [...LEGACY_PENG_MODEL_KEYS];
+      const model = preferredKeys.map((key) => this.settings.get(key)?.trim()).find(Boolean);
+      if (model) this.settings.set(MODEL_KEYS.peng, model);
+    }
+    if (legacyActiveIndex >= 0) this.settings.set(ACTIVE_PROVIDER_KEY, 'peng');
+  }
+
   private migratePengEnterprise(): void {
     if (this.settings.get(ACTIVE_PROVIDER_KEY) !== 'enterprise') return;
     const legacyUrl = this.settings.get(LEGACY_ENTERPRISE_BASE_URL_KEY);
@@ -317,9 +313,9 @@ export class AgentProviderConfigService {
     }
     const model = this.settings.get(LEGACY_ENTERPRISE_MODEL_KEY)?.trim();
     const encrypted = this.settings.get(LEGACY_ENTERPRISE_API_KEY);
-    if (model) this.settings.set(MODEL_KEYS.peng_deepseek, model);
+    if (model) this.settings.set(MODEL_KEYS.peng, model);
     if (encrypted) this.settings.set(PENG_API_KEY, encrypted);
-    this.settings.set(ACTIVE_PROVIDER_KEY, 'peng_deepseek');
+    this.settings.set(ACTIVE_PROVIDER_KEY, 'peng');
     this.clearLegacyEnterprise();
   }
 

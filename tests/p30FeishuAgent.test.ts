@@ -10,6 +10,8 @@ import { AgentSessionService } from '../src/main/agentSessionService';
 import { AppService } from '../src/main/appService';
 import { migrate, openDatabase } from '../src/main/db';
 import { FeishuAgentBridge } from '../src/main/feishuAgentBridge';
+import type { FeishuChannelFactory } from '../src/main/feishuAgentBridge';
+import type { FeishuBotStatus } from '../src/shared/types';
 import type { PiAgentRunner, PiRunOptions, PiRunResult } from '../src/main/piAgentAdapter';
 import type { SafeStorageAdapter } from '../src/main/safeStorageAdapter';
 
@@ -85,7 +87,11 @@ function message(overrides: Partial<NormalizedMessage> = {}): NormalizedMessage 
   };
 }
 
-function fresh(runner: PiAgentRunner, approvalMode: 'confirm_all' | 'bypass' = 'bypass') {
+function fresh(
+  runner: PiAgentRunner,
+  approvalMode: 'confirm_all' | 'bypass' = 'bypass',
+  options: { channel?: FakeChannel; channelFactory?: FeishuChannelFactory; emitStatus?: (status: FeishuBotStatus) => void } = {}
+) {
   const dir = mkdtempSync(path.join(tmpdir(), 'caiban-p30-')); dirs.push(dir);
   const db = openDatabase(path.join(dir, 'island.db'));
   databases.push(db);
@@ -97,14 +103,15 @@ function fresh(runner: PiAgentRunner, approvalMode: 'confirm_all' | 'bypass' = '
   const permissions = new AgentPermissionService(app.settings);
   if (approvalMode === 'bypass') permissions.setMode('bypass', true);
   const agent = new AgentService(app, sessions, provider, () => undefined, runner, undefined, [], permissions);
-  const channel = new FakeChannel();
-  const bridge = new FeishuAgentBridge(db, app.settings, safeStorage, agent, permissions, async () => channel as unknown as LarkChannel);
+  const channel = options.channel ?? new FakeChannel();
+  const channelFactory = options.channelFactory ?? (async () => channel as unknown as LarkChannel);
+  const bridge = new FeishuAgentBridge(db, app.settings, safeStorage, agent, permissions, channelFactory, options.emitStatus);
   bridges.push(bridge);
   return { db, app, sessions, permissions, agent, channel, bridge };
 }
 
 async function enableAndPair(f: ReturnType<typeof fresh>, senderId = 'user-1', chatId = 'chat-1'): Promise<void> {
-  await f.bridge.saveConfig({ appId: 'cli_test_app', appSecret: 'test-app-secret', enabled: true });
+  await f.bridge.saveConfig({ appId: 'cli_testapp', appSecret: 'test-app-secret', enabled: true });
   const pairing = f.bridge.generatePairingCode();
   await f.channel.emit('message', message({ messageId: `bind-${senderId}`, senderId, chatId, content: `/bind ${pairing.code}` }));
 }
@@ -113,6 +120,7 @@ afterEach(async () => {
   for (const bridge of bridges.splice(0)) await bridge.dispose();
   for (const database of databases.splice(0)) database.close();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  vi.useRealTimers();
 });
 
 describe('P30 飞书远程 Agent', () => {
@@ -161,7 +169,7 @@ describe('P30 飞书远程 Agent', () => {
   it('配对码十分钟过期且同一用户连续失败会被限速', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-02T00:00:00.000Z'));
     const f = fresh(new CompletingRunner());
-    await f.bridge.saveConfig({ appId: 'cli_test_app', appSecret: 'test-app-secret', enabled: true });
+    await f.bridge.saveConfig({ appId: 'cli_testapp', appSecret: 'test-app-secret', enabled: true });
     const expired = f.bridge.generatePairingCode();
     vi.setSystemTime(new Date('2026-09-02T00:11:00.000Z'));
     await f.channel.emit('message', message({ messageId: 'expired-code', content: `/bind ${expired.code}` }));
@@ -216,10 +224,11 @@ describe('P30 飞书远程 Agent', () => {
 
     await enableAndPair(f);
     await f.channel.emit('message', message({ messageId: 'disable-run', content: '等待禁用' }));
-    await f.bridge.saveConfig({ appId: 'cli_test_app', appSecret: '', enabled: false });
+    await f.bridge.saveConfig({ appId: 'cli_testapp', appSecret: '', enabled: false });
     await f.agent.waitForIdle();
     expect(f.bridge.status()).toMatchObject({ enabled: false, connectionState: 'disabled' });
     expect(f.agent.isRunning()).toBe(false);
+    expect(f.channel.connected).toBe(false);
   });
 
   it('审批卡仅允许本次飞书 run 的原发起人处理，桌面处理也同步更新卡片', async () => {
@@ -252,5 +261,94 @@ describe('P30 飞书远程 Agent', () => {
     expect(JSON.stringify(f.channel.sent.at(-1)?.input)).toContain('审批已过期');
     await f.channel.emit('cardAction', expiredAction);
     expect(f.channel.sent).toHaveLength(sentBeforeExpiredClick + 1);
+  });
+
+  it('飞书来源即使全局为 Bypass，所有写操作仍要求原发起人审批', async () => {
+    const f = fresh(new ApprovalRunner(), 'bypass');
+    await enableAndPair(f);
+    await f.channel.emit('message', message({ messageId: 'bypass-remote-write', content: '创建合成任务' }));
+    await vi.waitFor(() => expect(f.permissions.currentApproval()).not.toBeNull());
+    const approval = f.permissions.currentApproval();
+    expect(approval?.risk).not.toBe('read');
+    expect(JSON.stringify(f.channel.sent)).toContain('采办岛操作审批');
+    if (approval) f.permissions.resolveApproval(approval.id, 'approve');
+    await f.agent.waitForIdle();
+  });
+
+  it('初始连接失败会按退避自动重试，且状态变更会推送到 renderer', async () => {
+    vi.useFakeTimers();
+    const working = new FakeChannel();
+    let attempts = 0;
+    const statuses: FeishuBotStatus[] = [];
+    const factory: FeishuChannelFactory = async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        const failing = new FakeChannel();
+        failing.connect = async () => { throw new Error('WebSocket handshake timeout'); };
+        return failing as unknown as LarkChannel;
+      }
+      return working as unknown as LarkChannel;
+    };
+    const f = fresh(new CompletingRunner(), 'bypass', { channel: working, channelFactory: factory, emitStatus: (status) => statuses.push(status) });
+    const first = await f.bridge.saveConfig({ appId: 'cli_retryapp', appSecret: 'test-app-secret', enabled: true });
+    expect(first).toMatchObject({ connectionState: 'reconnecting', retryAttempt: 1, lastErrorCategory: 'long_connection' });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.waitFor(() => expect(f.bridge.status().connectionState).toBe('connected'));
+    expect(attempts).toBe(2);
+    expect(statuses.some((status) => status.connectionState === 'reconnecting')).toBe(true);
+    expect(statuses.at(-1)?.connectionState).toBe('connected');
+  });
+
+  it('诊断报告只记录元数据并脱敏 SDK 错误、消息正文和凭据', async () => {
+    const statuses: FeishuBotStatus[] = [];
+    const f = fresh(new CompletingRunner(), 'bypass', { emitStatus: (status) => statuses.push(status) });
+    f.bridge.setDiagnosticsEnabled(true);
+    await enableAndPair(f);
+    await f.channel.emit('message', message({ messageId: 'diagnostic-duplicate', content: '敏感采购正文' }));
+    await f.channel.emit('message', message({ messageId: 'diagnostic-duplicate', content: '敏感采购正文' }));
+    for (let index = 0; index < 210; index += 1) {
+      await f.channel.emit('message', message({ messageId: 'diagnostic-duplicate', content: `正文-${index}` }));
+    }
+    await f.agent.waitForIdle();
+    await f.channel.emitLifecycle('error', new Error('close 1006 App Secret=test-app-secret Bearer token-value C:\\Private\\file.docx'));
+    const report = f.bridge.diagnosticReport();
+    expect(report.entryCount).toBeGreaterThan(0);
+    expect(report.entryCount).toBeLessThanOrEqual(200);
+    expect(report.text).toContain('duplicateEventCount');
+    expect(report.text).not.toContain('敏感采购正文');
+    expect(report.text).not.toContain('test-app-secret');
+    expect(report.text).not.toContain('token-value');
+    expect(report.text).not.toContain('C:\\Private');
+    expect(f.bridge.status()).toMatchObject({ lastErrorCategory: 'long_connection', diagnosticsEnabled: true });
+    expect(statuses.length).toBeGreaterThan(0);
+    f.bridge.setDiagnosticsEnabled(false);
+    expect(f.bridge.diagnosticReport().entryCount).toBe(0);
+  });
+
+  it('拒绝格式错误的 App ID，避免保存无法连接的配置', async () => {
+    const f = fresh(new CompletingRunner());
+    await expect(f.bridge.saveConfig({ appId: 'invalid_app', appSecret: 'test-app-secret', enabled: true }))
+      .rejects.toThrow('cli_');
+    expect(f.bridge.status().configured).toBe(false);
+  });
+
+  it('独立连接测试返回错误前会移除 App Secret、Authorization 与本机路径', async () => {
+    const working = new FakeChannel();
+    let calls = 0;
+    const factory: FeishuChannelFactory = async (input) => {
+      calls += 1;
+      if (calls === 1) return working as unknown as LarkChannel;
+      const failing = new FakeChannel();
+      failing.connect = async () => { throw new Error(`App Secret=${input.appSecret} Authorization: Bearer synthetic-token C:\\Private\\test.txt`); };
+      return failing as unknown as LarkChannel;
+    };
+    const f = fresh(new CompletingRunner(), 'bypass', { channel: working, channelFactory: factory });
+    await f.bridge.saveConfig({ appId: 'cli_testconnection', appSecret: 'test-app-secret', enabled: true });
+    let errorMessage = '';
+    try { await f.bridge.testConnection(); } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
+    expect(errorMessage).toContain('连接测试失败');
+    expect(errorMessage).not.toContain('test-app-secret');
+    expect(errorMessage).not.toContain('synthetic-token');
+    expect(errorMessage).not.toContain('C:\\Private');
   });
 });
