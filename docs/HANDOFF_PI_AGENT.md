@@ -5,7 +5,8 @@
 ## 1. 当前基线
 
 - 分支：`main`；产品版本：`v0.4.0`；数据库迁移：v1–v13；P30 实现提交为 `6656236`。
-- 当前源码为 P31 验收中候选：飞书自接向导、诊断与远程强制审批，以及 Peng 单一入口合并；本次只提交源码、测试和文档，不更新 Release、标签或线上下载资产。
+- 当前源码为 P31 验收中候选：飞书自接向导、诊断与远程强制审批，以及 Peng 单一入口合并；实现提交为 `67d9f4b`。
+- 当前预发布下载：<https://github.com/King-zege/caiban-island/releases/tag/p31-test-20260905>，标签指向 `67d9f4b`，包含 Windows x64 portable EXE 与 ZIP。GitHub 资产 SHA-256 已与下述本地候选哈希逐一核对；正式稳定版仍为 v0.4.0。
 - 正式 Release：<https://github.com/King-zege/caiban-island/releases/tag/v0.4.0>，标签指向 `35ead4e`，仍是生产下载入口。
 - P30 预发布测试版：<https://github.com/King-zege/caiban-island/releases/tag/p30-test-20260903>，标签 `p30-test-20260903` 指向 `6656236`，包含 Windows x64 portable EXE 与 ZIP；不要把它宣称为正式 `v0.5.0`。
 - P30 自动化门禁：typecheck、44 个测试文件/264 项测试、build、package、production audit 与 ASAR 检查均通过；renderer 首屏 JS 为 772.48 KB，回升警戒线为 840 KB。测试资产 SHA-256：EXE `EC677434A4B971945FE90E886555C02A55D36D8AB1C4E8DC081ED6B4ED19FCFE`，ZIP `6DC4A2DDBF562DC373F6FAC44E2302D322E5A3229106E8E946B6AB3468D1BAD7`。
